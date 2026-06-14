@@ -1,4 +1,4 @@
-# Sound Mixer
+# Windows Sound Mixer
 
 A per-application volume mixer for Windows. Adjust the volume of any running
 program with an audio session (or the system master volume) from a small
@@ -58,30 +58,30 @@ The settings file is plain JSON, stored next to the application (or next to
 the app is not running. If the format changes in a future version, the file
 is migrated automatically on load.
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `version` | integer | Settings schema version, used for migrations. |
-| `master_volume` | float (0.0-1.0) | System master volume level. |
-| `master_muted` | bool | System master mute state. |
-| `app_volumes` | object | Per-application volume/mute, keyed by lowercase executable name (e.g. `"chrome.exe"`). Each value is `{ "volume": float, "muted": bool }`. |
-| `hotkeys` | array | Global hotkey bindings. Each entry is `{ "action": string, "combo": string, "enabled": bool }`. |
-| `autostart_enabled` | bool | Whether the app starts automatically on Windows login. |
-| `overlay` | object | Overlay window state: `{ "x", "y", "width", "height" }` (pixels) and `"visible_on_start"` (bool). |
-| `tooltip_delay_ms` | integer | Delay, in milliseconds, before action button tooltips appear. |
-| `volume_step` | object | `{ "arrow": float, "scroll": float }` - volume change per arrow-key press and per scroll wheel notch. |
-| `ui_scale` | float (0.5-3.0) | Overlay interface scale factor (fonts, icons, sliders). 1.0 is 100%. |
-| `default_app_volume` | float (0.0-1.0) | Initial volume applied to apps the first time they appear, if not already in `app_volumes`. |
+| Field                | Type            | Description                                                                                                                                |
+| -------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `version`            | integer         | Settings schema version, used for migrations.                                                                                              |
+| `master_volume`      | float (0.0-1.0) | System master volume level.                                                                                                                |
+| `master_muted`       | bool            | System master mute state.                                                                                                                  |
+| `app_volumes`        | object          | Per-application volume/mute, keyed by lowercase executable name (e.g. `"chrome.exe"`). Each value is `{ "volume": float, "muted": bool }`. |
+| `hotkeys`            | array           | Global hotkey bindings. Each entry is `{ "action": string, "combo": string, "enabled": bool }`.                                            |
+| `autostart_enabled`  | bool            | Whether the app starts automatically on Windows login.                                                                                     |
+| `overlay`            | object          | Overlay window state: `{ "x", "y", "width", "height" }` (pixels) and `"visible_on_start"` (bool).                                          |
+| `tooltip_delay_ms`   | integer         | Delay, in milliseconds, before action button tooltips appear.                                                                              |
+| `volume_step`        | object          | `{ "arrow": float, "scroll": float }` - volume change per arrow-key press and per scroll wheel notch.                                      |
+| `ui_scale`           | float (0.5-3.0) | Overlay interface scale factor (fonts, icons, sliders). 1.0 is 100%.                                                                       |
+| `default_app_volume` | float (0.0-1.0) | Initial volume applied to apps the first time they appear, if not already in `app_volumes`.                                                |
 
 ### Hotkey actions
 
-| Action | Default combo | Effect |
-| --- | --- | --- |
-| `toggle_overlay` | `ctrl+alt+num5` | Show/hide the overlay. |
-| `volume_up` | (none) | Increase the focused entry's volume by the arrow step. |
-| `volume_down` | (none) | Decrease the focused entry's volume by the arrow step. |
-| `focus_next` | (none) | Move focus to the next entry. |
-| `focus_prev` | (none) | Move focus to the previous entry. |
-| `mute_toggle` | (none) | Toggle mute on the focused entry. |
+| Action           | Default combo   | Effect                                                 |
+| ---------------- | --------------- | ------------------------------------------------------ |
+| `toggle_overlay` | `ctrl+alt+num5` | Show/hide the overlay.                                 |
+| `volume_up`      | (none)          | Increase the focused entry's volume by the arrow step. |
+| `volume_down`    | (none)          | Decrease the focused entry's volume by the arrow step. |
+| `focus_next`     | (none)          | Move focus to the next entry.                          |
+| `focus_prev`     | (none)          | Move focus to the previous entry.                      |
+| `mute_toggle`    | (none)          | Toggle mute on the focused entry.                      |
 
 Hotkey combos are written as `+`-separated key names, e.g. `ctrl+alt+num5`,
 `ctrl+shift+f9`, `win+s`. Modifier keys: `ctrl`, `alt`, `shift`, `win`.
