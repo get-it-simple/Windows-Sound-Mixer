@@ -30,6 +30,15 @@ def test_apply_scale_resizes_icons_and_font(qapp, fake_backend, settings):
         assert widget._mute_button.iconSize().width() == ENTRY_BASE_ICON_PX * 2
 
 
+def test_background_style_highlights_focused_entry_with_accent_color(qapp, fake_backend, settings):
+    overlay = make_overlay(qapp, fake_backend, settings)
+
+    style = overlay._background.styleSheet()
+
+    assert f'#entryWidget[focused="true"]' in style
+    assert overlay._accent_color in style
+
+
 def test_new_entry_widgets_inherit_current_scale(qapp, fake_backend, settings):
     overlay = make_overlay(qapp, fake_backend, settings)
 

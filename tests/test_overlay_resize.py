@@ -2,7 +2,7 @@ from PySide6.QtCore import Qt, QPointF
 from PySide6.QtGui import QMouseEvent
 
 from sound_mixer.mixer.model import MixerModel
-from sound_mixer.overlay.window import MIN_OVERLAY_WIDTH, OverlayWindow
+from sound_mixer.overlay.window import MIN_OVERLAY_HEIGHT, MIN_OVERLAY_WIDTH, OverlayWindow
 
 
 def make_overlay(qapp, fake_backend, settings) -> OverlayWindow:
@@ -10,11 +10,11 @@ def make_overlay(qapp, fake_backend, settings) -> OverlayWindow:
     return OverlayWindow(model, settings)
 
 
-def move_event(global_x: float) -> QMouseEvent:
+def move_event(global_x: float = 0, global_y: float = 0) -> QMouseEvent:
     return QMouseEvent(
         QMouseEvent.Type.MouseMove,
         QPointF(0, 0),
-        QPointF(global_x, 0),
+        QPointF(global_x, global_y),
         Qt.MouseButton.LeftButton,
         Qt.MouseButton.LeftButton,
         Qt.KeyboardModifier.NoModifier,
@@ -47,11 +47,11 @@ def test_resize_handle_drag_resizes_window(qapp, fake_backend, settings):
     overlay = make_overlay(qapp, fake_backend, settings)
     overlay.resize(320, 400)
 
-    handle = overlay._resize_handle
-    handle._drag_start_x = 100
-    handle._start_width = overlay.width()
+    handle = overlay._resize_handle_width
+    handle._drag_start_pos = 100
+    handle._start_size = overlay.width()
 
-    handle.mouseMoveEvent(move_event(140))
+    handle.mouseMoveEvent(move_event(global_x=140))
 
     assert overlay.width() == 360
 
@@ -60,13 +60,39 @@ def test_resize_handle_clamps_to_minimum_width(qapp, fake_backend, settings):
     overlay = make_overlay(qapp, fake_backend, settings)
     overlay.resize(320, 400)
 
-    handle = overlay._resize_handle
-    handle._drag_start_x = 100
-    handle._start_width = overlay.width()
+    handle = overlay._resize_handle_width
+    handle._drag_start_pos = 100
+    handle._start_size = overlay.width()
 
-    handle.mouseMoveEvent(move_event(100 - overlay.width()))
+    handle.mouseMoveEvent(move_event(global_x=100 - overlay.width()))
 
     assert overlay.width() == MIN_OVERLAY_WIDTH
+
+
+def test_height_resize_handle_drag_resizes_window(qapp, fake_backend, settings):
+    overlay = make_overlay(qapp, fake_backend, settings)
+    overlay.resize(320, 400)
+
+    handle = overlay._resize_handle_height
+    handle._drag_start_pos = 100
+    handle._start_size = overlay.height()
+
+    handle.mouseMoveEvent(move_event(global_y=160))
+
+    assert overlay.height() == 460
+
+
+def test_height_resize_handle_clamps_to_minimum_height(qapp, fake_backend, settings):
+    overlay = make_overlay(qapp, fake_backend, settings)
+    overlay.resize(320, 400)
+
+    handle = overlay._resize_handle_height
+    handle._drag_start_pos = 100
+    handle._start_size = overlay.height()
+
+    handle.mouseMoveEvent(move_event(global_y=100 - overlay.height()))
+
+    assert overlay.height() == MIN_OVERLAY_HEIGHT
 
 
 def test_resize_persists_geometry(qapp, fake_backend, settings):
@@ -104,7 +130,7 @@ def test_dragging_resize_handle_pauses_and_resumes_refresh(qapp, fake_backend, s
     overlay = make_overlay(qapp, fake_backend, settings)
     assert overlay._refresh_timer.isActive()
 
-    handle = overlay._resize_handle
+    handle = overlay._resize_handle_width
     handle.mousePressEvent(press_event(QPointF(10, 10)))
     assert not overlay._refresh_timer.isActive()
 

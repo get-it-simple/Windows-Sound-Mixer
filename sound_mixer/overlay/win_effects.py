@@ -10,6 +10,29 @@ DWMWA_SYSTEMBACKDROP_TYPE = 38
 DWMWCP_ROUND = 2
 DWMSBT_TRANSIENTWINDOW = 3
 
+DEFAULT_ACCENT_COLOR = "#3a96dd"
+
+
+def get_accent_color() -> str:
+    if sys.platform != "win32":
+        return DEFAULT_ACCENT_COLOR
+
+    try:
+        dwmapi = ctypes.windll.dwmapi
+        color = ctypes.c_uint32()
+        opaque_blend = ctypes.c_int()
+        result = dwmapi.DwmGetColorizationColor(ctypes.byref(color), ctypes.byref(opaque_blend))
+        if result != 0:
+            return DEFAULT_ACCENT_COLOR
+
+        argb = color.value
+        red = (argb >> 16) & 0xFF
+        green = (argb >> 8) & 0xFF
+        blue = argb & 0xFF
+        return f"#{red:02x}{green:02x}{blue:02x}"
+    except OSError:
+        return DEFAULT_ACCENT_COLOR
+
 
 def apply_acrylic_effect(window: QWidget) -> None:
     if sys.platform != "win32":

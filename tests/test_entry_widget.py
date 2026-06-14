@@ -1,7 +1,24 @@
+from PySide6.QtCore import QPoint, QPointF
+from PySide6.QtGui import QWheelEvent
 from PySide6.QtWidgets import QSizePolicy
 
 from sound_mixer.mixer.model import MixerEntry
 from sound_mixer.overlay.entry_widget import BASE_SPINBOX_WIDTH_PX, EntryWidget
+
+
+def wheel_event(direction: int = 1) -> QWheelEvent:
+    from PySide6.QtCore import Qt
+
+    return QWheelEvent(
+        QPointF(0, 0),
+        QPointF(0, 0),
+        QPoint(0, 0),
+        QPoint(0, 120 * direction),
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+        Qt.ScrollPhase.NoScrollPhase,
+        False,
+    )
 
 
 def make_entry(volume: float = 0.5, muted: bool = False) -> MixerEntry:
@@ -60,6 +77,35 @@ def test_entry_layout_places_name_above_volume_mixer(qapp):
     assert mixer_layout.indexOf(widget._mute_button) >= 0
     assert mixer_layout.indexOf(widget._slider) >= 0
     assert mixer_layout.indexOf(widget._volume_spinbox) >= 0
+
+
+def test_scroll_on_slider_uses_entry_wheel_handling(qapp):
+    widget = EntryWidget()
+    widget.set_entry(make_entry(volume=0.5), focused=False)
+
+    scrolled = []
+    widget.scrolled.connect(scrolled.append)
+    focus_requests = []
+    widget.focus_requested.connect(lambda: focus_requests.append(True))
+
+    handled = widget.eventFilter(widget._slider, wheel_event(direction=1))
+
+    assert handled is True
+    assert scrolled == [1]
+    assert focus_requests == [True]
+
+
+def test_scroll_on_spinbox_uses_entry_wheel_handling(qapp):
+    widget = EntryWidget()
+    widget.set_entry(make_entry(volume=0.5), focused=False)
+
+    scrolled = []
+    widget.scrolled.connect(scrolled.append)
+
+    handled = widget.eventFilter(widget._volume_spinbox, wheel_event(direction=-1))
+
+    assert handled is True
+    assert scrolled == [-1]
 
 
 def test_long_entry_name_is_limited_to_widget_width(qapp):

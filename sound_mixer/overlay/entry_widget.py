@@ -1,4 +1,4 @@
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QEvent, QSize, Qt, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QSlider, QSpinBox, QVBoxLayout
 
 from sound_mixer.mixer.model import MixerEntry
@@ -59,6 +59,9 @@ class EntryWidget(QFrame):
         self._volume_spinbox.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self._volume_spinbox.valueChanged.connect(self._on_spinbox_changed)
 
+        self._slider.installEventFilter(self)
+        self._volume_spinbox.installEventFilter(self)
+
         mixer_row = QHBoxLayout()
         mixer_row.setContentsMargins(0, 0, 0, 0)
         mixer_row.addWidget(self._mute_button)
@@ -115,6 +118,12 @@ class EntryWidget(QFrame):
     def wheelEvent(self, event) -> None:
         self.focus_requested.emit()
         self.scrolled.emit(1 if event.angleDelta().y() > 0 else -1)
+
+    def eventFilter(self, watched, event) -> bool:
+        if event.type() == QEvent.Type.Wheel and watched in (self._slider, self._volume_spinbox):
+            self.wheelEvent(event)
+            return True
+        return super().eventFilter(watched, event)
 
     def resizeEvent(self, event) -> None:
         self._update_label_text()

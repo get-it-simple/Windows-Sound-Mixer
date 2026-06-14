@@ -5,7 +5,7 @@ from sound_mixer import __version__
 from sound_mixer.mixer.model import MixerModel
 from sound_mixer.overlay.entry_widget import EntryWidget
 from sound_mixer.overlay.icons import DelayedTooltipButton, load_icon
-from sound_mixer.overlay.win_effects import apply_acrylic_effect
+from sound_mixer.overlay.win_effects import apply_acrylic_effect, get_accent_color
 from sound_mixer.settings.store import SettingsStore
 
 REFRESH_INTERVAL_MS = 1000
@@ -15,10 +15,11 @@ BASE_FONT_PX = 13
 BASE_ICON_PX = 16
 
 MIN_OVERLAY_WIDTH = 200
+MIN_OVERLAY_HEIGHT = 150
 RESIZE_HANDLE_WIDTH_PX = 6
 
 
-def background_style(scale: float) -> str:
+def background_style(scale: float, accent_color: str) -> str:
     font_px = round(BASE_FONT_PX * scale)
     return f"""
 #background {{
@@ -30,33 +31,48 @@ def background_style(scale: float) -> str:
     background: transparent;
     border: none;
 }}
+#background #entryWidget[focused="true"] {{
+    border: 1px solid {accent_color};
+    border-radius: 4px;
+}}
 """
 
 
 class _ResizeHandle(QWidget):
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget, orientation: Qt.Orientation) -> None:
         super().__init__(parent)
-        self.setCursor(Qt.CursorShape.SizeHorCursor)
-        self._drag_start_x: int | None = None
-        self._start_width = 0
+        self._orientation = orientation
+        cursor = Qt.CursorShape.SizeHorCursor if orientation == Qt.Orientation.Horizontal else Qt.CursorShape.SizeVerCursor
+        self.setCursor(cursor)
+        self._drag_start_pos: int | None = None
+        self._start_size = 0
+
+    def _pointer_pos(self, event) -> int:
+        point = event.globalPosition().toPoint()
+        return point.x() if self._orientation == Qt.Orientation.Horizontal else point.y()
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_start_x = event.globalPosition().toPoint().x()
-            self._start_width = self.window().width()
-            self.window()._pause_refresh()
+            window = self.window()
+            self._drag_start_pos = self._pointer_pos(event)
+            self._start_size = window.width() if self._orientation == Qt.Orientation.Horizontal else window.height()
+            window._pause_refresh()
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
-        if self._drag_start_x is not None and event.buttons() & Qt.MouseButton.LeftButton:
-            delta = event.globalPosition().toPoint().x() - self._drag_start_x
-            new_width = max(MIN_OVERLAY_WIDTH, self._start_width + delta)
+        if self._drag_start_pos is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            delta = self._pointer_pos(event) - self._drag_start_pos
             window = self.window()
-            window.resize(new_width, window.height())
+            if self._orientation == Qt.Orientation.Horizontal:
+                new_width = max(MIN_OVERLAY_WIDTH, self._start_size + delta)
+                window.resize(new_width, window.height())
+            else:
+                new_height = max(MIN_OVERLAY_HEIGHT, self._start_size + delta)
+                window.resize(window.width(), new_height)
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:
-        self._drag_start_x = None
+        self._drag_start_pos = None
         self.window()._resume_refresh()
         super().mouseReleaseEvent(event)
 
@@ -100,6 +116,8 @@ class OverlayWindow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setMinimumWidth(MIN_OVERLAY_WIDTH)
+        self.setMinimumHeight(MIN_OVERLAY_HEIGHT)
+        self._accent_color = get_accent_color()
         self._build_ui()
         self._restore_geometry()
         self.apply_scale()
@@ -145,7 +163,8 @@ class OverlayWindow(QWidget):
         layout.addWidget(scroll_area)
 
         self._title_bar = title_bar
-        self._resize_handle = _ResizeHandle(self)
+        self._resize_handle_width = _ResizeHandle(self, Qt.Orientation.Horizontal)
+        self._resize_handle_height = _ResizeHandle(self, Qt.Orientation.Vertical)
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
@@ -197,10 +216,16 @@ class OverlayWindow(QWidget):
 
     def resizeEvent(self, event) -> None:
         title_bar_height = self._title_bar.height()
-        self._resize_handle.setGeometry(
+        self._resize_handle_width.setGeometry(
             self.width() - RESIZE_HANDLE_WIDTH_PX, title_bar_height, RESIZE_HANDLE_WIDTH_PX, self.height() - title_bar_height
         )
-        self._resize_handle.raise_()
+        self._resize_handle_width.raise_()
+
+        self._resize_handle_height.setGeometry(
+            0, self.height() - RESIZE_HANDLE_WIDTH_PX, self.width(), RESIZE_HANDLE_WIDTH_PX
+        )
+        self._resize_handle_height.raise_()
+
         self._schedule_geometry_save()
         super().resizeEvent(event)
 
@@ -219,7 +244,7 @@ class OverlayWindow(QWidget):
 
     def apply_scale(self) -> None:
         scale = self._settings.get_ui_scale()
-        self._background.setStyleSheet(background_style(scale))
+        self._background.setStyleSheet(background_style(scale, self._accent_color))
 
         icon_px = round(BASE_ICON_PX * scale)
         self._title_icon_label.setPixmap(load_icon("volume").pixmap(icon_px, icon_px))
