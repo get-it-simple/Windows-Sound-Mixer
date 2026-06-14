@@ -14,9 +14,9 @@ def test_initial_field_values(qapp, settings):
 
     hotkeys = settings.get_hotkeys()
     assert len(window._hotkey_rows) == len(hotkeys)
-    for (action, combo_edit, enabled_checkbox), hotkey in zip(window._hotkey_rows, hotkeys):
+    for (action, combo_editor, enabled_checkbox), hotkey in zip(window._hotkey_rows, hotkeys):
         assert action == hotkey["action"]
-        assert combo_edit.text() == hotkey["combo"]
+        assert combo_editor.combo() == hotkey["combo"]
         assert enabled_checkbox.isChecked() == hotkey["enabled"]
 
 
@@ -59,11 +59,67 @@ def test_autostart_checkbox_uses_toggle_switch_style(qapp, settings):
     assert "::indicator" in window._autostart_checkbox.styleSheet()
 
 
+def test_hotkey_editor_captures_shortcut_in_input_with_inner_selects(qapp, settings):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeyEvent
+    from PySide6.QtWidgets import QComboBox
+
+    window = SettingsWindow(settings)
+    _, combo_editor, enabled_checkbox = window._hotkey_rows[0]
+    combo_editor.clear()
+
+    assert combo_editor.objectName() == "hotkeyComboInput"
+    assert "QFrame#hotkeyComboInput" in combo_editor.styleSheet()
+    assert combo_editor.testAttribute(Qt.WidgetAttribute.WA_StyledBackground)
+    assert combo_editor.minimumHeight() >= 56
+    assert not combo_editor.findChildren(QComboBox)
+    event = QKeyEvent(
+        QKeyEvent.Type.KeyPress,
+        Qt.Key.Key_G,
+        Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier,
+        "g",
+    )
+    combo_editor.keyPressEvent(event)
+
+    boxes = combo_editor.findChildren(QComboBox)
+
+    assert combo_editor.combo() == "ctrl+win+g"
+    assert len(boxes) == 3
+    assert any(box.findText("Win (Left)") >= 0 for box in boxes)
+    assert any(box.findText("Ctrl (Left)") >= 0 for box in boxes)
+    assert any(box.findText("G") >= 0 for box in boxes)
+    assert enabled_checkbox.objectName().endswith("HotkeyToggle")
+    assert "::indicator" in enabled_checkbox.styleSheet()
+
+
+def test_hotkey_editor_uses_powertoys_numpad_names(qapp, settings):
+    from PySide6.QtWidgets import QComboBox
+
+    window = SettingsWindow(settings)
+    _, combo_editor, _ = window._hotkey_rows[0]
+    boxes = combo_editor.findChildren(QComboBox)
+
+    assert any(box.currentText() == "NumPad 5" for box in boxes)
+
+
+def test_hotkey_editor_backspace_clears_entire_combo(qapp, settings):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeyEvent
+
+    window = SettingsWindow(settings)
+    _, combo_editor, _ = window._hotkey_rows[0]
+    event = QKeyEvent(QKeyEvent.Type.KeyPress, Qt.Key.Key_Backspace, Qt.KeyboardModifier.NoModifier)
+
+    combo_editor.keyPressEvent(event)
+
+    assert combo_editor.combo() == ""
+
+
 def test_accept_saves_hotkeys(qapp, settings):
     window = SettingsWindow(settings)
 
-    action, combo_edit, enabled_checkbox = window._hotkey_rows[0]
-    combo_edit.setText("ctrl+alt+num6")
+    action, combo_editor, enabled_checkbox = window._hotkey_rows[0]
+    combo_editor.set_combo("ctrl+alt+num6")
     enabled_checkbox.setChecked(False)
     window.accept()
 
@@ -75,9 +131,9 @@ def test_accept_saves_hotkeys(qapp, settings):
 def test_accept_with_invalid_combo_shows_error_and_does_not_save(qapp, settings):
     window = SettingsWindow(settings)
 
-    action, combo_edit, _ = window._hotkey_rows[0]
+    action, combo_editor, _ = window._hotkey_rows[0]
     original_combo = settings.get_hotkeys()[0]["combo"]
-    combo_edit.setText("ctrl+banana")
+    combo_editor.combo = lambda: "ctrl+banana"
     window.accept()
 
     assert not window._error_label.isHidden()

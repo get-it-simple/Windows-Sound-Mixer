@@ -56,6 +56,8 @@ class SoundMixerApp:
         self.tray.set_overlay_visible(visible)
 
     def _open_settings(self) -> None:
+        self.hotkeys.stop()
+        accepted = False
         dialog = SettingsWindow(
             self.settings,
             autostart=self.autostart,
@@ -63,8 +65,13 @@ class SoundMixerApp:
             overlay=self.overlay,
             parent=self.overlay,
         )
-        if dialog.exec() == SettingsWindow.DialogCode.Accepted:
-            self.tray.set_autostart_enabled(self.settings.get_autostart_enabled())
+        try:
+            accepted = dialog.exec() == SettingsWindow.DialogCode.Accepted
+            if accepted:
+                self.tray.set_autostart_enabled(self.settings.get_autostart_enabled())
+        finally:
+            if not accepted:
+                self.hotkeys.start()
 
     def _sync_autostart(self) -> None:
         try:

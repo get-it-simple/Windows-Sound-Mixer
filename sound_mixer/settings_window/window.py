@@ -1,14 +1,15 @@
 from typing import Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
-    QFormLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
+    QSizePolicy,
     QSlider,
     QSpinBox,
     QTabWidget,
@@ -25,6 +26,46 @@ from sound_mixer.overlay.window import OverlayWindow
 from sound_mixer.settings.schema import MAX_UI_SCALE, MIN_UI_SCALE
 from sound_mixer.settings.store import SettingsStore
 
+MODIFIER_OPTIONS = [
+    ("", "Select"),
+    ("ctrl", "Ctrl (Left)"),
+    ("ctrl", "Ctrl (Right)"),
+    ("alt", "Alt (Left)"),
+    ("alt", "Alt (Right)"),
+    ("shift", "Shift (Left)"),
+    ("shift", "Shift (Right)"),
+    ("win", "Win (Left)"),
+    ("win", "Win (Right)"),
+]
+
+KEY_OPTIONS = [
+    ("", "Select"),
+    *[(chr(c), chr(c).upper()) for c in range(ord("a"), ord("z") + 1)],
+    *[(str(d), str(d)) for d in range(10)],
+    *[(f"num{d}", f"NumPad {d}") for d in range(10)],
+    *[(f"f{n}", f"F{n}") for n in range(1, 25)],
+    ("up", "Up"),
+    ("down", "Down"),
+    ("left", "Left"),
+    ("right", "Right"),
+    ("space", "Space"),
+    ("enter", "Enter"),
+    ("esc", "Esc"),
+    ("tab", "Tab"),
+    ("backspace", "Backspace"),
+    ("delete", "Delete"),
+    ("insert", "Insert"),
+    ("home", "Home"),
+    ("end", "End"),
+    ("page up", "Page Up"),
+    ("page down", "Page Down"),
+    ("caps lock", "Caps Lock"),
+    ("print screen", "Print Screen"),
+    ("scroll lock", "Scroll Lock"),
+    ("pause", "Pause"),
+    ("num lock", "Num Lock"),
+]
+
 ACTION_LABELS = {
     "toggle_overlay": "Show/Hide overlay",
     "volume_up": "Volume up",
@@ -33,6 +74,212 @@ ACTION_LABELS = {
     "focus_prev": "Focus previous entry",
     "mute_toggle": "Mute toggle",
 }
+
+
+class HotkeyComboEditor(QFrame):
+    def __init__(self, combo: str, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self._select_boxes: list[QComboBox] = []
+        self._syncing = False
+
+        self.setObjectName("hotkeyComboInput")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setMinimumHeight(56)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setStyleSheet(
+            """
+            QFrame#hotkeyComboInput {
+                border: 1px solid #3f3f42;
+                border-radius: 4px;
+                background: #2d2d30;
+            }
+            QFrame#hotkeyComboInput:focus {
+                border-color: #6b6a7c;
+            }
+            """
+        )
+
+        self._select_layout = QHBoxLayout(self)
+        self._select_layout.setContentsMargins(10, 10, 10, 10)
+        self._select_layout.setSpacing(4)
+
+        self._placeholder_label = QLabel("Press shortcut", self)
+        self._placeholder_label.setStyleSheet("color: #b7b7bd; padding-left: 2px;")
+        self._select_layout.addWidget(self._placeholder_label)
+        self._select_layout.addStretch(1)
+
+        self.set_combo(combo)
+
+    def combo(self) -> str:
+        return "+".join(box.currentData() for box in self._select_boxes if box.currentData())
+
+    def set_combo(self, combo: str) -> None:
+        try:
+            tokens = parse_combo(combo)
+        except ValueError:
+            tokens = []
+        self._set_tokens(tokens)
+
+    def clear(self) -> None:
+        self._set_tokens([])
+        self.setFocus()
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() in (Qt.Key.Key_Backspace, Qt.Key.Key_Delete):
+            self.clear()
+            event.accept()
+            return
+        tokens = self._tokens_from_event(event)
+        if tokens:
+            self._set_tokens(tokens)
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def eventFilter(self, watched, event) -> bool:
+        if event.type() == QEvent.Type.KeyPress and event.key() in (Qt.Key.Key_Backspace, Qt.Key.Key_Delete):
+            self.clear()
+            return True
+        if watched in self._select_boxes and event.type() == QEvent.Type.KeyPress:
+            tokens = self._tokens_from_event(event)
+            if len(tokens) > 1:
+                self._set_tokens(tokens)
+                event.accept()
+                return True
+        return super().eventFilter(watched, event)
+
+    def mousePressEvent(self, event) -> None:
+        self.setFocus()
+        super().mousePressEvent(event)
+
+    def _set_tokens(self, tokens: list[str]) -> None:
+        self._syncing = True
+        self._clear_select_boxes()
+        for token in tokens:
+            box = self._create_box(self._options_for_token(token))
+            self._set_box_value(box, token)
+            self._select_boxes.append(box)
+            self._select_layout.insertWidget(self._select_layout.count() - 1, box)
+
+        self._placeholder_label.setVisible(not self._select_boxes)
+        self._syncing = False
+
+    def _clear_select_boxes(self) -> None:
+        while self._select_boxes:
+            box = self._select_boxes.pop()
+            self._select_layout.removeWidget(box)
+            box.setParent(None)
+            box.deleteLater()
+
+    def _create_box(self, options: list[tuple[str, str]]) -> QComboBox:
+        box = QComboBox(self)
+        box.setMinimumHeight(32)
+        box.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        box.setStyleSheet(
+            """
+            QComboBox {
+                background: #626071;
+                border: 0;
+                border-radius: 7px;
+                color: #f2f2f5;
+                padding: 5px 20px 5px 9px;
+            }
+            QComboBox:hover {
+                background: #716f82;
+            }
+            QComboBox:focus {
+                background: #78758a;
+            }
+            QComboBox::drop-down {
+                border: 0;
+                width: 18px;
+            }
+            QComboBox QAbstractItemView {
+                background: #2d2d30;
+                border: 1px solid #56565c;
+                color: #f2f2f5;
+                selection-background-color: #626071;
+            }
+            """
+        )
+        for value, label in options:
+            box.addItem(label, value)
+        box.currentIndexChanged.connect(self._sync_select_options)
+        box.installEventFilter(self)
+        return box
+
+    def _options_for_token(self, token: str) -> list[tuple[str, str]]:
+        if token in {"ctrl", "alt", "shift", "win"}:
+            return MODIFIER_OPTIONS
+        return KEY_OPTIONS
+
+    def _set_box_value(self, box: QComboBox, value: str) -> None:
+        index = box.findData(value)
+        box.setCurrentIndex(index if index >= 0 else 0)
+
+    def _sync_select_options(self) -> None:
+        if self._syncing:
+            return
+        tokens = [box.currentData() for box in self._select_boxes if box.currentData()]
+        modifiers = []
+        keys = []
+        for token in tokens:
+            if token in {"ctrl", "alt", "shift", "win"} and token not in modifiers:
+                modifiers.append(token)
+            elif token not in {"ctrl", "alt", "shift", "win"} and not keys:
+                keys.append(token)
+        self._set_tokens(modifiers + keys)
+
+    def _tokens_from_event(self, event) -> list[str]:
+        key = self._key_token_from_event(event)
+        tokens = []
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            tokens.append("ctrl")
+        if event.modifiers() & Qt.KeyboardModifier.AltModifier:
+            tokens.append("alt")
+        if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+            tokens.append("shift")
+        if event.modifiers() & Qt.KeyboardModifier.MetaModifier:
+            tokens.append("win")
+        if key and key not in tokens:
+            tokens.append(key)
+        return tokens
+
+    def _key_token_from_event(self, event) -> str:
+        key = event.key()
+        text = event.text().lower()
+        if len(text) == 1 and text.isalpha():
+            return text
+        if len(text) == 1 and text.isdigit():
+            if event.modifiers() & Qt.KeyboardModifier.KeypadModifier:
+                return f"num{text}"
+            return text
+
+        key_map = {
+            Qt.Key.Key_Space: "space",
+            Qt.Key.Key_Return: "enter",
+            Qt.Key.Key_Enter: "enter",
+            Qt.Key.Key_Escape: "esc",
+            Qt.Key.Key_Tab: "tab",
+            Qt.Key.Key_Insert: "insert",
+            Qt.Key.Key_Home: "home",
+            Qt.Key.Key_End: "end",
+            Qt.Key.Key_PageUp: "page up",
+            Qt.Key.Key_PageDown: "page down",
+            Qt.Key.Key_CapsLock: "caps lock",
+            Qt.Key.Key_Print: "print screen",
+            Qt.Key.Key_ScrollLock: "scroll lock",
+            Qt.Key.Key_Pause: "pause",
+            Qt.Key.Key_NumLock: "num lock",
+            Qt.Key.Key_Left: "left",
+            Qt.Key.Key_Up: "up",
+            Qt.Key.Key_Right: "right",
+            Qt.Key.Key_Down: "down",
+        }
+        if int(Qt.Key.Key_F1) <= key <= int(Qt.Key.Key_F24):
+            return f"f{key - int(Qt.Key.Key_F1) + 1}"
+        return key_map.get(key, "")
 
 
 class SettingsWindow(QDialog):
@@ -49,7 +296,7 @@ class SettingsWindow(QDialog):
         self._autostart = autostart
         self._hotkeys = hotkeys
         self._overlay = overlay
-        self._hotkey_rows: list[tuple[str, QLineEdit, QCheckBox]] = []
+        self._hotkey_rows: list[tuple[str, HotkeyComboEditor, QCheckBox]] = []
 
         self.setWindowTitle("Sound Mixer Settings")
 
@@ -73,38 +320,38 @@ class SettingsWindow(QDialog):
 
     def _build_general_tab(self) -> QWidget:
         tab = QWidget(self)
-        form = QFormLayout(tab)
+        layout = QVBoxLayout(tab)
 
-        self._autostart_checkbox = QCheckBox("Start with Windows", tab)
+        self._autostart_checkbox = QCheckBox(tab)
         self._autostart_checkbox.setObjectName("autostartToggle")
         self._autostart_checkbox.setStyleSheet(toggle_switch_style("autostartToggle"))
         self._autostart_checkbox.setChecked(self._settings.get_autostart_enabled())
-        form.addRow(self._autostart_checkbox)
+        layout.addWidget(self._field("Start with Windows", self._autostart_checkbox, tab))
 
         self._tooltip_delay_spinbox = QSpinBox(tab)
         self._tooltip_delay_spinbox.setRange(0, 10000)
         self._tooltip_delay_spinbox.setSingleStep(100)
         self._tooltip_delay_spinbox.setSuffix(" ms")
         self._tooltip_delay_spinbox.setValue(self._settings.get_tooltip_delay_ms())
-        form.addRow("Tooltip delay", self._tooltip_delay_spinbox)
+        layout.addWidget(self._field("Tooltip delay", self._tooltip_delay_spinbox, tab))
 
         self._arrow_step_spinbox = QSpinBox(tab)
         self._arrow_step_spinbox.setRange(1, 100)
         self._arrow_step_spinbox.setSuffix(" %")
         self._arrow_step_spinbox.setValue(round(self._settings.get_arrow_step() * 100))
-        form.addRow("Arrow key volume step", self._arrow_step_spinbox)
+        layout.addWidget(self._field("Arrow key volume step", self._arrow_step_spinbox, tab))
 
         self._scroll_step_spinbox = QSpinBox(tab)
         self._scroll_step_spinbox.setRange(1, 100)
         self._scroll_step_spinbox.setSuffix(" %")
         self._scroll_step_spinbox.setValue(round(self._settings.get_scroll_step() * 100))
-        form.addRow("Scroll volume step", self._scroll_step_spinbox)
+        layout.addWidget(self._field("Scroll volume step", self._scroll_step_spinbox, tab))
 
         self._default_app_volume_spinbox = QSpinBox(tab)
         self._default_app_volume_spinbox.setRange(0, 100)
         self._default_app_volume_spinbox.setSuffix(" %")
         self._default_app_volume_spinbox.setValue(round(self._settings.get_default_app_volume() * 100))
-        form.addRow("Default volume for new apps", self._default_app_volume_spinbox)
+        layout.addWidget(self._field("Default volume for new apps", self._default_app_volume_spinbox, tab))
 
         scale_row = QWidget(tab)
         scale_layout = QHBoxLayout(scale_row)
@@ -122,7 +369,8 @@ class SettingsWindow(QDialog):
 
         scale_layout.addWidget(self._ui_scale_slider)
         scale_layout.addWidget(self._ui_scale_label)
-        form.addRow("Interface scale", scale_row)
+        layout.addWidget(self._field("Interface scale", scale_row, tab))
+        layout.addStretch(1)
 
         return tab
 
@@ -134,28 +382,31 @@ class SettingsWindow(QDialog):
 
     def _build_hotkeys_tab(self) -> QWidget:
         tab = QWidget(self)
-        form = QFormLayout(tab)
+        layout = QVBoxLayout(tab)
 
         for hotkey in self._settings.get_hotkeys():
             action = hotkey["action"]
             label = ACTION_LABELS.get(action, action)
 
             row = QWidget(tab)
-            row_layout = QFormLayout(row)
+            row_layout = QHBoxLayout(row)
             row_layout.setContentsMargins(0, 0, 0, 0)
+            row_layout.setSpacing(8)
 
-            combo_edit = QLineEdit(hotkey["combo"], row)
-            combo_edit.setPlaceholderText("e.g. ctrl+alt+num5")
+            combo_edit = HotkeyComboEditor(hotkey["combo"], row)
 
-            enabled_checkbox = QCheckBox("Enabled", row)
+            enabled_checkbox = QCheckBox(row)
+            enabled_checkbox.setObjectName(f"{action}HotkeyToggle")
+            enabled_checkbox.setStyleSheet(toggle_switch_style(f"{action}HotkeyToggle"))
             enabled_checkbox.setChecked(hotkey["enabled"])
 
-            row_layout.addRow(combo_edit)
-            row_layout.addRow(enabled_checkbox)
+            row_layout.addWidget(enabled_checkbox)
+            row_layout.addWidget(combo_edit, 1)
 
-            form.addRow(label, row)
+            layout.addWidget(self._field(label, row, tab))
             self._hotkey_rows.append((action, combo_edit, enabled_checkbox))
 
+        layout.addStretch(1)
         return tab
 
     def _build_about_tab(self) -> QWidget:
@@ -169,7 +420,7 @@ class SettingsWindow(QDialog):
         try:
             hotkey_updates = []
             for action, combo_edit, enabled_checkbox in self._hotkey_rows:
-                combo = normalize_combo(combo_edit.text())
+                combo = normalize_combo(combo_edit.combo())
                 parse_combo(combo)
                 hotkey_updates.append((action, combo, enabled_checkbox.isChecked()))
         except ValueError as exc:
@@ -202,3 +453,12 @@ class SettingsWindow(QDialog):
             self._hotkeys.reload()
 
         super().accept()
+
+    def _field(self, label: str, control: QWidget, parent: QWidget) -> QWidget:
+        field = QWidget(parent)
+        layout = QVBoxLayout(field)
+        layout.setContentsMargins(0, 0, 0, 10)
+        layout.setSpacing(4)
+        layout.addWidget(QLabel(label, field))
+        layout.addWidget(control)
+        return field
