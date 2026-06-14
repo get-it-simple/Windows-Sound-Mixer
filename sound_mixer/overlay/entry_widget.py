@@ -1,5 +1,5 @@
 from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSlider, QSpinBox
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QSlider, QSpinBox, QVBoxLayout
 
 from sound_mixer.mixer.model import MixerEntry
 from sound_mixer.overlay.icons import DelayedTooltipButton, load_icon
@@ -37,6 +37,7 @@ class EntryWidget(QFrame):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("entryWidget")
+        self._display_name = ""
 
         self._mute_button = DelayedTooltipButton(self)
         self._mute_button.setToolTip("Mute / unmute")
@@ -44,6 +45,8 @@ class EntryWidget(QFrame):
         self._mute_button.clicked.connect(self._on_mute_clicked)
 
         self._label = QLabel(self)
+        self._label.setMinimumWidth(0)
+        self._label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
 
         self._slider = QSlider(Qt.Orientation.Horizontal, self)
         self._slider.setRange(0, 100)
@@ -56,11 +59,15 @@ class EntryWidget(QFrame):
         self._volume_spinbox.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self._volume_spinbox.valueChanged.connect(self._on_spinbox_changed)
 
-        layout = QHBoxLayout(self)
-        layout.addWidget(self._mute_button)
-        layout.addWidget(self._label, 1)
-        layout.addWidget(self._slider, 2)
-        layout.addWidget(self._volume_spinbox)
+        mixer_row = QHBoxLayout()
+        mixer_row.setContentsMargins(0, 0, 0, 0)
+        mixer_row.addWidget(self._mute_button)
+        mixer_row.addWidget(self._slider, 1)
+        mixer_row.addWidget(self._volume_spinbox)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(self._label)
+        layout.addLayout(mixer_row)
 
     def apply_scale(self, scale: float) -> None:
         icon_px = round(BASE_ICON_PX * scale)
@@ -70,7 +77,9 @@ class EntryWidget(QFrame):
         self._volume_spinbox.setFixedWidth(round(BASE_SPINBOX_WIDTH_PX * scale))
 
     def set_entry(self, entry: MixerEntry, focused: bool) -> None:
-        self._label.setText(entry.display_name)
+        self._display_name = entry.display_name
+        self._label.setToolTip(entry.display_name)
+        self._update_label_text()
         self._mute_button.setIcon(load_icon("muted" if entry.muted else "volume"))
 
         value = round(entry.volume * 100)
@@ -106,3 +115,15 @@ class EntryWidget(QFrame):
     def wheelEvent(self, event) -> None:
         self.focus_requested.emit()
         self.scrolled.emit(1 if event.angleDelta().y() > 0 else -1)
+
+    def resizeEvent(self, event) -> None:
+        self._update_label_text()
+        super().resizeEvent(event)
+
+    def _update_label_text(self) -> None:
+        available_width = self._label.width()
+        if available_width <= 0:
+            self._label.setText(self._display_name)
+            return
+        text = self._label.fontMetrics().elidedText(self._display_name, Qt.TextElideMode.ElideRight, available_width)
+        self._label.setText(text)

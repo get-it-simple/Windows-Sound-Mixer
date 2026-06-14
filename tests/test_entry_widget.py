@@ -1,3 +1,5 @@
+from PySide6.QtWidgets import QSizePolicy
+
 from sound_mixer.mixer.model import MixerEntry
 from sound_mixer.overlay.entry_widget import BASE_SPINBOX_WIDTH_PX, EntryWidget
 
@@ -47,3 +49,29 @@ def test_apply_scale_resizes_spinbox(qapp):
     widget.apply_scale(2.0)
 
     assert widget._volume_spinbox.width() == round(BASE_SPINBOX_WIDTH_PX * 2.0)
+
+
+def test_entry_layout_places_name_above_volume_mixer(qapp):
+    widget = EntryWidget()
+    layout = widget.layout()
+    mixer_layout = layout.itemAt(1).layout()
+
+    assert layout.itemAt(0).widget() == widget._label
+    assert mixer_layout.indexOf(widget._mute_button) >= 0
+    assert mixer_layout.indexOf(widget._slider) >= 0
+    assert mixer_layout.indexOf(widget._volume_spinbox) >= 0
+
+
+def test_long_entry_name_is_limited_to_widget_width(qapp):
+    widget = EntryWidget()
+    widget.resize(160, 90)
+    widget.show()
+    qapp.processEvents()
+
+    long_name = "Very Long Application Name That Should Not Stretch The Overlay"
+    widget.set_entry(MixerEntry(key="long.exe", display_name=long_name, volume=0.5, muted=False, is_master=False), focused=False)
+    qapp.processEvents()
+
+    assert widget._label.text() != long_name
+    assert widget._label.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Ignored
+    assert widget._label.width() <= widget.width()
