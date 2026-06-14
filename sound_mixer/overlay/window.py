@@ -1,3 +1,5 @@
+import sys
+
 from PySide6.QtCore import QSize, Qt, QTimer, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
@@ -10,6 +12,7 @@ from sound_mixer.settings.store import SettingsStore
 
 REFRESH_INTERVAL_MS = 1000
 GEOMETRY_SAVE_DELAY_MS = 300
+WARM_UP_HIDE_DELAY_MS = 150
 
 BASE_FONT_PX = 13
 BASE_ICON_PX = 16
@@ -134,6 +137,15 @@ class OverlayWindow(QWidget):
 
         self._sync_entry_widgets()
 
+        if sys.platform == "win32":
+            self._warm_up_acrylic()
+
+    def _warm_up_acrylic(self) -> None:
+        visible_on_start = self._settings.get_overlay_geometry()["visible_on_start"]
+        self.show()
+        if not visible_on_start:
+            QTimer.singleShot(WARM_UP_HIDE_DELAY_MS, self.close)
+
     def _build_ui(self) -> None:
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(0, 0, 0, 0)
@@ -169,9 +181,6 @@ class OverlayWindow(QWidget):
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        # DWM may ignore the backdrop attribute set before the window is
-        # first mapped, so re-apply it on every show.
-        apply_acrylic_effect(self, self._settings.get_transparency_enabled())
         self.visibility_changed.emit(True)
 
     def hideEvent(self, event) -> None:
@@ -250,7 +259,6 @@ class OverlayWindow(QWidget):
         scale = self._settings.get_ui_scale()
         transparent = self._settings.get_transparency_enabled()
         self._background.setStyleSheet(background_style(scale, self._accent_color, transparent))
-        apply_acrylic_effect(self, transparent)
 
         icon_px = round(BASE_ICON_PX * scale)
         self._title_icon_label.setPixmap(load_icon("volume").pixmap(icon_px, icon_px))

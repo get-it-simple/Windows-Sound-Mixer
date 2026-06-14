@@ -116,6 +116,10 @@ non-Windows platforms.
   the overlay to remain visible.
 - The acrylic blur effect requires Windows 11 22H2 or later; on older Windows
   versions the overlay falls back to a plain semi-transparent background.
+- On startup, the overlay briefly flashes near its last position and then
+  hides again (unless "show overlay on start" is enabled). This is required
+  for the acrylic blur to render correctly once the overlay is later shown
+  via a hotkey or the tray.
 - Global hotkeys are subject to Windows UIPI: an elevated foreground
   application will not receive hotkeys from a non-elevated Sound Mixer, and
   vice versa.
