@@ -9,3 +9,4 @@ settings.json.bak
 *.egg-info/
 .venv/
 venv/
+PROJECT_INSTRUCTIONS.md
