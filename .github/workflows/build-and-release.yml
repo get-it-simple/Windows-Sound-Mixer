@@ -1,0 +1,108 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+      short_sha: ${{ steps.commit.outputs.short_sha }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Pin commit
+        id: commit
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Read version
+        id: version
+        run: |
+          version=$(grep -oE '__version__ = "[^"]+"' sound_mixer/__init__.py | cut -d'"' -f2)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: prepare
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -r requirements.txt
+
+      - run: python -m pytest -q
+
+  build:
+    needs: [prepare, test]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -r requirements.txt
+
+      - name: Build executable
+        run: python build.py
+
+      - name: Determine release tag
+        id: tag
+        shell: bash
+        run: |
+          version="${{ needs.prepare.outputs.version }}"
+          short_sha="${{ needs.prepare.outputs.short_sha }}"
+          if git ls-remote --tags origin | grep -q "refs/tags/${version}$"; then
+            tag="${version}-${short_sha}"
+          else
+            tag="${version}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare win-build-x64 artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path win-build-x64 -Force | Out-Null
+          Copy-Item dist/SoundMixer.exe win-build-x64/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: win-build-x64
+          path: win-build-x64/SoundMixer.exe
+
+      - name: Create and push tag
+        shell: bash
+        run: |
+          git tag "${{ steps.tag.outputs.tag }}"
+          git push origin "${{ steps.tag.outputs.tag }}"
+
+      - name: Create release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.tag.outputs.tag }}" \
+            win-build-x64/SoundMixer.exe \
+            --title "${{ steps.tag.outputs.tag }}" \
+            --notes "Automated build of commit ${{ needs.prepare.outputs.short_sha }}"
