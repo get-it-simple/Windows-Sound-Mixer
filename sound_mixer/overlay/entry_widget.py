@@ -64,7 +64,6 @@ class EntryWidget(QFrame):
 
         self._volume_spinbox = QSpinBox(self)
         self._volume_spinbox.setRange(0, 100)
-        self._volume_spinbox.setSuffix("%")
         self._volume_spinbox.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self._volume_spinbox.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self._volume_spinbox.valueChanged.connect(self._on_spinbox_changed)
