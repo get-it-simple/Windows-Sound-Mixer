@@ -78,16 +78,13 @@ def test_apply_scale_fits_spinbox_to_max_value_text(qapp):
     assert widget._volume_spinbox.width() == widget._volume_spinbox.minimumSizeHint().width()
 
 
-def test_entry_layout_places_icon_row_above_mixer_row(qapp):
+def test_entry_layout_places_icon_mute_spinbox_and_slider_in_order(qapp):
     widget = EntryWidget()
     layout = widget.layout()
-    icon_layout = layout.itemAt(0).layout()
-    mixer_layout = layout.itemAt(1).layout()
 
-    assert icon_layout.indexOf(widget._icon_label) >= 0
-    assert icon_layout.indexOf(widget._volume_spinbox) >= 0
-    assert mixer_layout.indexOf(widget._mute_button) >= 0
-    assert mixer_layout.indexOf(widget._slider) >= 0
+    assert layout.indexOf(widget._icon_label) < layout.indexOf(widget._mute_button)
+    assert layout.indexOf(widget._mute_button) < layout.indexOf(widget._volume_spinbox)
+    assert layout.indexOf(widget._volume_spinbox) < layout.indexOf(widget._slider)
 
 
 def test_scroll_on_slider_uses_entry_wheel_handling(qapp):
@@ -127,14 +124,14 @@ def test_set_entry_shows_display_name_as_tooltip(qapp):
     assert widget._icon_label.toolTip() == "Google Chrome"
 
 
-def test_set_entry_shows_volume_icon_for_master(qapp):
+def test_set_entry_hides_icon_for_master(qapp):
     widget = EntryWidget()
 
     widget.set_entry(
         MixerEntry(key="master", display_name="System", volume=0.5, muted=False, is_master=True), focused=False
     )
 
-    assert not widget._icon_label.pixmap().isNull()
+    assert widget._icon_label.isHidden()
 
 
 def test_set_entry_shows_fallback_icon_for_unknown_app(qapp):

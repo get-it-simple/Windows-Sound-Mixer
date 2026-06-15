@@ -4,7 +4,7 @@ A per-application volume mixer for Windows. Adjust the volume of any running
 program with an audio session (or the system master volume) from a small
 always-on-top overlay, the system tray, or global hotkeys.
 
-![Sound Mixer overlay demo](assets/ezgif-6d8a44306a21ee39.gif)
+![Sound Mixer overlay demo](assets/image.png)
 
 ## Features
 
@@ -67,20 +67,20 @@ The settings file is plain JSON, stored next to the application (or next to
 the app is not running. If the format changes in a future version, the file
 is migrated automatically on load.
 
-| Field                | Type            | Description                                                                                                                                |
-| -------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `version`            | integer         | Settings schema version, used for migrations.                                                                                              |
-| `master_volume`      | float (0.0-1.0) | System master volume level.                                                                                                                |
-| `master_muted`       | bool            | System master mute state.                                                                                                                  |
-| `app_volumes`        | object          | Per-application volume/mute, keyed by lowercase executable name (e.g. `"chrome.exe"`). Each value is `{ "volume": float, "muted": bool }`. |
-| `hotkeys`            | array           | Global hotkey bindings. Each entry is `{ "action": string, "combo": string, "enabled": bool }`.                                            |
-| `autostart_enabled`  | bool            | Whether the app starts automatically on Windows login.                                                                                     |
-| `overlay`            | object          | Overlay window state: `{ "x", "y", "width", "height" }` (pixels) and `"visible_on_start"` (bool).                                          |
-| `tooltip_delay_ms`   | integer         | Delay, in milliseconds, before action button tooltips appear.                                                                              |
-| `volume_step`        | object          | `{ "arrow": float, "scroll": float }` - volume change per arrow-key press and per scroll wheel notch.                                      |
-| `ui_scale`           | float (0.5-3.0) | Overlay interface scale factor (fonts, icons, sliders). 1.0 is 100%.                                                                       |
-| `default_app_volume` | float (0.0-1.0) | Initial volume applied to apps the first time they appear, if not already in `app_volumes`.                                                |
-| `transparency_enabled` | bool          | Whether the overlay background uses the translucent acrylic effect. If disabled, the overlay has a solid background.                      |
+| Field                  | Type            | Description                                                                                                                                |
+| ---------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `version`              | integer         | Settings schema version, used for migrations.                                                                                              |
+| `master_volume`        | float (0.0-1.0) | System master volume level.                                                                                                                |
+| `master_muted`         | bool            | System master mute state.                                                                                                                  |
+| `app_volumes`          | object          | Per-application volume/mute, keyed by lowercase executable name (e.g. `"chrome.exe"`). Each value is `{ "volume": float, "muted": bool }`. |
+| `hotkeys`              | array           | Global hotkey bindings. Each entry is `{ "action": string, "combo": string, "enabled": bool }`.                                            |
+| `autostart_enabled`    | bool            | Whether the app starts automatically on Windows login.                                                                                     |
+| `overlay`              | object          | Overlay window state: `{ "x", "y", "width", "height" }` (pixels) and `"visible_on_start"` (bool).                                          |
+| `tooltip_delay_ms`     | integer         | Delay, in milliseconds, before action button tooltips appear.                                                                              |
+| `volume_step`          | object          | `{ "arrow": float, "scroll": float }` - volume change per arrow-key press and per scroll wheel notch.                                      |
+| `ui_scale`             | float (0.5-3.0) | Overlay interface scale factor (fonts, icons, sliders). 1.0 is 100%.                                                                       |
+| `default_app_volume`   | float (0.0-1.0) | Initial volume applied to apps the first time they appear, if not already in `app_volumes`.                                                |
+| `transparency_enabled` | bool            | Whether the overlay background uses the translucent acrylic effect. If disabled, the overlay has a solid background.                       |
 
 ### Hotkey actions
 

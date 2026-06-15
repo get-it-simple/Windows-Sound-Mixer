@@ -23,6 +23,7 @@ class SoundMixerApp:
         self.model = MixerModel(self.backend, self.settings)
         self.overlay = OverlayWindow(self.model, self.settings)
         self.overlay.visibility_changed.connect(self._on_overlay_visibility_changed)
+        self.overlay.settings_requested.connect(self._open_settings)
 
         self.hotkeys = HotkeyManager(self.settings)
         self.hotkeys.toggle_overlay.connect(self._on_toggle_overlay_hotkey)

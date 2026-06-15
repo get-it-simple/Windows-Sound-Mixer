@@ -1,8 +1,9 @@
 from PySide6.QtCore import Qt, QPointF
 from PySide6.QtGui import QMouseEvent
 
+from sound_mixer.audio.fake_backend import FakeAudioSession
 from sound_mixer.mixer.model import MixerModel
-from sound_mixer.overlay.window import MIN_OVERLAY_HEIGHT, MIN_OVERLAY_WIDTH, OverlayWindow
+from sound_mixer.overlay.window import MAX_VISIBLE_ENTRIES, MIN_OVERLAY_WIDTH, OverlayWindow
 
 
 def make_overlay(qapp, fake_backend, settings) -> OverlayWindow:
@@ -45,11 +46,11 @@ def release_event(global_pos: QPointF) -> QMouseEvent:
 
 def test_resize_handle_drag_resizes_window(qapp, fake_backend, settings):
     overlay = make_overlay(qapp, fake_backend, settings)
-    overlay.resize(320, 400)
+    overlay.resize(320, overlay.height())
 
     handle = overlay._resize_handle_width
     handle._drag_start_pos = 100
-    handle._start_size = overlay.width()
+    handle._start_width = overlay.width()
 
     handle.mouseMoveEvent(move_event(global_x=140))
 
@@ -58,51 +59,24 @@ def test_resize_handle_drag_resizes_window(qapp, fake_backend, settings):
 
 def test_resize_handle_clamps_to_minimum_width(qapp, fake_backend, settings):
     overlay = make_overlay(qapp, fake_backend, settings)
-    overlay.resize(320, 400)
+    overlay.resize(320, overlay.height())
 
     handle = overlay._resize_handle_width
     handle._drag_start_pos = 100
-    handle._start_size = overlay.width()
+    handle._start_width = overlay.width()
 
     handle.mouseMoveEvent(move_event(global_x=100 - overlay.width()))
 
     assert overlay.width() == MIN_OVERLAY_WIDTH
 
 
-def test_height_resize_handle_drag_resizes_window(qapp, fake_backend, settings):
-    overlay = make_overlay(qapp, fake_backend, settings)
-    overlay.resize(320, 400)
-
-    handle = overlay._resize_handle_height
-    handle._drag_start_pos = 100
-    handle._start_size = overlay.height()
-
-    handle.mouseMoveEvent(move_event(global_y=160))
-
-    assert overlay.height() == 460
-
-
-def test_height_resize_handle_clamps_to_minimum_height(qapp, fake_backend, settings):
-    overlay = make_overlay(qapp, fake_backend, settings)
-    overlay.resize(320, 400)
-
-    handle = overlay._resize_handle_height
-    handle._drag_start_pos = 100
-    handle._start_size = overlay.height()
-
-    handle.mouseMoveEvent(move_event(global_y=100 - overlay.height()))
-
-    assert overlay.height() == MIN_OVERLAY_HEIGHT
-
-
 def test_resize_persists_geometry(qapp, fake_backend, settings):
     overlay = make_overlay(qapp, fake_backend, settings)
 
-    overlay.resize(400, 450)
+    overlay.resize(400, overlay.height())
     overlay._save_geometry()
 
     assert settings.get_overlay_geometry()["width"] == 400
-    assert settings.get_overlay_geometry()["height"] == 450
 
 
 def test_overlay_restores_persisted_width(qapp, fake_backend, settings):
@@ -111,7 +85,6 @@ def test_overlay_restores_persisted_width(qapp, fake_backend, settings):
     overlay = make_overlay(qapp, fake_backend, settings)
 
     assert overlay.width() == 500
-    assert overlay.height() == 350
 
 
 def test_dragging_title_bar_pauses_and_resumes_refresh(qapp, fake_backend, settings):
@@ -136,3 +109,42 @@ def test_dragging_resize_handle_pauses_and_resumes_refresh(qapp, fake_backend, s
 
     handle.mouseReleaseEvent(release_event(QPointF(10, 10)))
     assert overlay._refresh_timer.isActive()
+
+
+def test_overlay_has_no_vertical_resize_handle(qapp, fake_backend, settings):
+    overlay = make_overlay(qapp, fake_backend, settings)
+
+    assert not hasattr(overlay, "_resize_handle_height")
+    assert overlay.minimumHeight() == overlay.maximumHeight()
+
+
+def test_window_height_grows_with_entry_count(qapp, fake_backend, settings):
+    overlay = make_overlay(qapp, fake_backend, settings)
+    initial_height = overlay.height()
+    initial_count = len(overlay._entry_widgets)
+
+    fake_backend.add_session(FakeAudioSession(pid=300, process_name="discord.exe", display_name="Discord", volume=1.0))
+    overlay._model.refresh()
+    overlay.refresh_view()
+
+    assert len(overlay._entry_widgets) == initial_count + 1
+    assert overlay.height() > initial_height
+
+
+def test_window_height_caps_after_max_visible_entries(qapp, fake_backend, settings):
+    overlay = make_overlay(qapp, fake_backend, settings)
+
+    for i in range(MAX_VISIBLE_ENTRIES + 4):
+        fake_backend.add_session(
+            FakeAudioSession(pid=1000 + i, process_name=f"app{i}.exe", display_name=f"App {i}", volume=1.0)
+        )
+    overlay._model.refresh()
+    overlay.refresh_view()
+
+    height_at_cap = overlay.height()
+
+    fake_backend.add_session(FakeAudioSession(pid=2000, process_name="extra.exe", display_name="Extra", volume=1.0))
+    overlay._model.refresh()
+    overlay.refresh_view()
+
+    assert overlay.height() == height_at_cap

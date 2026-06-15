@@ -1,19 +1,21 @@
 from PySide6.QtCore import QEvent, QSize, Qt, Signal
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QAbstractSpinBox, QFrame, QHBoxLayout, QLabel, QSlider, QSpinBox, QVBoxLayout
+from PySide6.QtWidgets import QAbstractSpinBox, QFrame, QHBoxLayout, QLabel, QSlider, QSpinBox
 
 from sound_mixer.mixer.model import MixerEntry
 from sound_mixer.overlay.icons import DelayedTooltipButton, load_app_icon, load_icon
 
-BASE_ICON_PX = 16
-BASE_APP_ICON_PX = 24
+BASE_ICON_PX = 18
+BASE_APP_ICON_PX = 32
 BASE_SLIDER_HEIGHT_PX = 20
 BASE_FONT_PX = 13
+BASE_MARGIN_PX = 8
+BASE_SPACING_PX = 8
 
 
 def slider_style(scale: float) -> str:
     groove_height = max(2, round(4 * scale))
-    handle_size = round(14 * scale)
+    handle_size = round(18 * scale)
     # Qt renders the handle as a flat square instead of a circle if the
     # negative margin can't evenly center it over the groove, so make sure
     # handle_size and groove_height have matching parity.
@@ -30,7 +32,7 @@ QSlider::handle:horizontal {{
     width: {handle_size}px;
     height: {handle_size}px;
     margin: -{margin}px 0;
-    background: #cccccc;
+    background: #ffffff;
     border-radius: {handle_size // 2}px;
 }}
 """
@@ -71,20 +73,11 @@ class EntryWidget(QFrame):
         self._slider.installEventFilter(self)
         self._volume_spinbox.installEventFilter(self)
 
-        icon_row = QHBoxLayout()
-        icon_row.setContentsMargins(0, 0, 0, 0)
-        icon_row.addWidget(self._icon_label)
-        icon_row.addWidget(self._volume_spinbox)
-        icon_row.addStretch(1)
-
-        mixer_row = QHBoxLayout()
-        mixer_row.setContentsMargins(0, 0, 0, 0)
-        mixer_row.addWidget(self._mute_button)
-        mixer_row.addWidget(self._slider, 1)
-
-        layout = QVBoxLayout(self)
-        layout.addLayout(icon_row)
-        layout.addLayout(mixer_row)
+        layout = QHBoxLayout(self)
+        layout.addWidget(self._icon_label)
+        layout.addWidget(self._mute_button)
+        layout.addWidget(self._volume_spinbox)
+        layout.addWidget(self._slider, 1)
 
     def apply_scale(self, scale: float) -> None:
         icon_px = round(BASE_ICON_PX * scale)
@@ -101,12 +94,21 @@ class EntryWidget(QFrame):
         self._icon_label.setFixedSize(self._app_icon_px, self._app_icon_px)
         self._update_icon_pixmap()
 
+        layout = self.layout()
+        margin = round(BASE_MARGIN_PX * scale)
+        layout.setContentsMargins(margin, margin, margin, margin)
+        layout.setSpacing(round(BASE_SPACING_PX * scale))
+
     def set_entry(self, entry: MixerEntry, focused: bool) -> None:
-        self._icon_label.setToolTip(entry.display_name)
         self._mute_button.setIcon(load_icon("muted" if entry.muted else "volume"))
 
-        self._current_icon = load_icon("volume") if entry.is_master else load_app_icon(entry.icon_path)
-        self._update_icon_pixmap()
+        if entry.is_master:
+            self._icon_label.hide()
+        else:
+            self._icon_label.setToolTip(entry.display_name)
+            self._current_icon = load_app_icon(entry.icon_path)
+            self._update_icon_pixmap()
+            self._icon_label.show()
 
         value = round(entry.volume * 100)
 
