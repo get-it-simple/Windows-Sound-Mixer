@@ -4,6 +4,15 @@ on:
   push:
     branches:
       - main
+    paths:
+      - "sound_mixer/**"
+      - "assets/**"
+      - "resources/**"
+      - "tests/**"
+      - "build.py"
+      - "requirements.txt"
+      - "SoundMixer.spec"
+      - "pytest.ini"
   workflow_dispatch:
 
 permissions:
