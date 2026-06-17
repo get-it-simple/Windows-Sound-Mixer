@@ -136,3 +136,18 @@ non-Windows platforms.
 - If `SoundMixer.exe` is moved after enabling autostart, the registry entry
   still points at the old path; re-enable autostart from Settings to update
   it.
+
+<details>
+<summary>Third-party packages</summary>
+
+| Package | License | Notes |
+| --- | --- | --- |
+| [pycaw](https://github.com/AndreMiras/pycaw) | MIT | |
+| [comtypes](https://github.com/enthought/comtypes) | MIT | |
+| [PySide6](https://pypi.org/project/PySide6/) | LGPL-3.0 | |
+| [psutil](https://github.com/giampaolo/psutil) | BSD-3-Clause | |
+| [PyInstaller](https://pyinstaller.org/) | GPL-2.0 with Bootloader Exception | build tool only |
+| [pytest](https://pytest.org/) | MIT | test only |
+| [pytest-xdist](https://pypi.org/project/pytest-xdist/) | MIT | test only |
+
+</details>
