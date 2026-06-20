@@ -169,3 +169,19 @@ def test_about_tab_shows_version(qapp, settings):
     labels = [child.text() for child in about_tab.findChildren(QLabel)]
 
     assert any(__version__ in label for label in labels)
+
+
+def test_settings_window_has_app_icon(qapp, settings):
+    window = SettingsWindow(settings)
+
+    assert not window.windowIcon().isNull()
+
+
+def test_about_tab_shows_logo(qapp, settings):
+    from PySide6.QtWidgets import QLabel
+
+    window = SettingsWindow(settings)
+    about_tab = window._build_about_tab()
+    pixmap_labels = [child for child in about_tab.findChildren(QLabel) if not child.pixmap().isNull()]
+
+    assert pixmap_labels

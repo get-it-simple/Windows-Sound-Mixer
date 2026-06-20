@@ -21,7 +21,7 @@ from sound_mixer import __version__
 from sound_mixer.autostart.registry import AutostartManager, AutostartUnavailableError
 from sound_mixer.hotkeys.binding import normalize_combo, parse_combo
 from sound_mixer.hotkeys.manager import HotkeyManager
-from sound_mixer.overlay.icons import icon_path, toggle_switch_style
+from sound_mixer.overlay.icons import icon_path, load_icon, toggle_switch_style
 from sound_mixer.overlay.window import OverlayWindow
 from sound_mixer.settings.schema import MAX_UI_SCALE, MIN_UI_SCALE
 from sound_mixer.settings.store import SettingsStore
@@ -305,6 +305,7 @@ class SettingsWindow(QDialog):
         self._hotkey_rows: list[tuple[str, HotkeyComboEditor, QCheckBox]] = []
 
         self.setWindowTitle("Sound Mixer Settings")
+        self.setWindowIcon(load_icon("logo"))
 
         layout = QVBoxLayout(self)
 
@@ -424,6 +425,13 @@ class SettingsWindow(QDialog):
     def _build_about_tab(self) -> QWidget:
         tab = QWidget(self)
         layout = QVBoxLayout(tab)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        logo_label = QLabel(tab)
+        logo_label.setPixmap(load_icon("logo").pixmap(64, 64))
+        logo_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(logo_label)
+
         layout.addWidget(QLabel(f"Sound Mixer v{__version__}", tab))
         layout.addWidget(QLabel("Per-application volume mixer for Windows.", tab))
         return tab
