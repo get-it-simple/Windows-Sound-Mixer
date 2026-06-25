@@ -4,6 +4,7 @@ from PySide6.QtCore import QSize, Qt, QTimer, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from sound_mixer import __version__
+from sound_mixer.audio.session_listener import AudioSessionListener
 from sound_mixer.mixer.model import MixerModel
 from sound_mixer.overlay.entry_widget import EntryWidget
 from sound_mixer.overlay.icons import DelayedTooltipButton, load_icon
@@ -206,6 +207,8 @@ class OverlayWindow(QWidget):
         self._refresh_timer = QTimer(self)
         self._refresh_timer.timeout.connect(self._refresh)
 
+        self._session_listener = AudioSessionListener(self._on_new_session)
+
         self._sync_entry_widgets()
 
         if sys.platform == "win32":
@@ -290,6 +293,7 @@ class OverlayWindow(QWidget):
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
+        self._session_listener.stop()
         self._refresh()
         self._refresh_timer.start(REFRESH_INTERVAL_MS)
         self.visibility_changed.emit(True)
@@ -297,6 +301,7 @@ class OverlayWindow(QWidget):
     def hideEvent(self, event) -> None:
         super().hideEvent(event)
         self._refresh_timer.stop()
+        self._session_listener.start()
         self.visibility_changed.emit(False)
 
     def _build_title_bar(self, parent: QWidget) -> QWidget:
@@ -394,6 +399,12 @@ class OverlayWindow(QWidget):
         container_height = margins.top() + margins.bottom() + entries_height + extra_height
         title_bar_height = self._title_bar.sizeHint().height()
         self.setFixedHeight(title_bar_height + container_height)
+
+    def _on_new_session(self) -> None:
+        try:
+            self._model.refresh()
+        except Exception:
+            return
 
     def _refresh(self) -> None:
         try:

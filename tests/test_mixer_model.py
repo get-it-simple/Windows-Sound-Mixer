@@ -254,3 +254,23 @@ def test_ignored_entries_empty_by_default(settings):
     model = MixerModel(make_backend(), settings)
 
     assert model.ignored_entries == []
+
+
+def test_default_volume_applied_to_new_session_after_initial_refresh(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+    store.set_default_app_volume(0.4)
+
+    backend = FakeAudioBackend(sessions=[], master_volume=1.0)
+    model = MixerModel(backend, store)
+
+    new_session = FakeAudioSession(pid=300, process_name="vlc.exe", display_name="VLC", volume=1.0)
+    backend.add_session(new_session)
+    model.refresh()
+
+    vlc_entry = next((e for e in model.entries if e.key == "vlc.exe"), None)
+    assert vlc_entry is not None
+    assert vlc_entry.volume == pytest.approx(0.4)
+
+    vlc_session = next(s for s in backend.enumerate_sessions() if s.process_name == "vlc.exe")
+    assert vlc_session.volume == pytest.approx(0.4)
