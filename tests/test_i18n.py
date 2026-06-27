@@ -75,7 +75,7 @@ def test_language_native_name_uses_windows_api():
     native_en = _language_native_name("en")
     native_uk = _language_native_name("uk")
     assert native_en == "English"
-    assert "країнськ" in native_uk
+    assert "Українська" in native_uk
 
 
 def test_language_english_name_uses_windows_api():
@@ -87,7 +87,7 @@ def test_language_display_name_different_languages():
     i18n.setup("en")
 
     name = language_display_name("uk")
-    assert "країнськ" in name
+    assert "Українська" in name
     assert "Ukrainian" in name
 
 
@@ -105,7 +105,7 @@ def test_language_display_name_en_from_uk_shows_english_only():
 
 def test_language_display_name_uk_from_en():
     name = language_display_name("uk", current_lang="en")
-    assert "країнськ" in name
+    assert "Українська" in name
     assert "Ukrainian" in name
 
 
