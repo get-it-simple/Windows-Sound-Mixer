@@ -17,6 +17,9 @@ class FakeSettings:
     def get_autostart_enabled(self) -> bool:
         return True
 
+    def get_language(self) -> str:
+        return "en"
+
 
 class FakeTray:
     def __init__(self) -> None:
@@ -24,6 +27,9 @@ class FakeTray:
 
     def set_autostart_enabled(self, value: bool) -> None:
         self.autostart_values.append(value)
+
+    def retranslate(self) -> None:
+        pass
 
 
 def make_app() -> SoundMixerApp:

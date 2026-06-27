@@ -1,35 +1,38 @@
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtWidgets import QApplication, QDialog, QFrame, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
+from sound_mixer.i18n import t
 from sound_mixer.overlay.icons import load_icon
 
-_SECTIONS = [
-    (
-        "Mouse",
-        [
-            ("Hover overlay + scroll wheel", "Adjust the focused application's volume"),
-            ("Drag the slider", "Set volume to an exact level"),
-            ("Click the mute button", "Toggle mute on / off for that application"),
-        ],
-    ),
-    (
-        "Keyboard (overlay focused)",
-        [
-            ("Up / Down arrows", "Move focus between applications"),
-            ("Left / Right arrows", "Decrease / increase the focused application's volume"),
-        ],
-    ),
-    (
-        "Global hotkeys",
-        [
-            ("Show / Hide overlay", "Toggle overlay visibility from any application"),
-            ("Volume up / down", "Adjust the focused application's volume without opening the overlay"),
-            ("Focus next / previous", "Move focus while the overlay is hidden"),
-            ("Mute toggle", "Toggle mute for the focused application"),
-            ("", "Configure bindings in Settings → Hotkeys"),
-        ],
-    ),
-]
+
+def _get_sections() -> list[tuple[str, list[tuple[str, str]]]]:
+    return [
+        (
+            t("guide_section_mouse"),
+            [
+                (t("guide_scroll"), t("guide_scroll_desc")),
+                (t("guide_drag"), t("guide_drag_desc")),
+                (t("guide_mute_click"), t("guide_mute_click_desc")),
+            ],
+        ),
+        (
+            t("guide_section_keyboard"),
+            [
+                (t("guide_arrows_ud"), t("guide_arrows_ud_desc")),
+                (t("guide_arrows_lr"), t("guide_arrows_lr_desc")),
+            ],
+        ),
+        (
+            t("guide_section_hotkeys"),
+            [
+                (t("guide_hotkey_toggle"), t("guide_hotkey_toggle_desc")),
+                (t("guide_hotkey_vol"), t("guide_hotkey_vol_desc")),
+                (t("guide_hotkey_focus"), t("guide_hotkey_focus_desc")),
+                (t("guide_hotkey_mute"), t("guide_hotkey_mute_desc")),
+                ("", t("guide_hotkey_note")),
+            ],
+        ),
+    ]
 
 _DIALOG_STYLE = """
 QDialog {
@@ -106,7 +109,7 @@ class _FullSizeScrollArea(QScrollArea):
 class GuideDialog(QDialog):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Controls Guide")
+        self.setWindowTitle(t("controls_guide_title"))
         self.setWindowIcon(load_icon("logo"))
         self.setMinimumWidth(480)
         self.setStyleSheet(_DIALOG_STYLE)
@@ -133,7 +136,7 @@ class GuideDialog(QDialog):
         content_layout.setContentsMargins(16, 16, 16, 16)
         content_layout.setSpacing(20)
 
-        for title, rows in _SECTIONS:
+        for title, rows in _get_sections():
             content_layout.addWidget(self._build_section(title, rows, content))
 
         content_layout.addStretch(1)

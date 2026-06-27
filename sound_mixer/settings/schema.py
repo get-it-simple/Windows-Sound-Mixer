@@ -1,4 +1,4 @@
-CURRENT_VERSION = 2
+CURRENT_VERSION = 3
 
 MIN_UI_SCALE = 0.5
 MAX_UI_SCALE = 3.0
@@ -35,4 +35,5 @@ DEFAULT_SETTINGS = {
     "default_app_volume": 1.0,
     "transparency_enabled": True,
     "ignored_apps": [],
+    "language": "system",
 }

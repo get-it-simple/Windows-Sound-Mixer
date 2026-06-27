@@ -82,6 +82,7 @@ is migrated automatically on load.
 | `default_app_volume`   | float (0.0-1.0) | Initial volume applied to apps the first time they appear, if not already in `app_volumes`.                                                |
 | `transparency_enabled` | bool            | Whether the overlay background uses the translucent acrylic effect. If disabled, the overlay has a solid background.                       |
 | `ignored_apps`         | array of string | Lowercase executable names (e.g. `"discord.exe"`) hidden from the main entry list. Ignored entries can be revealed via the expand button.  |
+| `language`             | string          | UI language code (`"en"`, `"uk"`) or `"system"` to follow the Windows locale. Defaults to `"system"`. Changes take effect immediately when saved from Settings. |
 
 ### Hotkey actions
 
@@ -136,6 +137,58 @@ non-Windows platforms.
 - If `SoundMixer.exe` is moved after enabling autostart, the registry entry
   still points at the old path; re-enable autostart from Settings to update
   it.
+
+## Supported languages
+
+| Language | Code | Added by |
+| -------- | ---- | -------- |
+| English | `en` | author |
+| Українська (Ukrainian) | `uk` | author |
+
+<details>
+<summary>How to add a new translation</summary>
+
+1. **Create the language file.** Copy `sound_mixer/i18n/en.py` to a new file named after the
+   [ISO 639-1](https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes) code of the language
+   (e.g. `sound_mixer/i18n/de.py` for German). Translate every string value; do not change
+   the keys.
+
+2. **Register the language in the i18n module.** Open `sound_mixer/i18n/__init__.py` and make
+   three additions:
+
+   - Add the code to `AVAILABLE_LANGUAGES`:
+     ```python
+     AVAILABLE_LANGUAGES: list[str] = ["en", "uk", "de"]
+     ```
+   - Add the language's names (in itself and in every other supported language) to
+     `LANGUAGE_NAMES`:
+     ```python
+     LANGUAGE_NAMES: dict[str, dict[str, str]] = {
+         "en": {"en": "English", "uk": "Англійська", "de": "Englisch"},
+         "uk": {"en": "Ukrainian", "uk": "Українська", "de": "Ukrainisch"},
+         "de": {"en": "German", "uk": "Німецька", "de": "Deutsch"},
+     }
+     ```
+   - Add a branch in `_load_language_strings()` to import the new module:
+     ```python
+     def _load_language_strings(language: str) -> dict[str, str]:
+         if language == "uk":
+             from sound_mixer.i18n.uk import STRINGS
+             return STRINGS
+         if language == "de":
+             from sound_mixer.i18n.de import STRINGS
+             return STRINGS
+         return {}
+     ```
+
+3. **Add tests.** In `tests/test_i18n.py`, add a test that calls `i18n.setup("de")` and
+   asserts at least one translated string is returned correctly.
+
+4. **Update this table** in `README.md` with the new language and your name.
+
+5. **Bump the version** in `sound_mixer/__init__.py` (required for every source change).
+
+</details>
 
 <details>
 <summary>Third-party packages</summary>

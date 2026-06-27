@@ -185,3 +185,40 @@ def test_about_tab_shows_logo(qapp, settings):
     pixmap_labels = [child for child in about_tab.findChildren(QLabel) if not child.pixmap().isNull()]
 
     assert pixmap_labels
+
+
+def test_language_combo_present_and_shows_system_option(qapp, settings):
+    from PySide6.QtWidgets import QComboBox
+
+    window = SettingsWindow(settings)
+
+    assert hasattr(window, "_language_combo")
+    assert isinstance(window._language_combo, QComboBox)
+    system_index = window._language_combo.findData("system")
+    assert system_index >= 0
+
+
+def test_language_combo_contains_all_available_languages(qapp, settings):
+    from sound_mixer.i18n import AVAILABLE_LANGUAGES
+
+    window = SettingsWindow(settings)
+
+    for lang_code in AVAILABLE_LANGUAGES:
+        assert window._language_combo.findData(lang_code) >= 0
+
+
+def test_language_combo_reflects_saved_setting(qapp, settings):
+    settings.set_language("uk")
+    window = SettingsWindow(settings)
+
+    assert window._language_combo.currentData() == "uk"
+
+
+def test_accept_saves_language(qapp, settings):
+    window = SettingsWindow(settings)
+    uk_index = window._language_combo.findData("uk")
+    window._language_combo.setCurrentIndex(uk_index)
+
+    window.accept()
+
+    assert settings.get_language() == "uk"

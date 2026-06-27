@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QScrollArea, QVBoxLay
 
 from sound_mixer import __version__
 from sound_mixer.audio.session_listener import AudioSessionListener
+from sound_mixer.i18n import t
 from sound_mixer.mixer.model import MixerModel
 from sound_mixer.overlay.entry_widget import EntryWidget
 from sound_mixer.overlay.icons import DelayedTooltipButton, load_icon
@@ -186,7 +187,7 @@ class OverlayWindow(QWidget):
         self._ignored_widgets: list[EntryWidget] = []
         self._ignored_expanded = False
 
-        self.setWindowTitle("Sound Mixer")
+        self.setWindowTitle(t("sound_mixer_title"))
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool
@@ -244,7 +245,7 @@ class OverlayWindow(QWidget):
         self._expand_button = DelayedTooltipButton()
         self._expand_button.setObjectName("expandButton")
         self._expand_button.setIcon(load_icon("dropdown_arrow"))
-        self._expand_button.setToolTip("Show ignored")
+        self._expand_button.setToolTip(t("show_ignored"))
         self._expand_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._expand_button.clicked.connect(self._on_expand_ignored)
         self._expand_button.hide()
@@ -264,7 +265,7 @@ class OverlayWindow(QWidget):
         self._collapse_button = DelayedTooltipButton()
         self._collapse_button.setObjectName("collapseButton")
         self._collapse_button.setIcon(load_icon("arrow_up"))
-        self._collapse_button.setToolTip("Hide ignored")
+        self._collapse_button.setToolTip(t("hide_ignored"))
         self._collapse_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._collapse_button.clicked.connect(self._on_collapse_ignored)
         self._collapse_button.hide()
@@ -311,8 +312,9 @@ class OverlayWindow(QWidget):
         icon_label = QLabel(title_bar)
         self._title_icon_label = icon_label
 
-        name_label = QLabel("Sound Mixer", title_bar)
+        name_label = QLabel(t("sound_mixer_title"), title_bar)
         name_label.setObjectName("titleName")
+        self._title_name_label = name_label
         version_label = QLabel(f"v{__version__}", title_bar)
         version_label.setObjectName("titleVersion")
 
@@ -324,21 +326,21 @@ class OverlayWindow(QWidget):
 
         settings_button = DelayedTooltipButton(title_bar)
         settings_button.setIcon(load_icon("settings"))
-        settings_button.setToolTip("Settings")
+        settings_button.setToolTip(t("settings_tooltip"))
         settings_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         settings_button.clicked.connect(self.settings_requested.emit)
         self._settings_button = settings_button
 
         guide_button = DelayedTooltipButton(title_bar)
         guide_button.setIcon(load_icon("help"))
-        guide_button.setToolTip("Controls guide")
+        guide_button.setToolTip(t("controls_guide_tooltip"))
         guide_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         guide_button.clicked.connect(self._show_guide)
         self._guide_button = guide_button
 
         close_button = DelayedTooltipButton(title_bar)
         close_button.setIcon(load_icon("close"))
-        close_button.setToolTip("Close")
+        close_button.setToolTip(t("close_tooltip"))
         close_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         close_button.clicked.connect(self.close)
         self._close_button = close_button
@@ -475,7 +477,7 @@ class OverlayWindow(QWidget):
 
     def _make_ignored_widget(self) -> EntryWidget:
         widget = EntryWidget(self._ignored_container)
-        widget.set_ignore_tooltip("Restore")
+        widget.set_ignore_tooltip(t("restore_tooltip"))
         widget.volume_changed.connect(lambda value, w=widget: self._on_ignored_volume_changed(w, value))
         widget.mute_toggled.connect(lambda w=widget: self._on_ignored_mute_toggled(w))
         widget.scrolled.connect(lambda direction, w=widget: self._on_ignored_scrolled(w, direction))
@@ -584,6 +586,20 @@ class OverlayWindow(QWidget):
         from sound_mixer.overlay.guide import GuideDialog
 
         GuideDialog(parent=self).exec()
+
+    def retranslate(self) -> None:
+        self.setWindowTitle(t("sound_mixer_title"))
+        self._title_name_label.setText(t("sound_mixer_title"))
+        self._expand_button.setToolTip(t("show_ignored"))
+        self._collapse_button.setToolTip(t("hide_ignored"))
+        self._settings_button.setToolTip(t("settings_tooltip"))
+        self._guide_button.setToolTip(t("controls_guide_tooltip"))
+        self._close_button.setToolTip(t("close_tooltip"))
+        for widget in self._entry_widgets:
+            widget.retranslate()
+        for widget in self._ignored_widgets:
+            widget.retranslate()
+            widget.set_ignore_tooltip(t("restore_tooltip"))
 
     def keyPressEvent(self, event) -> None:
         key = event.key()

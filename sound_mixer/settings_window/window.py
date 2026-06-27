@@ -22,6 +22,7 @@ from sound_mixer import __version__
 from sound_mixer.autostart.registry import AutostartManager, AutostartUnavailableError
 from sound_mixer.hotkeys.binding import normalize_combo, parse_combo
 from sound_mixer.hotkeys.manager import HotkeyManager
+from sound_mixer.i18n import AVAILABLE_LANGUAGES, language_display_name, t
 from sound_mixer.overlay.icons import icon_path, load_icon, toggle_switch_style
 from sound_mixer.overlay.window import OverlayWindow
 from sound_mixer.settings.schema import MAX_UI_SCALE, MIN_UI_SCALE
@@ -67,14 +68,16 @@ KEY_OPTIONS = [
     ("num lock", "Num Lock"),
 ]
 
-ACTION_LABELS = {
-    "toggle_overlay": "Show/Hide overlay",
-    "volume_up": "Volume up",
-    "volume_down": "Volume down",
-    "focus_next": "Focus next entry",
-    "focus_prev": "Focus previous entry",
-    "mute_toggle": "Mute toggle",
-}
+
+def _action_labels() -> dict[str, str]:
+    return {
+        "toggle_overlay": t("action_toggle_overlay"),
+        "volume_up": t("action_volume_up"),
+        "volume_down": t("action_volume_down"),
+        "focus_next": t("action_focus_next"),
+        "focus_prev": t("action_focus_prev"),
+        "mute_toggle": t("action_mute_toggle"),
+    }
 
 
 class HotkeyComboEditor(QFrame):
@@ -105,7 +108,7 @@ class HotkeyComboEditor(QFrame):
         self._select_layout.setContentsMargins(10, 10, 10, 10)
         self._select_layout.setSpacing(4)
 
-        self._placeholder_label = QLabel("Press shortcut", self)
+        self._placeholder_label = QLabel(t("press_shortcut"), self)
         self._placeholder_label.setStyleSheet("color: #b7b7bd; padding-left: 2px;")
         self._select_layout.addWidget(self._placeholder_label)
         self._select_layout.addStretch(1)
@@ -305,15 +308,15 @@ class SettingsWindow(QDialog):
         self._overlay = overlay
         self._hotkey_rows: list[tuple[str, HotkeyComboEditor, QCheckBox]] = []
 
-        self.setWindowTitle("Sound Mixer Settings")
+        self.setWindowTitle(t("settings_title"))
         self.setWindowIcon(load_icon("logo"))
 
         layout = QVBoxLayout(self)
 
         tabs = QTabWidget(self)
-        tabs.addTab(self._build_general_tab(), "General")
-        tabs.addTab(self._build_hotkeys_tab(), "Hotkeys")
-        tabs.addTab(self._build_about_tab(), "About")
+        tabs.addTab(self._build_general_tab(), t("tab_general"))
+        tabs.addTab(self._build_hotkeys_tab(), t("tab_hotkeys"))
+        tabs.addTab(self._build_about_tab(), t("tab_about"))
         layout.addWidget(tabs)
 
         self._error_label = QLabel(self)
@@ -334,38 +337,38 @@ class SettingsWindow(QDialog):
         self._autostart_checkbox.setObjectName("autostartToggle")
         self._autostart_checkbox.setStyleSheet(toggle_switch_style("autostartToggle"))
         self._autostart_checkbox.setChecked(self._settings.get_autostart_enabled())
-        layout.addWidget(self._field("Start with Windows", self._autostart_checkbox, tab))
+        layout.addWidget(self._field(t("start_with_windows"), self._autostart_checkbox, tab))
 
         self._transparency_checkbox = QCheckBox(tab)
         self._transparency_checkbox.setObjectName("transparencyToggle")
         self._transparency_checkbox.setStyleSheet(toggle_switch_style("transparencyToggle"))
         self._transparency_checkbox.setChecked(self._settings.get_transparency_enabled())
-        layout.addWidget(self._field("Transparent overlay background", self._transparency_checkbox, tab))
+        layout.addWidget(self._field(t("transparent_overlay_background"), self._transparency_checkbox, tab))
 
         self._tooltip_delay_spinbox = QSpinBox(tab)
         self._tooltip_delay_spinbox.setRange(0, 10000)
         self._tooltip_delay_spinbox.setSingleStep(100)
         self._tooltip_delay_spinbox.setSuffix(" ms")
         self._tooltip_delay_spinbox.setValue(self._settings.get_tooltip_delay_ms())
-        layout.addWidget(self._field("Tooltip delay", self._tooltip_delay_spinbox, tab))
+        layout.addWidget(self._field(t("tooltip_delay"), self._tooltip_delay_spinbox, tab))
 
         self._arrow_step_spinbox = QSpinBox(tab)
         self._arrow_step_spinbox.setRange(1, 100)
         self._arrow_step_spinbox.setSuffix(" %")
         self._arrow_step_spinbox.setValue(round(self._settings.get_arrow_step() * 100))
-        layout.addWidget(self._field("Arrow key volume step", self._arrow_step_spinbox, tab))
+        layout.addWidget(self._field(t("arrow_key_volume_step"), self._arrow_step_spinbox, tab))
 
         self._scroll_step_spinbox = QSpinBox(tab)
         self._scroll_step_spinbox.setRange(1, 100)
         self._scroll_step_spinbox.setSuffix(" %")
         self._scroll_step_spinbox.setValue(round(self._settings.get_scroll_step() * 100))
-        layout.addWidget(self._field("Scroll volume step", self._scroll_step_spinbox, tab))
+        layout.addWidget(self._field(t("scroll_volume_step"), self._scroll_step_spinbox, tab))
 
         self._default_app_volume_spinbox = QSpinBox(tab)
         self._default_app_volume_spinbox.setRange(0, 100)
         self._default_app_volume_spinbox.setSuffix(" %")
         self._default_app_volume_spinbox.setValue(round(self._settings.get_default_app_volume() * 100))
-        layout.addWidget(self._field("Default volume for new apps", self._default_app_volume_spinbox, tab))
+        layout.addWidget(self._field(t("default_volume_for_new_apps"), self._default_app_volume_spinbox, tab))
 
         scale_row = QWidget(tab)
         scale_layout = QHBoxLayout(scale_row)
@@ -383,9 +386,19 @@ class SettingsWindow(QDialog):
 
         scale_layout.addWidget(self._ui_scale_slider)
         scale_layout.addWidget(self._ui_scale_label)
-        layout.addWidget(self._field("Interface scale", scale_row, tab))
+        layout.addWidget(self._field(t("interface_scale"), scale_row, tab))
 
-        self._guide_button = QPushButton("Controls guide", tab)
+        self._language_combo = QComboBox(tab)
+        self._language_combo.addItem(t("language_system"), "system")
+        for lang_code in AVAILABLE_LANGUAGES:
+            self._language_combo.addItem(language_display_name(lang_code), lang_code)
+        current_language = self._settings.get_language()
+        idx = self._language_combo.findData(current_language)
+        if idx >= 0:
+            self._language_combo.setCurrentIndex(idx)
+        layout.addWidget(self._field(t("language"), self._language_combo, tab))
+
+        self._guide_button = QPushButton(t("controls_guide_button"), tab)
         self._guide_button.clicked.connect(self._show_guide)
         layout.addWidget(self._guide_button)
         layout.addStretch(1)
@@ -402,9 +415,10 @@ class SettingsWindow(QDialog):
         tab = QWidget(self)
         layout = QVBoxLayout(tab)
 
+        labels = _action_labels()
         for hotkey in self._settings.get_hotkeys():
             action = hotkey["action"]
-            label = ACTION_LABELS.get(action, action)
+            label = labels.get(action, action)
 
             row = QWidget(tab)
             row_layout = QHBoxLayout(row)
@@ -438,7 +452,7 @@ class SettingsWindow(QDialog):
         layout.addWidget(logo_label)
 
         layout.addWidget(QLabel(f"Sound Mixer v{__version__}", tab))
-        layout.addWidget(QLabel("Per-application volume mixer for Windows.", tab))
+        layout.addWidget(QLabel(t("app_description"), tab))
         return tab
 
     def _show_guide(self) -> None:
@@ -467,6 +481,7 @@ class SettingsWindow(QDialog):
         self._settings.set_arrow_step(self._arrow_step_spinbox.value() / 100)
         self._settings.set_scroll_step(self._scroll_step_spinbox.value() / 100)
         self._settings.set_default_app_volume(self._default_app_volume_spinbox.value() / 100)
+        self._settings.set_language(self._language_combo.currentData())
 
         for action, combo, enabled in hotkey_updates:
             self._settings.set_hotkey(action, combo, enabled)

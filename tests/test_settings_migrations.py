@@ -62,3 +62,27 @@ def test_migrates_v1_preserves_existing_ignored_apps():
     migrated = migrate(v1)
 
     assert migrated["ignored_apps"] == ["discord.exe"]
+
+
+def test_migrates_v2_to_v3_adds_language():
+    v2 = {
+        "version": 2,
+        "master_volume": 0.5,
+        "ignored_apps": [],
+    }
+
+    migrated = migrate(v2)
+
+    assert migrated["version"] == CURRENT_VERSION
+    assert migrated["language"] == "system"
+
+
+def test_migrates_v2_preserves_existing_language():
+    v2 = {
+        "version": 2,
+        "language": "uk",
+    }
+
+    migrated = migrate(v2)
+
+    assert migrated["language"] == "uk"

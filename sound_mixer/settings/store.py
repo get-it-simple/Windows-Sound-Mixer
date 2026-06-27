@@ -177,6 +177,13 @@ class SettingsStore:
             self.data["ignored_apps"].remove(exe)
             self.save()
 
+    def get_language(self) -> str:
+        return self.data["language"]
+
+    def set_language(self, language: str) -> None:
+        self.data["language"] = language
+        self.save()
+
 
 def _merge_defaults(data: dict, defaults: dict) -> dict:
     result = copy.deepcopy(defaults)

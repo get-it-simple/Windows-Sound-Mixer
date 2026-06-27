@@ -2,6 +2,7 @@ import sys
 
 from PySide6.QtWidgets import QApplication
 
+import sound_mixer.i18n as i18n
 from sound_mixer.audio import create_backend
 from sound_mixer.autostart.registry import AutostartManager, AutostartUnavailableError
 from sound_mixer.hotkeys.manager import HotkeyManager
@@ -19,6 +20,7 @@ class SoundMixerApp:
         self.qt_app.setQuitOnLastWindowClosed(False)
         self.settings = SettingsStore(default_settings_path())
         self.settings.load()
+        i18n.setup(self.settings.get_language())
         self.backend = create_backend()
         self.model = MixerModel(self.backend, self.settings)
         self.overlay = OverlayWindow(self.model, self.settings)
@@ -69,6 +71,10 @@ class SoundMixerApp:
         try:
             accepted = dialog.exec() == SettingsWindow.DialogCode.Accepted
             if accepted:
+                i18n.setup(self.settings.get_language())
+                if self.overlay is not None:
+                    self.overlay.retranslate()
+                self.tray.retranslate()
                 self.tray.set_autostart_enabled(self.settings.get_autostart_enabled())
         finally:
             if not accepted:

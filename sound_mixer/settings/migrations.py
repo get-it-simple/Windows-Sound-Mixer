@@ -22,9 +22,17 @@ def _migrate_1_to_2(data: dict) -> dict:
     return data
 
 
+def _migrate_2_to_3(data: dict) -> dict:
+    data = dict(data)
+    data.setdefault("language", "system")
+    data["version"] = 3
+    return data
+
+
 MIGRATIONS = {
     0: _migrate_0_to_1,
     1: _migrate_1_to_2,
+    2: _migrate_2_to_3,
 }
 
 

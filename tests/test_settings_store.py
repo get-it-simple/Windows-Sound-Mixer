@@ -236,3 +236,38 @@ def test_remove_ignored_app_not_present_is_noop(tmp_path):
     store.remove_ignored_app("notpresent.exe")
 
     assert store.get_ignored_apps() == []
+
+
+def test_language_default_is_system(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+
+    assert store.get_language() == DEFAULT_SETTINGS["language"]
+    assert store.get_language() == "system"
+
+
+def test_language_set_and_get(tmp_path):
+    path = tmp_path / "settings.json"
+    store = SettingsStore(path)
+    store.load()
+
+    store.set_language("uk")
+
+    assert store.get_language() == "uk"
+
+    reloaded = SettingsStore(path)
+    reloaded.load()
+    assert reloaded.get_language() == "uk"
+
+
+def test_language_round_trip_to_system(tmp_path):
+    path = tmp_path / "settings.json"
+    store = SettingsStore(path)
+    store.load()
+
+    store.set_language("en")
+    store.set_language("system")
+
+    reloaded = SettingsStore(path)
+    reloaded.load()
+    assert reloaded.get_language() == "system"

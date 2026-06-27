@@ -2,6 +2,7 @@ from PySide6.QtCore import QEvent, QSize, Qt, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QAbstractSpinBox, QFrame, QHBoxLayout, QLabel, QSlider, QSpinBox, QWidget
 
+from sound_mixer.i18n import t
 from sound_mixer.mixer.model import MixerEntry
 from sound_mixer.overlay.icons import DelayedTooltipButton, load_app_icon, load_icon
 
@@ -52,7 +53,7 @@ class EntryWidget(QFrame):
         self._app_icon_px = BASE_APP_ICON_PX
 
         self._mute_button = DelayedTooltipButton(self)
-        self._mute_button.setToolTip("Mute / unmute")
+        self._mute_button.setToolTip(t("mute_unmute_tooltip"))
         self._mute_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._mute_button.clicked.connect(self._on_mute_clicked)
 
@@ -65,7 +66,7 @@ class EntryWidget(QFrame):
 
         self._hide_button = DelayedTooltipButton(self._icon_container)
         self._hide_button.setIcon(load_icon("hide"))
-        self._hide_button.setToolTip("Ignore")
+        self._hide_button.setToolTip(t("ignore_tooltip"))
         self._hide_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._hide_button.clicked.connect(self._on_hide_clicked)
         self._hide_button.setGeometry(0, 0, self._app_icon_px, self._app_icon_px)
@@ -147,6 +148,10 @@ class EntryWidget(QFrame):
 
     def set_ignore_tooltip(self, text: str) -> None:
         self._hide_button.setToolTip(text)
+
+    def retranslate(self) -> None:
+        self._mute_button.setToolTip(t("mute_unmute_tooltip"))
+        self._hide_button.setToolTip(t("ignore_tooltip"))
 
     def _on_slider_changed(self, value: int) -> None:
         self.focus_requested.emit()
