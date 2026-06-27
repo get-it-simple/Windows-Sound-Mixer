@@ -127,6 +127,10 @@ class EntryWidget(QFrame):
             self._update_icon_pixmap()
             self._icon_container.show()
 
+        self.setToolTip(entry.display_name)
+        self._slider.setToolTip(entry.display_name)
+        self._volume_spinbox.setToolTip(entry.display_name)
+
         value = round(entry.volume * 100)
 
         self._slider.blockSignals(True)
