@@ -329,6 +329,13 @@ class OverlayWindow(QWidget):
         settings_button.clicked.connect(self.settings_requested.emit)
         self._settings_button = settings_button
 
+        guide_button = DelayedTooltipButton(title_bar)
+        guide_button.setIcon(load_icon("help"))
+        guide_button.setToolTip("Controls guide")
+        guide_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        guide_button.clicked.connect(self._show_guide)
+        self._guide_button = guide_button
+
         close_button = DelayedTooltipButton(title_bar)
         close_button.setIcon(load_icon("close"))
         close_button.setToolTip("Close")
@@ -341,6 +348,7 @@ class OverlayWindow(QWidget):
         layout.addLayout(title_text_layout)
         layout.addStretch(1)
         layout.addWidget(settings_button)
+        layout.addWidget(guide_button)
         layout.addWidget(close_button)
         return title_bar
 
@@ -431,6 +439,7 @@ class OverlayWindow(QWidget):
         logo_px = round(BASE_TITLE_LOGO_PX * scale)
         self._title_icon_label.setPixmap(load_icon("logo").pixmap(logo_px, logo_px))
         self._settings_button.setIconSize(QSize(icon_px, icon_px))
+        self._guide_button.setIconSize(QSize(icon_px, icon_px))
         self._close_button.setIconSize(QSize(icon_px, icon_px))
         self._expand_button.setIconSize(QSize(icon_px, icon_px))
         self._collapse_button.setIconSize(QSize(icon_px, icon_px))
@@ -570,6 +579,11 @@ class OverlayWindow(QWidget):
     def _on_collapse_ignored(self) -> None:
         self._ignored_expanded = False
         self._sync_entry_widgets()
+
+    def _show_guide(self) -> None:
+        from sound_mixer.overlay.guide import GuideDialog
+
+        GuideDialog(parent=self).exec()
 
     def keyPressEvent(self, event) -> None:
         key = event.key()

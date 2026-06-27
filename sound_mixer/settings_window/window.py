@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QSizePolicy,
     QSlider,
     QSpinBox,
@@ -383,6 +384,10 @@ class SettingsWindow(QDialog):
         scale_layout.addWidget(self._ui_scale_slider)
         scale_layout.addWidget(self._ui_scale_label)
         layout.addWidget(self._field("Interface scale", scale_row, tab))
+
+        self._guide_button = QPushButton("Controls guide", tab)
+        self._guide_button.clicked.connect(self._show_guide)
+        layout.addWidget(self._guide_button)
         layout.addStretch(1)
 
         return tab
@@ -435,6 +440,11 @@ class SettingsWindow(QDialog):
         layout.addWidget(QLabel(f"Sound Mixer v{__version__}", tab))
         layout.addWidget(QLabel("Per-application volume mixer for Windows.", tab))
         return tab
+
+    def _show_guide(self) -> None:
+        from sound_mixer.overlay.guide import GuideDialog
+
+        GuideDialog(parent=self).exec()
 
     def accept(self) -> None:
         try:

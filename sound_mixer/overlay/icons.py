@@ -4,7 +4,7 @@ from PySide6.QtWidgets import QFileIconProvider, QToolButton, QToolTip
 
 from sound_mixer.paths import resource_path
 
-ICON_NAMES = ("volume", "muted", "settings", "pin", "close", "toggle_on", "toggle_off", "app", "logo", "hide", "arrow_up", "dropdown_arrow")
+ICON_NAMES = ("volume", "muted", "settings", "help", "pin", "close", "toggle_on", "toggle_off", "app", "logo", "hide", "arrow_up", "dropdown_arrow")
 
 
 def icon_path(name: str) -> str:
