@@ -14,12 +14,9 @@ BASE_MARGIN_PX = 8
 BASE_SPACING_PX = 8
 
 
-def slider_style(scale: float) -> str:
+def slider_style(scale: float, accent_color: str) -> str:
     groove_height = max(2, round(4 * scale))
     handle_size = round(18 * scale)
-    # Qt renders the handle as a flat square instead of a circle if the
-    # negative margin can't evenly center it over the groove, so make sure
-    # handle_size and groove_height have matching parity.
     if (handle_size - groove_height) % 2:
         handle_size += 1
     margin = (handle_size - groove_height) // 2
@@ -27,6 +24,11 @@ def slider_style(scale: float) -> str:
 QSlider::groove:horizontal {{
     height: {groove_height}px;
     background: #555555;
+    border-radius: {groove_height // 2}px;
+}}
+QSlider::sub-page:horizontal {{
+    height: {groove_height}px;
+    background: {accent_color};
     border-radius: {groove_height // 2}px;
 }}
 QSlider::handle:horizontal {{
@@ -82,6 +84,7 @@ class EntryWidget(QFrame):
         self._volume_spinbox.setRange(0, 100)
         self._volume_spinbox.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self._volume_spinbox.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        self._volume_spinbox.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._volume_spinbox.valueChanged.connect(self._on_spinbox_changed)
 
         self._slider.installEventFilter(self)
@@ -93,11 +96,11 @@ class EntryWidget(QFrame):
         layout.addWidget(self._volume_spinbox)
         layout.addWidget(self._slider, 1)
 
-    def apply_scale(self, scale: float) -> None:
+    def apply_scale(self, scale: float, accent_color: str = "#3a96dd") -> None:
         icon_px = round(BASE_ICON_PX * scale)
         self._mute_button.setIconSize(QSize(icon_px, icon_px))
         self._hide_button.setIconSize(QSize(icon_px, icon_px))
-        self._slider.setStyleSheet(slider_style(scale))
+        self._slider.setStyleSheet(slider_style(scale, accent_color))
         self._slider.setMinimumHeight(round(BASE_SLIDER_HEIGHT_PX * scale))
 
         font = self._volume_spinbox.font()

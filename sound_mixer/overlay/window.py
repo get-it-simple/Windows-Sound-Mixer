@@ -26,6 +26,14 @@ BASE_DIVIDER_MARGIN_PX = 4
 MIN_OVERLAY_WIDTH = 200
 RESIZE_HANDLE_WIDTH_PX = 6
 MAX_VISIBLE_ENTRIES = 6
+BACKGROUND_BORDER_PX = 1
+
+
+def _accent_rgba(hex_color: str, alpha: int) -> str:
+    r = int(hex_color[1:3], 16)
+    g = int(hex_color[3:5], 16)
+    b = int(hex_color[5:7], 16)
+    return f"rgba({r}, {g}, {b}, {alpha})"
 
 
 def background_style(scale: float, accent_color: str, transparent: bool = True) -> str:
@@ -35,9 +43,11 @@ def background_style(scale: float, accent_color: str, transparent: bool = True) 
     control_radius = round(8 * scale)
     entry_radius = round(10 * scale)
     background_color = "rgba(32, 32, 32, 140)" if transparent else "rgb(32, 32, 32)"
+    accent_bg = _accent_rgba(accent_color, 45)
     return f"""
 #background {{
     background-color: {background_color};
+    border: 1px solid {accent_color};
     border-radius: 8px;
     font-size: {font_px}px;
 }}
@@ -69,6 +79,7 @@ def background_style(scale: float, accent_color: str, transparent: bool = True) 
     border-radius: {entry_radius}px;
 }}
 #background #entryWidget[focused="true"] {{
+    background: {accent_bg};
     border: 1px solid {accent_color};
 }}
 #background #entryWidget QToolButton {{
@@ -85,6 +96,7 @@ def background_style(scale: float, accent_color: str, transparent: bool = True) 
     border: none;
     border-radius: {control_radius}px;
     padding: {round(4 * scale)}px {round(8 * scale)}px;
+    min-height: {font_px}px;
     color: #f2f2f5;
 }}
 #background QScrollBar:vertical {{
@@ -408,7 +420,7 @@ class OverlayWindow(QWidget):
 
         container_height = margins.top() + margins.bottom() + entries_height + extra_height
         title_bar_height = self._title_bar.sizeHint().height()
-        self.setFixedHeight(title_bar_height + container_height)
+        self.setFixedHeight(title_bar_height + container_height + 2 * BACKGROUND_BORDER_PX)
 
     def _on_new_session(self) -> None:
         try:
@@ -461,7 +473,7 @@ class OverlayWindow(QWidget):
         self._ignored_layout.setSpacing(container_margin)
 
         for widget in self._entry_widgets + self._ignored_widgets:
-            widget.apply_scale(scale)
+            widget.apply_scale(scale, self._accent_color)
 
         self._update_window_height()
 
@@ -472,7 +484,7 @@ class OverlayWindow(QWidget):
         widget.focus_requested.connect(lambda w=widget: self._on_focus_requested(w))
         widget.scrolled.connect(lambda direction, w=widget: self._on_scrolled(w, direction))
         widget.ignore_requested.connect(lambda w=widget: self._on_ignore_requested(w))
-        widget.apply_scale(self._settings.get_ui_scale())
+        widget.apply_scale(self._settings.get_ui_scale(), self._accent_color)
         return widget
 
     def _make_ignored_widget(self) -> EntryWidget:
@@ -482,7 +494,7 @@ class OverlayWindow(QWidget):
         widget.mute_toggled.connect(lambda w=widget: self._on_ignored_mute_toggled(w))
         widget.scrolled.connect(lambda direction, w=widget: self._on_ignored_scrolled(w, direction))
         widget.ignore_requested.connect(lambda w=widget: self._on_unignore_requested(w))
-        widget.apply_scale(self._settings.get_ui_scale())
+        widget.apply_scale(self._settings.get_ui_scale(), self._accent_color)
         return widget
 
     def _sync_entry_widgets(self) -> None:

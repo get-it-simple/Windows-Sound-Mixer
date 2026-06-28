@@ -153,7 +153,7 @@ def test_apply_scale_resizes_icon_label(qapp):
 
 @pytest.mark.parametrize("scale_percent", range(50, 301))
 def test_slider_handle_stays_round_at_every_scale(scale_percent):
-    css = slider_style(scale_percent / 100)
+    css = slider_style(scale_percent / 100, "#3a96dd")
 
     handle_size = int(re.search(r"QSlider::handle:horizontal \{\s*width: (\d+)px", css).group(1))
     groove_height = int(re.search(r"QSlider::groove:horizontal \{\s*height: (\d+)px", css).group(1))
