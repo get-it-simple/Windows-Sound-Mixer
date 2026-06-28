@@ -4,7 +4,7 @@ A per-application volume mixer for Windows. Adjust the volume of any running
 program with an audio session (or the system master volume) from a small
 always-on-top overlay, the system tray, or global hotkeys.
 
-![Sound Mixer overlay demo](assets/image.png)
+![Sound Mixer overlay demo](assets/image.jpg)
 
 ## Features
 
