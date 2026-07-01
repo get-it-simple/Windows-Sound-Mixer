@@ -9,7 +9,7 @@ from sound_mixer.i18n import t
 from sound_mixer.mixer.model import MixerModel
 from sound_mixer.overlay.entry_widget import EntryWidget
 from sound_mixer.overlay.icons import DelayedTooltipButton, load_icon
-from sound_mixer.overlay.win_effects import apply_acrylic_effect, get_accent_color
+from sound_mixer.overlay.win_effects import WM_DWMCOLORIZATIONCOLORCHANGED, apply_acrylic_effect, get_accent_color
 from sound_mixer.settings.store import SettingsStore
 
 REFRESH_INTERVAL_MS = 1000
@@ -311,8 +311,25 @@ class OverlayWindow(QWidget):
         self._title_bar = title_bar
         self._resize_handle_width = _ResizeHandle(self)
 
+    def _refresh_accent_color(self) -> None:
+        new_color = get_accent_color()
+        if new_color != self._accent_color:
+            self._accent_color = new_color
+            self.apply_scale()
+
+    def nativeEvent(self, event_type: bytes, message) -> tuple:
+        if sys.platform == "win32" and event_type == b"windows_generic_MSG":
+            import ctypes
+            from ctypes import wintypes
+
+            msg = ctypes.cast(int(message), ctypes.POINTER(wintypes.MSG)).contents
+            if msg.message == WM_DWMCOLORIZATIONCOLORCHANGED:
+                self._refresh_accent_color()
+        return super().nativeEvent(event_type, message)
+
     def showEvent(self, event) -> None:
         super().showEvent(event)
+        self._refresh_accent_color()
         self._session_listener.stop()
         self._refresh()
         self._refresh_timer.start(REFRESH_INTERVAL_MS)

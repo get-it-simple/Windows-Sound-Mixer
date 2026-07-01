@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from sound_mixer.audio.fake_backend import FakeAudioSession
 from sound_mixer.mixer.model import MixerModel
 from sound_mixer.overlay.entry_widget import BASE_ICON_PX as ENTRY_BASE_ICON_PX
@@ -64,3 +66,27 @@ def test_apply_scale_uses_opaque_background_when_transparency_disabled(qapp, fak
     style = overlay._background.styleSheet()
     assert "rgba(32, 32, 32, 140)" not in style
     assert "rgb(32, 32, 32)" in style
+
+
+def test_refresh_accent_color_updates_style_when_color_changes(qapp, fake_backend, settings):
+    overlay = make_overlay(qapp, fake_backend, settings)
+    overlay._accent_color = "#aabbcc"
+
+    with patch("sound_mixer.overlay.window.get_accent_color", return_value="#112233"):
+        overlay._refresh_accent_color()
+
+    assert overlay._accent_color == "#112233"
+    assert "#112233" in overlay._background.styleSheet()
+
+
+def test_refresh_accent_color_skips_update_when_color_unchanged(qapp, fake_backend, settings):
+    overlay = make_overlay(qapp, fake_backend, settings)
+    overlay._accent_color = "#aabbcc"
+    apply_scale_calls = []
+    original_apply_scale = overlay.apply_scale
+    overlay.apply_scale = lambda: apply_scale_calls.append(1) or original_apply_scale()
+
+    with patch("sound_mixer.overlay.window.get_accent_color", return_value="#aabbcc"):
+        overlay._refresh_accent_color()
+
+    assert apply_scale_calls == []
