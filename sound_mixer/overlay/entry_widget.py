@@ -53,6 +53,7 @@ class EntryWidget(QFrame):
         self.setObjectName("entryWidget")
         self._current_icon = QIcon()
         self._app_icon_px = BASE_APP_ICON_PX
+        self._is_master = False
 
         self._mute_button = DelayedTooltipButton(self)
         self._mute_button.setToolTip(t("mute_unmute_tooltip"))
@@ -140,14 +141,16 @@ class EntryWidget(QFrame):
 
     def set_entry(self, entry: MixerEntry, focused: bool) -> None:
         self._mute_button.setIcon(load_icon("muted" if entry.muted else "volume"))
+        self._is_master = entry.is_master
 
         if entry.is_master:
-            self._icon_container.hide()
+            self._icon_label.hide()
         else:
             self._icon_label.setToolTip(entry.display_name)
             self._current_icon = load_app_icon(entry.icon_path)
             self._update_icon_pixmap()
-            self._icon_container.show()
+            self._icon_label.show()
+        self._icon_container.show()
 
         self._process_name_label.setText(entry.display_name)
 
@@ -169,7 +172,7 @@ class EntryWidget(QFrame):
         self.style().unpolish(self)
         self.style().polish(self)
 
-        if self.underMouse():
+        if self.underMouse() and not self._is_master:
             self._hide_button.show()
         else:
             self._hide_button.hide()
@@ -202,7 +205,8 @@ class EntryWidget(QFrame):
         super().mousePressEvent(event)
 
     def enterEvent(self, event) -> None:
-        self._hide_button.show()
+        if not self._is_master:
+            self._hide_button.show()
         super().enterEvent(event)
 
     def leaveEvent(self, event) -> None:

@@ -145,14 +145,26 @@ def test_set_entry_shows_display_name_as_tooltip(qapp):
     assert widget._icon_label.toolTip() == "Google Chrome"
 
 
-def test_set_entry_hides_icon_for_master(qapp):
+def test_set_entry_keeps_icon_container_visible_for_master(qapp):
     widget = EntryWidget()
 
     widget.set_entry(
         MixerEntry(key="master", display_name="System", volume=0.5, muted=False, is_master=True), focused=False
     )
 
-    assert widget._icon_container.isHidden()
+    assert not widget._icon_container.isHidden()
+    assert widget._icon_label.isHidden()
+
+
+def test_set_entry_hide_button_suppressed_for_master(qapp):
+    widget = EntryWidget()
+
+    widget.set_entry(
+        MixerEntry(key="master", display_name="System", volume=0.5, muted=False, is_master=True), focused=False
+    )
+    widget.enterEvent(None)
+
+    assert widget._hide_button.isHidden()
 
 
 def test_set_entry_shows_fallback_icon_for_unknown_app(qapp):
