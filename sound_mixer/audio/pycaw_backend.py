@@ -1,7 +1,30 @@
 import psutil
 from pycaw.pycaw import AudioUtilities
 
+from sound_mixer.audio.win_names import get_exe_friendly_name, get_process_window_title
 from sound_mixer.volume import clamp_volume
+
+
+class _ProcessNameCache:
+    def __init__(self) -> None:
+        self._exe_info_checked: set[str] = set()
+        self._names: dict[str, str] = {}
+
+    def resolve(self, key: str, exe_path: str, pid: int) -> None:
+        if key in self._names:
+            return
+        if key not in self._exe_info_checked:
+            self._exe_info_checked.add(key)
+            name = get_exe_friendly_name(exe_path)
+            if name:
+                self._names[key] = name
+                return
+        name = get_process_window_title(pid)
+        if name:
+            self._names[key] = name
+
+    def get(self, key: str) -> str:
+        return self._names.get(key, "")
 
 
 class PycawAudioSession:
@@ -39,6 +62,8 @@ class PycawAudioSession:
 class PycawAudioBackend:
     def __init__(self) -> None:
         self._sessions: list[PycawAudioSession] = []
+        self._icon_paths: dict[str, str] = {}
+        self._name_cache = _ProcessNameCache()
         self.refresh()
 
     def refresh(self) -> None:
@@ -47,7 +72,6 @@ class PycawAudioBackend:
         except Exception:
             return
         grouped: dict[str, list] = {}
-        icon_paths: dict[str, str] = {}
         for session in sessions:
             process = session.Process
             if process is None:
@@ -58,14 +82,22 @@ class PycawAudioBackend:
                 continue
             key = process_name.lower()
             grouped.setdefault(key, []).append(session)
-            if key not in icon_paths:
+
+            if key not in self._icon_paths:
                 try:
-                    icon_paths[key] = process.exe()
+                    self._icon_paths[key] = process.exe()
                 except psutil.Error:
-                    icon_paths[key] = ""
+                    self._icon_paths[key] = ""
+
+            self._name_cache.resolve(key, self._icon_paths[key], process.pid)
 
         self._sessions = [
-            PycawAudioSession(process_name, controls[0].DisplayName or process_name, controls, icon_paths.get(process_name, ""))
+            PycawAudioSession(
+                process_name,
+                self._name_cache.get(process_name) or controls[0].DisplayName or process_name,
+                controls,
+                self._icon_paths.get(process_name, ""),
+            )
             for process_name, controls in grouped.items()
         ]
 

@@ -1,6 +1,6 @@
 from PySide6.QtCore import QEvent, QSize, Qt, Signal
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QAbstractSpinBox, QFrame, QHBoxLayout, QLabel, QSlider, QSpinBox, QWidget
+from PySide6.QtWidgets import QAbstractSpinBox, QFrame, QHBoxLayout, QLabel, QSlider, QSpinBox, QVBoxLayout, QWidget
 
 from sound_mixer.i18n import t
 from sound_mixer.mixer.model import MixerEntry
@@ -8,15 +8,15 @@ from sound_mixer.overlay.icons import DelayedTooltipButton, load_app_icon, load_
 
 BASE_ICON_PX = 18
 BASE_APP_ICON_PX = 32
-BASE_SLIDER_HEIGHT_PX = 20
+BASE_SLIDER_HEIGHT_PX = 10
 BASE_FONT_PX = 13
 BASE_MARGIN_PX = 8
 BASE_SPACING_PX = 8
 
 
 def slider_style(scale: float, accent_color: str) -> str:
-    groove_height = max(2, round(4 * scale))
-    handle_size = round(18 * scale)
+    groove_height = max(1, round(2 * scale))
+    handle_size = round(9 * scale)
     if (handle_size - groove_height) % 2:
         handle_size += 1
     margin = (handle_size - groove_height) // 2
@@ -80,6 +80,17 @@ class EntryWidget(QFrame):
         self._slider.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._slider.valueChanged.connect(self._on_slider_changed)
 
+        self._process_name_label = QLabel("", self)
+        self._process_name_label.setObjectName("processNameLabel")
+        self._process_name_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+
+        self._slider_column = QWidget(self)
+        slider_col_layout = QVBoxLayout(self._slider_column)
+        slider_col_layout.setContentsMargins(0, 0, 0, 0)
+        slider_col_layout.setSpacing(4)
+        slider_col_layout.addWidget(self._slider)
+        slider_col_layout.addWidget(self._process_name_label)
+
         self._volume_spinbox = QSpinBox(self)
         self._volume_spinbox.setRange(0, 100)
         self._volume_spinbox.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
@@ -94,7 +105,7 @@ class EntryWidget(QFrame):
         layout.addWidget(self._icon_container)
         layout.addWidget(self._mute_button)
         layout.addWidget(self._volume_spinbox)
-        layout.addWidget(self._slider, 1)
+        layout.addWidget(self._slider_column, 1)
 
     def apply_scale(self, scale: float, accent_color: str = "#3a96dd") -> None:
         icon_px = round(BASE_ICON_PX * scale)
@@ -103,10 +114,18 @@ class EntryWidget(QFrame):
         self._slider.setStyleSheet(slider_style(scale, accent_color))
         self._slider.setMinimumHeight(round(BASE_SLIDER_HEIGHT_PX * scale))
 
+        font_px = round(BASE_FONT_PX * scale)
+
         font = self._volume_spinbox.font()
-        font.setPixelSize(round(BASE_FONT_PX * scale))
+        font.setPixelSize(font_px)
         self._volume_spinbox.setFont(font)
         self._volume_spinbox.setFixedWidth(self._volume_spinbox.minimumSizeHint().width())
+
+        name_font = self._process_name_label.font()
+        name_font.setPixelSize(font_px)
+        self._process_name_label.setFont(name_font)
+
+        self._slider_column.layout().setSpacing(round(4 * scale))
 
         self._app_icon_px = round(BASE_APP_ICON_PX * scale)
         self._icon_container.setFixedSize(self._app_icon_px, self._app_icon_px)
@@ -129,6 +148,8 @@ class EntryWidget(QFrame):
             self._current_icon = load_app_icon(entry.icon_path)
             self._update_icon_pixmap()
             self._icon_container.show()
+
+        self._process_name_label.setText(entry.display_name)
 
         self.setToolTip(entry.display_name)
         self._slider.setToolTip(entry.display_name)

@@ -97,9 +97,15 @@ def test_entry_layout_places_icon_mute_spinbox_and_slider_in_order(qapp):
     widget = EntryWidget()
     layout = widget.layout()
 
-    assert layout.indexOf(widget._icon_label) < layout.indexOf(widget._mute_button)
-    assert layout.indexOf(widget._mute_button) < layout.indexOf(widget._volume_spinbox)
-    assert layout.indexOf(widget._volume_spinbox) < layout.indexOf(widget._slider)
+    mute_idx = layout.indexOf(widget._mute_button)
+    spinbox_idx = layout.indexOf(widget._volume_spinbox)
+    column_idx = layout.indexOf(widget._slider_column)
+
+    assert mute_idx > -1
+    assert spinbox_idx > mute_idx
+    assert column_idx > spinbox_idx
+    assert widget._slider_column.layout().indexOf(widget._slider) == 0
+    assert widget._slider_column.layout().indexOf(widget._process_name_label) == 1
 
 
 def test_scroll_on_slider_uses_entry_wheel_handling(qapp):
@@ -257,6 +263,19 @@ def test_scroll_down_with_alt_held_decreases_volume(qapp):
     widget.wheelEvent(wheel_event_horizontal(direction=-1))
 
     assert scrolled == [-1]
+
+
+def test_process_name_label_text_set_from_entry(qapp):
+    widget = EntryWidget()
+    widget.set_entry(make_entry(volume=0.5), focused=False)
+    assert widget._process_name_label.text() == "Google Chrome"
+
+
+def test_process_name_label_is_left_aligned(qapp):
+    from PySide6.QtCore import Qt
+
+    widget = EntryWidget()
+    assert widget._process_name_label.alignment() & Qt.AlignmentFlag.AlignLeft
 
 
 def test_zero_delta_wheel_event_does_not_scroll(qapp):

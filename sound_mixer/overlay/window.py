@@ -99,6 +99,13 @@ def background_style(scale: float, accent_color: str, transparent: bool = True) 
     min-height: {font_px}px;
     color: #f2f2f5;
 }}
+#background #entryWidget #processNameLabel {{
+    background: rgba(0, 0, 0, 70);
+    border: none;
+    border-radius: {control_radius}px;
+    padding: {round(3 * scale)}px {round(8 * scale)}px;
+    color: #f2f2f5;
+}}
 #background QScrollBar:vertical {{
     width: {round(8 * scale)}px;
     background: transparent;
