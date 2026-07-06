@@ -6,7 +6,41 @@ always-on-top overlay, the system tray, or global hotkeys.
 
 ![Sound Mixer overlay demo](assets/image.jpg)
 
-## Features
+<details>
+<summary>Run, Build, Test details</summary>
+
+## Running from source
+
+```
+pip install -r requirements.txt
+python -m sound_mixer
+```
+
+## Building a standalone executable
+
+```
+python build.py
+```
+
+`build.py` checks that all packages in `requirements.txt` are installed at
+the required versions. If anything is missing or outdated, it lists the
+packages and asks whether to install them with `pip` before continuing. It
+then runs PyInstaller and produces `dist/SoundMixer.exe`.
+
+## Running the tests
+
+```
+python -m pytest
+```
+
+Tests run in parallel via `pytest-xdist` (configured in `pytest.ini`). Tests
+that need real Windows APIs (audio devices, the registry) are skipped on
+non-Windows platforms.
+
+</details>
+
+<details>
+<summary>Features</summary>
 
 - One overlay listing the system/master volume plus every app currently
   playing audio, each entry showing the app's own icon (the app's display
@@ -38,29 +72,15 @@ always-on-top overlay, the system tray, or global hotkeys.
 - Optional autostart on Windows login via the `HKCU\...\Run` registry key (no
   administrator rights required), toggled with a switch in Settings.
 - The interface scale in Settings is a slider that applies to the overlay
-  immediately as it's dragged.
+immediately as it's dragged.
+  </details>
 
-## Running from source
-
-```
-pip install -r requirements.txt
-python -m sound_mixer
-```
-
-## Building a standalone executable
-
-```
-python build.py
-```
-
-`build.py` checks that all packages in `requirements.txt` are installed at
-the required versions. If anything is missing or outdated, it lists the
-packages and asks whether to install them with `pip` before continuing. It
-then runs PyInstaller and produces `dist/SoundMixer.exe`.
-
-`settings.json` is created next to the executable the first time it runs.
+<details>
+<summary>Extra details</summary>
 
 ## Settings file (`settings.json`)
+
+`settings.json` is created next to the executable the first time it runs.
 
 The settings file is plain JSON, stored next to the application (or next to
 `SoundMixer.exe` for the packaged build), and is safe to edit by hand while
@@ -101,16 +121,6 @@ names such as `Ctrl (Left)`, `Alt (Left)`, and `NumPad 5` as selectors inside
 the same shortcut input. Modifier keys: `ctrl`, `alt`, `shift`, `win`. Numpad
 digit keys are written as `num0`-`num9`.
 
-## Running the tests
-
-```
-python -m pytest
-```
-
-Tests run in parallel via `pytest-xdist` (configured in `pytest.ini`). Tests
-that need real Windows APIs (audio devices, the registry) are skipped on
-non-Windows platforms.
-
 ## Known limitations
 
 - True exclusive-fullscreen games (not borderless or "fullscreen windowed")
@@ -135,8 +145,9 @@ non-Windows platforms.
   disconnected or resolution changes, the overlay may appear off-screen and
   need to be dragged back manually.
 - If `SoundMixer.exe` is moved after enabling autostart, the registry entry
-  still points at the old path; re-enable autostart from Settings to update
-  it.
+still points at the old path; re-enable autostart from Settings to update
+it.
+  </details>
 
 ## Supported languages
 
