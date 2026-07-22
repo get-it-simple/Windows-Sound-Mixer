@@ -73,6 +73,15 @@ non-Windows platforms.
   administrator rights required), toggled with a switch in Settings.
 - The interface scale in Settings is a slider that applies to the overlay
 immediately as it's dragged.
+- Settings → Sub-process Management lets you flag host applications (e.g.
+  sandbox or launcher tools) that spawn child processes without triggering
+  the normal audio-session notification. While a flagged app is running, its
+  child processes are re-scanned on a shared, configurable interval so they
+  still get their default/persisted volume.
+- A small switch in the overlay's title bar (before the Settings button)
+  turns that background scanning on or off for the current session. It's
+  hidden unless at least one managed app is enabled, and it always starts
+  off on launch — configuring apps never costs anything until you flip it on.
   </details>
 
 <details>
@@ -103,6 +112,7 @@ is migrated automatically on load.
 | `transparency_enabled` | bool            | Whether the overlay background uses the translucent acrylic effect. If disabled, the overlay has a solid background.                                            |
 | `ignored_apps`         | array of string | Lowercase executable names (e.g. `"discord.exe"`) hidden from the main entry list. Ignored entries can be revealed via the expand button.                       |
 | `language`             | string          | UI language code (`"en"`, `"uk"`) or `"system"` to follow the Windows locale. Defaults to `"system"`. Changes take effect immediately when saved from Settings. |
+| `subprocess_management` | object          | `{ "interval_seconds": int, "apps": [{ "path": string, "enabled": bool }] }` - shared polling interval and the list of host executables (e.g. sandbox/launcher apps) whose child processes need active background scanning because they don't trigger the normal session-created event. The scan itself is also gated by a session-only on/off switch in the overlay (not persisted - always starts off). |
 
 ### Hotkey actions
 

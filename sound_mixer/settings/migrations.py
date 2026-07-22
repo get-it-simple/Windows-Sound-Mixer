@@ -29,10 +29,27 @@ def _migrate_2_to_3(data: dict) -> dict:
     return data
 
 
+def _migrate_3_to_4(data: dict) -> dict:
+    data = dict(data)
+    data.setdefault("process_monitor", {"interval_seconds": 5, "apps": []})
+    data["version"] = 4
+    return data
+
+
+def _migrate_4_to_5(data: dict) -> dict:
+    data = dict(data)
+    old = data.pop("process_monitor", None)
+    data.setdefault("subprocess_management", old or {"interval_seconds": 5, "apps": []})
+    data["version"] = 5
+    return data
+
+
 MIGRATIONS = {
     0: _migrate_0_to_1,
     1: _migrate_1_to_2,
     2: _migrate_2_to_3,
+    3: _migrate_3_to_4,
+    4: _migrate_4_to_5,
 }
 
 

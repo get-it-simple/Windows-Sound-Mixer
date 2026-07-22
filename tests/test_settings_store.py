@@ -354,3 +354,75 @@ def test_language_round_trip_to_system(tmp_path):
     reloaded = SettingsStore(path)
     reloaded.load()
     assert reloaded.get_language() == "system"
+
+
+def test_subprocess_management_interval_default_and_round_trip(tmp_path):
+    path = tmp_path / "settings.json"
+    store = SettingsStore(path)
+    store.load()
+
+    assert store.get_subprocess_management_interval_seconds() == 5
+
+    store.set_subprocess_management_interval_seconds(30)
+    assert store.get_subprocess_management_interval_seconds() == 30
+
+    reloaded = SettingsStore(path)
+    reloaded.load()
+    assert reloaded.get_subprocess_management_interval_seconds() == 30
+
+
+def test_subprocess_management_interval_clamps_to_minimum(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+
+    store.set_subprocess_management_interval_seconds(0)
+    assert store.get_subprocess_management_interval_seconds() == 1
+
+    store.set_subprocess_management_interval_seconds(-5)
+    assert store.get_subprocess_management_interval_seconds() == 1
+
+
+def test_managed_apps_default_empty(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+
+    assert store.get_managed_apps() == []
+
+
+def test_set_managed_apps_persists_and_round_trips(tmp_path):
+    path = tmp_path / "settings.json"
+    store = SettingsStore(path)
+    store.load()
+
+    store.set_managed_apps([{"path": "C:/Games/Sandbox.exe", "enabled": True}])
+
+    assert store.get_managed_apps() == [{"path": "C:/Games/Sandbox.exe", "enabled": True}]
+
+    reloaded = SettingsStore(path)
+    reloaded.load()
+    assert reloaded.get_managed_apps() == [{"path": "C:/Games/Sandbox.exe", "enabled": True}]
+
+
+def test_set_managed_apps_dedupes_case_insensitively(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+
+    store.set_managed_apps(
+        [
+            {"path": "C:/Games/Sandbox.exe", "enabled": True},
+            {"path": "c:/games/sandbox.exe", "enabled": False},
+        ]
+    )
+
+    assert store.get_managed_apps() == [{"path": "C:/Games/Sandbox.exe", "enabled": True}]
+
+
+def test_get_managed_apps_returns_a_copy(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+    store.set_managed_apps([{"path": "game.exe", "enabled": True}])
+
+    apps = store.get_managed_apps()
+    apps[0]["enabled"] = False
+
+    assert store.get_managed_apps()[0]["enabled"] is True

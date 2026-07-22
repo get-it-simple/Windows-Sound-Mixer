@@ -39,6 +39,7 @@ def make_app() -> SoundMixerApp:
     instance.overlay = None
     instance.hotkeys = FakeHotkeys()
     instance.tray = FakeTray()
+    instance.subprocess_manager = None
     return instance
 
 
@@ -49,7 +50,7 @@ def test_open_settings_stops_hotkeys_while_dialog_is_open(monkeypatch):
         class DialogCode:
             Accepted = 1
 
-        def __init__(self, settings, autostart=None, hotkeys=None, overlay=None, parent=None) -> None:
+        def __init__(self, settings, autostart=None, hotkeys=None, overlay=None, subprocess_manager=None, parent=None) -> None:
             events.append(("created", list(hotkeys.calls)))
             self.hotkeys = hotkeys
 

@@ -86,3 +86,58 @@ def test_migrates_v2_preserves_existing_language():
     migrated = migrate(v2)
 
     assert migrated["language"] == "uk"
+
+
+def test_migrates_v3_to_current_adds_subprocess_management():
+    v3 = {
+        "version": 3,
+        "master_volume": 0.5,
+    }
+
+    migrated = migrate(v3)
+
+    assert migrated["version"] == CURRENT_VERSION
+    assert migrated["subprocess_management"] == {"interval_seconds": 5, "apps": []}
+    assert "process_monitor" not in migrated
+
+
+def test_migrates_v3_preserves_existing_process_monitor_data_through_rename():
+    v3 = {
+        "version": 3,
+        "process_monitor": {"interval_seconds": 10, "apps": [{"path": "C:/sandbox.exe", "enabled": True}]},
+    }
+
+    migrated = migrate(v3)
+
+    assert migrated["subprocess_management"] == {
+        "interval_seconds": 10,
+        "apps": [{"path": "C:/sandbox.exe", "enabled": True}],
+    }
+    assert "process_monitor" not in migrated
+
+
+def test_migrates_v4_to_v5_renames_process_monitor_to_subprocess_management():
+    v4 = {
+        "version": 4,
+        "process_monitor": {"interval_seconds": 15, "apps": [{"path": "C:/sandbox.exe", "enabled": False}]},
+    }
+
+    migrated = migrate(v4)
+
+    assert migrated["version"] == CURRENT_VERSION
+    assert migrated["subprocess_management"] == {
+        "interval_seconds": 15,
+        "apps": [{"path": "C:/sandbox.exe", "enabled": False}],
+    }
+    assert "process_monitor" not in migrated
+
+
+def test_migrates_v4_to_v5_defaults_when_process_monitor_missing():
+    v4 = {
+        "version": 4,
+        "master_volume": 0.5,
+    }
+
+    migrated = migrate(v4)
+
+    assert migrated["subprocess_management"] == {"interval_seconds": 5, "apps": []}

@@ -4,7 +4,7 @@ from PySide6.QtWidgets import QFileIconProvider, QToolButton, QToolTip
 
 from sound_mixer.paths import resource_path
 
-ICON_NAMES = ("volume", "muted", "settings", "help", "pin", "close", "toggle_on", "toggle_off", "app", "logo", "hide", "arrow_up", "dropdown_arrow")
+ICON_NAMES = ("volume", "muted", "settings", "help", "pin", "close", "toggle_on", "toggle_off", "app", "logo", "hide", "arrow_up", "dropdown_arrow", "trash")
 
 _icon_cache: dict[str, QIcon] = {}
 _app_icon_cache: dict[str, QIcon] = {}
@@ -47,6 +47,19 @@ def _extract_app_icon(exe_path: str) -> QIcon:
         if not icon.isNull():
             return icon
     return load_icon("app")
+
+
+def bordered_input_style(object_name: str) -> str:
+    return f"""
+QFrame#{object_name} {{
+    border: 1px solid #3f3f42;
+    border-radius: 4px;
+    background: #2d2d30;
+}}
+QFrame#{object_name}:focus {{
+    border-color: #6b6a7c;
+}}
+"""
 
 
 def toggle_switch_style(object_name: str) -> str:

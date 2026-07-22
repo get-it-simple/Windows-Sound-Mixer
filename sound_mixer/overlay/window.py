@@ -1,16 +1,18 @@
 import ctypes
 import sys
 from ctypes import wintypes
+from typing import Optional
 
 from PySide6.QtCore import QSize, Qt, QTimer, Signal
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QCheckBox, QFrame, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from sound_mixer import __version__
 from sound_mixer.audio.session_listener import AudioSessionListener
 from sound_mixer.i18n import t
 from sound_mixer.mixer.model import MixerModel
+from sound_mixer.mixer.subprocess_manager import SubprocessManager
 from sound_mixer.overlay.entry_widget import EntryWidget
-from sound_mixer.overlay.icons import DelayedTooltipButton, load_icon
+from sound_mixer.overlay.icons import DelayedTooltipButton, load_icon, toggle_switch_style
 from sound_mixer.overlay.win_effects import WM_DWMCOLORIZATIONCOLORCHANGED, apply_acrylic_effect, get_accent_color
 from sound_mixer.settings.store import SettingsStore
 
@@ -200,10 +202,17 @@ class OverlayWindow(QWidget):
     visibility_changed = Signal(bool)
     settings_requested = Signal()
 
-    def __init__(self, model: MixerModel, settings: SettingsStore, parent=None) -> None:
+    def __init__(
+        self,
+        model: MixerModel,
+        settings: SettingsStore,
+        subprocess_manager: Optional[SubprocessManager] = None,
+        parent=None,
+    ) -> None:
         super().__init__(parent)
         self._model = model
         self._settings = settings
+        self._subprocess_manager = subprocess_manager
         self._entry_widgets: list[EntryWidget] = []
         self._ignored_widgets: list[EntryWidget] = []
         self._ignored_expanded = False
@@ -231,6 +240,7 @@ class OverlayWindow(QWidget):
 
         self._session_listener = AudioSessionListener(self._on_new_session)
 
+        self.sync_subprocess_management_toggle()
         self._sync_entry_widgets()
 
         if sys.platform == "win32":
@@ -359,6 +369,15 @@ class OverlayWindow(QWidget):
         title_text_layout.addWidget(name_label)
         title_text_layout.addWidget(version_label)
 
+        subprocess_management_toggle = QCheckBox(title_bar)
+        subprocess_management_toggle.setObjectName("subprocessManagementToggle")
+        subprocess_management_toggle.setStyleSheet(toggle_switch_style("subprocessManagementToggle"))
+        subprocess_management_toggle.setToolTip(t("subprocess_management_toggle_tooltip"))
+        subprocess_management_toggle.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        subprocess_management_toggle.setVisible(False)
+        subprocess_management_toggle.toggled.connect(self._on_subprocess_management_toggled)
+        self._subprocess_management_toggle = subprocess_management_toggle
+
         settings_button = DelayedTooltipButton(title_bar)
         settings_button.setIcon(load_icon("settings"))
         settings_button.setToolTip(t("settings_tooltip"))
@@ -384,6 +403,7 @@ class OverlayWindow(QWidget):
         layout.addWidget(icon_label)
         layout.addLayout(title_text_layout)
         layout.addStretch(1)
+        layout.addWidget(subprocess_management_toggle)
         layout.addWidget(settings_button)
         layout.addWidget(guide_button)
         layout.addWidget(close_button)
@@ -624,6 +644,19 @@ class OverlayWindow(QWidget):
 
         GuideDialog(parent=self).exec()
 
+    def sync_subprocess_management_toggle(self) -> None:
+        if self._subprocess_manager is None:
+            self._subprocess_management_toggle.setVisible(False)
+            return
+        self._subprocess_management_toggle.setVisible(self._subprocess_manager.has_enabled_apps())
+        self._subprocess_management_toggle.blockSignals(True)
+        self._subprocess_management_toggle.setChecked(self._subprocess_manager.is_active())
+        self._subprocess_management_toggle.blockSignals(False)
+
+    def _on_subprocess_management_toggled(self, checked: bool) -> None:
+        if self._subprocess_manager is not None:
+            self._subprocess_manager.set_active(checked)
+
     def retranslate(self) -> None:
         self.setWindowTitle(t("sound_mixer_title"))
         self._title_name_label.setText(t("sound_mixer_title"))
@@ -632,6 +665,7 @@ class OverlayWindow(QWidget):
         self._settings_button.setToolTip(t("settings_tooltip"))
         self._guide_button.setToolTip(t("controls_guide_tooltip"))
         self._close_button.setToolTip(t("close_tooltip"))
+        self._subprocess_management_toggle.setToolTip(t("subprocess_management_toggle_tooltip"))
         for widget in self._entry_widgets:
             widget.retranslate()
         for widget in self._ignored_widgets:

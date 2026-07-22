@@ -214,6 +214,93 @@ def test_language_combo_reflects_saved_setting(qapp, settings):
     assert window._language_combo.currentData() == "uk"
 
 
+def test_subprocess_management_tab_builds_row_per_persisted_app(qapp, settings):
+    settings.set_managed_apps([{"path": "C:/Games/sandbox.exe", "enabled": False}])
+    window = SettingsWindow(settings)
+
+    assert len(window._managed_app_rows) == 1
+    row = window._managed_app_rows[0]
+    assert row.path == "C:/Games/sandbox.exe"
+    assert row.is_enabled() is False
+    assert row._name_label.toolTip() == "C:/Games/sandbox.exe"
+
+
+def test_subprocess_management_interval_spinbox_reflects_settings(qapp, settings):
+    settings.set_subprocess_management_interval_seconds(15)
+    window = SettingsWindow(settings)
+
+    assert window._subprocess_interval_spinbox.value() == 15
+
+
+def test_dropping_app_adds_row_with_resolved_name(qapp, settings):
+    import sys
+
+    window = SettingsWindow(settings)
+
+    window._on_managed_app_dropped(sys.executable)
+
+    assert len(window._managed_app_rows) == 1
+    assert window._managed_app_rows[0].path == sys.executable
+    assert window._managed_app_rows[0]._name_label.text()
+
+
+def test_dropping_same_app_path_twice_does_not_duplicate(qapp, settings):
+    window = SettingsWindow(settings)
+
+    window._on_managed_app_dropped("C:/Games/Sandbox.exe")
+    window._on_managed_app_dropped("c:/games/sandbox.exe")
+
+    assert len(window._managed_app_rows) == 1
+
+
+def test_removing_managed_app_row(qapp, settings):
+    window = SettingsWindow(settings)
+    window._on_managed_app_dropped("C:/Games/Sandbox.exe")
+    row = window._managed_app_rows[0]
+
+    row.remove_requested.emit()
+
+    assert window._managed_app_rows == []
+
+
+def test_accept_saves_subprocess_management_settings(qapp, settings):
+    window = SettingsWindow(settings)
+    window._subprocess_interval_spinbox.setValue(20)
+    window._on_managed_app_dropped("C:/Games/Sandbox.exe")
+
+    window.accept()
+
+    assert settings.get_subprocess_management_interval_seconds() == 20
+    assert settings.get_managed_apps() == [{"path": "C:/Games/Sandbox.exe", "enabled": True}]
+
+
+def test_accept_syncs_subprocess_manager(qapp, settings):
+    class FakeSubprocessManager:
+        def __init__(self) -> None:
+            self.synced = False
+
+        def sync(self) -> None:
+            self.synced = True
+
+    subprocess_manager = FakeSubprocessManager()
+    window = SettingsWindow(settings, subprocess_manager=subprocess_manager)
+
+    window.accept()
+
+    assert subprocess_manager.synced is True
+
+
+def test_cancel_does_not_persist_subprocess_management_changes(qapp, settings):
+    window = SettingsWindow(settings)
+    window._subprocess_interval_spinbox.setValue(45)
+    window._on_managed_app_dropped("C:/Games/Sandbox.exe")
+
+    window.reject()
+
+    assert settings.get_subprocess_management_interval_seconds() == 5
+    assert settings.get_managed_apps() == []
+
+
 def test_accept_saves_language(qapp, settings):
     window = SettingsWindow(settings)
     uk_index = window._language_combo.findData("uk")

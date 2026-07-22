@@ -1,4 +1,4 @@
-CURRENT_VERSION = 3
+CURRENT_VERSION = 5
 
 MIN_UI_SCALE = 0.5
 MAX_UI_SCALE = 3.0
@@ -36,4 +36,8 @@ DEFAULT_SETTINGS = {
     "transparency_enabled": True,
     "ignored_apps": [],
     "language": "system",
+    "subprocess_management": {
+        "interval_seconds": 5,
+        "apps": [],
+    },
 }

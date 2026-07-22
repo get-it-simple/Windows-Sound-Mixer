@@ -23,10 +23,12 @@ from sound_mixer.autostart.registry import AutostartManager, AutostartUnavailabl
 from sound_mixer.hotkeys.binding import normalize_combo, parse_combo
 from sound_mixer.hotkeys.manager import HotkeyManager
 from sound_mixer.i18n import AVAILABLE_LANGUAGES, language_display_name, t
-from sound_mixer.overlay.icons import icon_path, load_icon, toggle_switch_style
+from sound_mixer.mixer.subprocess_manager import SubprocessManager
+from sound_mixer.overlay.icons import bordered_input_style, icon_path, load_icon, toggle_switch_style
 from sound_mixer.overlay.window import OverlayWindow
 from sound_mixer.settings.schema import MAX_UI_SCALE, MIN_UI_SCALE
 from sound_mixer.settings.store import SettingsStore
+from sound_mixer.settings_window.managed_apps_editor import AppDropZone, ManagedAppRow
 
 MODIFIER_OPTIONS = [
     ("", "Select"),
@@ -91,18 +93,7 @@ class HotkeyComboEditor(QFrame):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMinimumHeight(56)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.setStyleSheet(
-            """
-            QFrame#hotkeyComboInput {
-                border: 1px solid #3f3f42;
-                border-radius: 4px;
-                background: #2d2d30;
-            }
-            QFrame#hotkeyComboInput:focus {
-                border-color: #6b6a7c;
-            }
-            """
-        )
+        self.setStyleSheet(bordered_input_style("hotkeyComboInput"))
 
         self._select_layout = QHBoxLayout(self)
         self._select_layout.setContentsMargins(10, 10, 10, 10)
@@ -299,6 +290,7 @@ class SettingsWindow(QDialog):
         autostart: Optional[AutostartManager] = None,
         hotkeys: Optional[HotkeyManager] = None,
         overlay: Optional[OverlayWindow] = None,
+        subprocess_manager: Optional[SubprocessManager] = None,
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
@@ -306,7 +298,9 @@ class SettingsWindow(QDialog):
         self._autostart = autostart
         self._hotkeys = hotkeys
         self._overlay = overlay
+        self._subprocess_manager = subprocess_manager
         self._hotkey_rows: list[tuple[str, HotkeyComboEditor, QCheckBox]] = []
+        self._managed_app_rows: list[ManagedAppRow] = []
 
         self.setWindowTitle(t("settings_title"))
         self.setWindowIcon(load_icon("logo"))
@@ -316,6 +310,7 @@ class SettingsWindow(QDialog):
         tabs = QTabWidget(self)
         tabs.addTab(self._build_general_tab(), t("tab_general"))
         tabs.addTab(self._build_hotkeys_tab(), t("tab_hotkeys"))
+        tabs.addTab(self._build_subprocess_management_tab(), t("tab_subprocess_management"))
         tabs.addTab(self._build_about_tab(), t("tab_about"))
         layout.addWidget(tabs)
 
@@ -441,6 +436,49 @@ class SettingsWindow(QDialog):
         layout.addStretch(1)
         return tab
 
+    def _build_subprocess_management_tab(self) -> QWidget:
+        tab = QWidget(self)
+        layout = QVBoxLayout(tab)
+
+        self._subprocess_interval_spinbox = QSpinBox(tab)
+        self._subprocess_interval_spinbox.setRange(1, 3600)
+        self._subprocess_interval_spinbox.setSuffix(" s")
+        self._subprocess_interval_spinbox.setValue(self._settings.get_subprocess_management_interval_seconds())
+        layout.addWidget(self._field(t("subprocess_scan_interval"), self._subprocess_interval_spinbox, tab))
+
+        drop_zone = AppDropZone(tab)
+        drop_zone.app_dropped.connect(self._on_managed_app_dropped)
+        layout.addWidget(drop_zone)
+        self._managed_app_drop_zone = drop_zone
+
+        rows_container = QWidget(tab)
+        self._managed_app_rows_layout = QVBoxLayout(rows_container)
+        self._managed_app_rows_layout.setContentsMargins(0, 8, 0, 0)
+        self._managed_app_rows_layout.setSpacing(6)
+        layout.addWidget(rows_container)
+
+        for app in self._settings.get_managed_apps():
+            self._add_managed_app_row(app["path"], app["enabled"])
+
+        layout.addStretch(1)
+        return tab
+
+    def _on_managed_app_dropped(self, path: str) -> None:
+        if any(row.path.lower() == path.lower() for row in self._managed_app_rows):
+            return
+        self._add_managed_app_row(path, True)
+
+    def _add_managed_app_row(self, path: str, enabled: bool) -> None:
+        row = ManagedAppRow(path, enabled, self)
+        row.remove_requested.connect(lambda r=row: self._remove_managed_app_row(r))
+        self._managed_app_rows_layout.addWidget(row)
+        self._managed_app_rows.append(row)
+
+    def _remove_managed_app_row(self, row: ManagedAppRow) -> None:
+        self._managed_app_rows.remove(row)
+        self._managed_app_rows_layout.removeWidget(row)
+        row.deleteLater()
+
     def _build_about_tab(self) -> QWidget:
         tab = QWidget(self)
         layout = QVBoxLayout(tab)
@@ -482,6 +520,10 @@ class SettingsWindow(QDialog):
         self._settings.set_scroll_step(self._scroll_step_spinbox.value() / 100)
         self._settings.set_default_app_volume(self._default_app_volume_spinbox.value() / 100)
         self._settings.set_language(self._language_combo.currentData())
+        self._settings.set_subprocess_management_interval_seconds(self._subprocess_interval_spinbox.value())
+        self._settings.set_managed_apps(
+            [{"path": row.path, "enabled": row.is_enabled()} for row in self._managed_app_rows]
+        )
 
         for action, combo, enabled in hotkey_updates:
             self._settings.set_hotkey(action, combo, enabled)
@@ -500,6 +542,9 @@ class SettingsWindow(QDialog):
 
         if self._overlay is not None:
             self._overlay.apply_scale()
+
+        if self._subprocess_manager is not None:
+            self._subprocess_manager.sync()
 
         super().accept()
 

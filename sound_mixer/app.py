@@ -8,6 +8,7 @@ from sound_mixer.audio import create_backend
 from sound_mixer.autostart.registry import AutostartManager, AutostartUnavailableError
 from sound_mixer.hotkeys.manager import HotkeyManager
 from sound_mixer.mixer.model import MixerModel
+from sound_mixer.mixer.subprocess_manager import SubprocessManager
 from sound_mixer.overlay.window import OverlayWindow
 from sound_mixer.paths import default_settings_path
 from sound_mixer.settings.store import SettingsStore
@@ -36,7 +37,9 @@ class SoundMixerApp:
         i18n.setup(self.settings.get_language())
         self.backend = create_backend()
         self.model = MixerModel(self.backend, self.settings)
-        self.overlay = OverlayWindow(self.model, self.settings)
+        self.subprocess_manager = SubprocessManager(self.settings, self._on_subprocess_manager_tick, parent=self.qt_app)
+        self.subprocess_manager.sync()
+        self.overlay = OverlayWindow(self.model, self.settings, subprocess_manager=self.subprocess_manager)
         self.overlay.visibility_changed.connect(self._on_overlay_visibility_changed)
         self.overlay.settings_requested.connect(self._open_settings)
 
@@ -79,6 +82,7 @@ class SoundMixerApp:
             autostart=self.autostart,
             hotkeys=self.hotkeys,
             overlay=self.overlay,
+            subprocess_manager=self.subprocess_manager,
             parent=self.overlay,
         )
         try:
@@ -87,6 +91,7 @@ class SoundMixerApp:
                 i18n.setup(self.settings.get_language())
                 if self.overlay is not None:
                     self.overlay.retranslate()
+                    self.overlay.sync_subprocess_management_toggle()
                 self.tray.retranslate()
                 self.tray.set_autostart_enabled(self.settings.get_autostart_enabled())
         finally:
@@ -133,6 +138,10 @@ class SoundMixerApp:
 
     def _on_mute_toggle_hotkey(self) -> None:
         self.model.toggle_mute()
+        self.overlay.refresh_view()
+
+    def _on_subprocess_manager_tick(self) -> None:
+        self.model.refresh()
         self.overlay.refresh_view()
 
     def run(self) -> int:

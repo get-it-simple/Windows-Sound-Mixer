@@ -202,6 +202,29 @@ class SettingsStore:
         self.data["language"] = language
         self.save()
 
+    def get_subprocess_management_interval_seconds(self) -> int:
+        return self.data["subprocess_management"]["interval_seconds"]
+
+    def set_subprocess_management_interval_seconds(self, seconds: int) -> None:
+        self.data["subprocess_management"]["interval_seconds"] = max(1, int(seconds))
+        self.save()
+
+    def get_managed_apps(self) -> list[dict]:
+        return copy.deepcopy(self.data["subprocess_management"]["apps"])
+
+    def set_managed_apps(self, apps: list[dict]) -> None:
+        seen: set[str] = set()
+        deduped = []
+        for app in apps:
+            path = app["path"]
+            key = path.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append({"path": path, "enabled": bool(app.get("enabled", True))})
+        self.data["subprocess_management"]["apps"] = deduped
+        self.save()
+
 
 def _merge_defaults(data: dict, defaults: dict) -> dict:
     result = copy.deepcopy(defaults)

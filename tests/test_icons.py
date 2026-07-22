@@ -38,6 +38,12 @@ def test_load_icon_returns_cached_instance(qapp):
     assert first.cacheKey() == second.cacheKey()
 
 
+def test_trash_icon_loads(qapp):
+    icon = load_icon("trash")
+
+    assert not icon.isNull()
+
+
 def test_load_app_icon_cached_per_path(qapp):
     first = load_app_icon(sys.executable)
     second = load_app_icon(sys.executable)
