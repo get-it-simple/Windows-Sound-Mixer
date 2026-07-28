@@ -256,6 +256,64 @@ def test_ignored_entries_empty_by_default(settings):
     assert model.ignored_entries == []
 
 
+def test_default_volume_reapplied_when_session_recreated_under_same_name(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+    store.set_default_app_volume(0.4)
+
+    backend = FakeAudioBackend(sessions=[], master_volume=1.0)
+    model = MixerModel(backend, store)
+
+    first_instance = FakeAudioSession(pid=300, process_name="nw.exe", display_name="Game A", volume=1.0)
+    backend.add_session(first_instance)
+    model.refresh()
+    assert first_instance.volume == pytest.approx(0.4)
+
+    backend.remove_session("nw.exe")
+    second_instance = FakeAudioSession(pid=301, process_name="nw.exe", display_name="Game B", volume=1.0)
+    backend.add_session(second_instance)
+    model.refresh()
+
+    assert second_instance.volume == pytest.approx(0.4)
+
+
+def test_versioned_executable_new_instance_gets_default(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+    store.set_default_app_volume(0.3)
+
+    backend = FakeAudioBackend(sessions=[], master_volume=1.0)
+    model = MixerModel(backend, store)
+
+    old_version = FakeAudioSession(pid=400, process_name="testddd1.5.1.2.6.exe", display_name="Game", volume=1.0)
+    backend.add_session(old_version)
+    model.refresh()
+    assert old_version.volume == pytest.approx(0.3)
+
+    backend.remove_session("testddd1.5.1.2.6.exe")
+    new_version = FakeAudioSession(pid=401, process_name="testddd1.5.1.2.7.exe", display_name="Game", volume=1.0)
+    backend.add_session(new_version)
+    model.refresh()
+
+    assert new_version.volume == pytest.approx(0.3)
+
+
+def test_running_instance_not_reapplied_on_refresh(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+    store.set_default_app_volume(0.4)
+
+    session = FakeAudioSession(pid=500, process_name="chrome.exe", display_name="Chrome", volume=1.0)
+    backend = FakeAudioBackend(sessions=[session], master_volume=1.0)
+    model = MixerModel(backend, store)
+    assert session.volume == pytest.approx(0.4)
+
+    session.set_volume(0.9)
+    model.refresh()
+
+    assert session.volume == pytest.approx(0.9)
+
+
 def test_default_volume_applied_to_new_session_after_initial_refresh(tmp_path):
     store = SettingsStore(tmp_path / "settings.json")
     store.load()

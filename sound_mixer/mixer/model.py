@@ -23,7 +23,7 @@ class MixerModel:
     def __init__(self, backend: AudioBackend, settings: SettingsStore):
         self._backend = backend
         self._settings = settings
-        self._seen_exes: set[str] = set()
+        self._known_pids: set[int] = set()
         self.entries: list[MixerEntry] = []
         self.ignored_entries: list[MixerEntry] = []
         self.focused_index = 0
@@ -42,10 +42,11 @@ class MixerModel:
 
         app_entries: list[MixerEntry] = []
         ignored_entries: list[MixerEntry] = []
+        current_pids: set[int] = set()
         for session in self._backend.enumerate_sessions():
             exe = session.process_name.lower()
-            if exe not in self._seen_exes:
-                self._seen_exes.add(exe)
+            current_pids.add(session.pid)
+            if session.pid not in self._known_pids:
                 session.set_volume(self._settings.get_app_volume(exe))
                 session.set_muted(self._settings.get_app_muted(exe))
 
@@ -61,6 +62,8 @@ class MixerModel:
                 ignored_entries.append(entry)
             else:
                 app_entries.append(entry)
+
+        self._known_pids = current_pids
 
         focused_key = None
         if self.entries and 0 <= self.focused_index < len(self.entries):
