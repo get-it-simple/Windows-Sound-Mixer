@@ -108,16 +108,23 @@ jobs:
         run: |
           prev_tag=$(git describe --tags --abbrev=0 HEAD 2>/dev/null || echo "")
           if [ -n "$prev_tag" ]; then
-            commits=$(git log "${prev_tag}..HEAD" --pretty=format:"- %s" --no-merges)
+            range="${prev_tag}..HEAD"
           else
-            commits=$(git log --pretty=format:"- %s" --no-merges)
+            range="HEAD"
           fi
+          repo_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
           {
             echo "## Changes"
             echo ""
-            echo "$commits"
+            git log "$range" --no-merges --format="%H%x09%h%x09%s" | while IFS=$'\t' read -r sha short subject; do
+              echo "- [\`${short}\`](${repo_url}/commit/${sha}) ${subject}"
+            done
             echo ""
-            echo "Commit: ${{ needs.prepare.outputs.short_sha }}"
+            if [ -n "$prev_tag" ]; then
+              echo "Previous release: [${prev_tag}](${repo_url}/releases/tag/${prev_tag})"
+              echo ""
+            fi
+            echo "Commit: [\`${{ needs.prepare.outputs.short_sha }}\`](${repo_url}/commit/${{ needs.prepare.outputs.sha }})"
           } > release_notes.md
 
       - name: Create and push tag
