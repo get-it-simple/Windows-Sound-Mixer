@@ -62,8 +62,10 @@ class SoundMixerApp:
             on_exit=self.qt_app.quit,
             overlay_visible=self.settings.get_overlay_geometry()["visible_on_start"],
             autostart_enabled=self.settings.get_autostart_enabled(),
+            muted=self.model.is_master_muted(),
         )
         self.tray.show()
+        self.model.set_master_mute_listener(self.tray.set_muted)
 
     def _set_overlay_visible(self, visible: bool) -> None:
         if visible:

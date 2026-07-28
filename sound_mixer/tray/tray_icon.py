@@ -16,9 +16,12 @@ class TrayIcon(QSystemTrayIcon):
         on_exit: Callable[[], None],
         overlay_visible: bool = False,
         autostart_enabled: bool = False,
+        muted: bool = False,
         parent: QWidget = None,
     ) -> None:
-        super().__init__(load_icon("volume"), parent)
+        super().__init__(parent)
+        self._muted = muted
+        self._apply_icon()
         self.setToolTip(t("tray_tooltip"))
 
         menu = QMenu()
@@ -53,6 +56,15 @@ class TrayIcon(QSystemTrayIcon):
     def _on_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
             self.toggle_overlay_action.trigger()
+
+    def _apply_icon(self) -> None:
+        self.setIcon(load_icon("muted" if self._muted else "volume"))
+
+    def set_muted(self, muted: bool) -> None:
+        if muted == self._muted:
+            return
+        self._muted = muted
+        self._apply_icon()
 
     def set_overlay_visible(self, visible: bool) -> None:
         self.toggle_overlay_action.blockSignals(True)

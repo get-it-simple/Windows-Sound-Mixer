@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import Callable, Optional
 
 from sound_mixer.audio.interface import AudioBackend
 from sound_mixer.settings.store import SettingsStore
@@ -27,7 +27,23 @@ class MixerModel:
         self.entries: list[MixerEntry] = []
         self.ignored_entries: list[MixerEntry] = []
         self.focused_index = 0
+        self._on_master_mute_changed: Optional[Callable[[bool], None]] = None
+        self._last_master_muted: Optional[bool] = None
         self.refresh()
+
+    def set_master_mute_listener(self, callback: Callable[[bool], None]) -> None:
+        self._on_master_mute_changed = callback
+        callback(self.is_master_muted())
+
+    def is_master_muted(self) -> bool:
+        return bool(self.entries and self.entries[0].muted)
+
+    def _notify_master_mute(self) -> None:
+        muted = self.is_master_muted()
+        if muted != self._last_master_muted:
+            self._last_master_muted = muted
+            if self._on_master_mute_changed is not None:
+                self._on_master_mute_changed(muted)
 
     def refresh(self) -> None:
         self._backend.refresh()
@@ -82,6 +98,8 @@ class MixerModel:
         else:
             self.focused_index = max(0, min(self.focused_index, len(self.entries) - 1))
 
+        self._notify_master_mute()
+
     @property
     def focused_entry(self) -> MixerEntry:
         return self.entries[self.focused_index]
@@ -123,6 +141,7 @@ class MixerModel:
             self._set_session_muted(entry.key, muted)
             self._settings.set_app_muted(entry.key, muted)
 
+        self._notify_master_mute()
         return muted
 
     def ignore_app(self, key: str) -> None:

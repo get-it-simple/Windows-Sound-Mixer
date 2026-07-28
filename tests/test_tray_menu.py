@@ -1,5 +1,6 @@
 from PySide6.QtWidgets import QSystemTrayIcon
 
+from sound_mixer.overlay.icons import load_icon
 from sound_mixer.tray.tray_icon import TrayIcon
 
 
@@ -98,3 +99,25 @@ def test_left_click_triggers_overlay_toggle(qapp):
     tray._on_activated(QSystemTrayIcon.ActivationReason.Trigger)
 
     assert stubs.toggle_overlay_calls == [True]
+
+
+def test_default_icon_is_volume(qapp):
+    tray, _ = make_tray(qapp)
+
+    assert tray.icon().cacheKey() == load_icon("volume").cacheKey()
+
+
+def test_muted_on_start_shows_muted_icon(qapp):
+    tray, _ = make_tray(qapp, muted=True)
+
+    assert tray.icon().cacheKey() == load_icon("muted").cacheKey()
+
+
+def test_set_muted_switches_icon(qapp):
+    tray, _ = make_tray(qapp, muted=False)
+
+    tray.set_muted(True)
+    assert tray.icon().cacheKey() == load_icon("muted").cacheKey()
+
+    tray.set_muted(False)
+    assert tray.icon().cacheKey() == load_icon("volume").cacheKey()

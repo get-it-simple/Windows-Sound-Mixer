@@ -149,6 +149,53 @@ def test_toggle_mute(settings):
     assert settings.get_app_muted("chrome.exe") is True
 
 
+def test_master_mute_listener_called_with_current_state_on_register(settings):
+    backend = FakeAudioBackend(sessions=[], master_volume=0.5, master_muted=True)
+    model = MixerModel(backend, settings)
+
+    received: list[bool] = []
+    model.set_master_mute_listener(received.append)
+
+    assert received == [True]
+
+
+def test_master_mute_listener_notified_when_master_muted(settings):
+    model = MixerModel(make_backend(), settings)
+
+    received: list[bool] = []
+    model.set_master_mute_listener(received.append)
+    master_index = next(i for i, e in enumerate(model.entries) if e.key == MASTER_KEY)
+
+    model.toggle_mute(master_index)
+
+    assert received == [False, True]
+
+
+def test_master_mute_listener_not_notified_when_app_muted(settings):
+    model = MixerModel(make_backend(), settings)
+
+    received: list[bool] = []
+    model.set_master_mute_listener(received.append)
+    chrome_index = next(i for i, e in enumerate(model.entries) if e.key == "chrome.exe")
+
+    model.toggle_mute(chrome_index)
+
+    assert received == [False]
+
+
+def test_master_mute_listener_notified_on_external_change(settings):
+    backend = make_backend()
+    model = MixerModel(backend, settings)
+
+    received: list[bool] = []
+    model.set_master_mute_listener(received.append)
+
+    backend.set_master_mute(True)
+    model.refresh()
+
+    assert received == [False, True]
+
+
 def test_session_removed_resets_focus(settings):
     backend = make_backend()
     model = MixerModel(backend, settings)
