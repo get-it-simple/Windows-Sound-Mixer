@@ -125,6 +125,23 @@ jobs:
           $url = "https://prdownloads.sourceforge.net/nsis/nsis-3.12-setup.exe"
           $setup = Join-Path $env:RUNNER_TEMP "nsis-3.12-setup.exe"
           Invoke-WebRequest -Uri $url -OutFile $setup
+
+          # SourceForge can return an HTML landing page with a signed, short-lived
+          # mirror URL instead of following it as an HTTP redirect.
+          $header = [System.IO.File]::ReadAllBytes($setup)[0..1]
+          if ($header[0] -ne 0x4D -or $header[1] -ne 0x5A) {
+            $html = Get-Content -LiteralPath $setup -Raw
+            $match = [regex]::Match($html, 'http-equiv="refresh" content="\d+; url=([^"\s]+)"')
+            if (-not $match.Success) { throw "NSIS download did not return an executable or a SourceForge mirror redirect" }
+
+            $mirrorUrl = [System.Net.WebUtility]::HtmlDecode($match.Groups[1].Value)
+            $mirrorUri = [uri]$mirrorUrl
+            if ($mirrorUri.Scheme -ne 'https' -or -not $mirrorUri.Host.EndsWith('.sourceforge.net')) {
+              throw "Unexpected NSIS mirror URL: $mirrorUrl"
+            }
+            Invoke-WebRequest -Uri $mirrorUri -OutFile $setup
+          }
+
           $actual = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
           $expected = "3BC2B06253A7E4957111BE152AC6A536E0C7478A706E19DA814038DB5D706495"
           if ($actual -ne $expected) { throw "NSIS installer hash mismatch: $actual" }
