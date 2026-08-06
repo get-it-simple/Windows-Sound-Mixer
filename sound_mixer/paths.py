@@ -1,5 +1,10 @@
+import os
+import shutil
 import sys
 from pathlib import Path
+
+INSTALL_MARKER = ".sound-mixer-installed"
+INSTALLED_DATA_PARTS = ("GetItSimple", "SoundMixer")
 
 
 def _base_dir() -> Path:
@@ -17,4 +22,30 @@ def resource_path(*parts: str) -> Path:
 
 
 def default_settings_path() -> Path:
-    return _base_dir() / "settings.json"
+    base_dir = _base_dir()
+    if not getattr(sys, "frozen", False) or not (base_dir / INSTALL_MARKER).is_file():
+        return base_dir / "settings.json"
+
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if not local_app_data:
+        return base_dir / "settings.json"
+
+    target = Path(local_app_data).joinpath(*INSTALLED_DATA_PARTS, "settings.json")
+    _migrate_legacy_settings(base_dir / "settings.json", target)
+    return target
+
+
+def _migrate_legacy_settings(source: Path, target: Path) -> None:
+    if target.exists() or not source.is_file():
+        return
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_suffix(target.suffix + ".migrating")
+    try:
+        shutil.copy2(source, temporary)
+        os.replace(temporary, target)
+    except OSError:
+        try:
+            temporary.unlink()
+        except OSError:
+            pass

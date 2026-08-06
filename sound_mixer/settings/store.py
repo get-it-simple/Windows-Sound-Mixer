@@ -62,6 +62,7 @@ class SettingsStore:
             pass
 
     def save(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = self.path.with_suffix(self.path.suffix + ".tmp")
         with tmp_path.open("w", encoding="utf-8") as f:
             json.dump(self.data, f, indent=2)

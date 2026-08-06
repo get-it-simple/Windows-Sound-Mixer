@@ -27,6 +27,37 @@ the required versions. If anything is missing or outdated, it lists the
 packages and asks whether to install them with `pip` before continuing. It
 then runs PyInstaller and produces `dist/SoundMixer.exe`.
 
+## Building the NSIS installers
+
+NSIS 3.12 is required. Build the application first, then compile both x64
+installer scopes with warnings treated as errors:
+
+```powershell
+python build.py
+./scripts/build-installers.ps1 -Version 0.9.3 -MakeNsis "C:\Program Files (x86)\NSIS\makensis.exe"
+```
+
+The user installer writes to `%LOCALAPPDATA%\Programs\SoundMixer` without UAC.
+The machine installer writes to `%ProgramFiles%\SoundMixer` through an
+unelevated bootstrap and a controlled elevated file/registry phase. Both
+support normal interactive installation, `/S`, `/SILENTWITHPROGRESS`, and the
+standard NSIS `/D=<absolute-path>` override.
+
+To prepare the five release assets, checksums, and the four WinGet 1.12
+manifests locally:
+
+```powershell
+./scripts/prepare-release.ps1 -Version 0.9.3
+winget validate --manifest dist/winget
+```
+
+GitHub Actions tests branch and pull-request builds, but publishes a GitHub
+Release only for a pre-existing `X.Y.Z` tag that exactly matches
+`sound_mixer.__version__`. Optional Authenticode signing requires all three
+repository secrets: `WINDOWS_SIGNING_CERTIFICATE_BASE64`,
+`WINDOWS_SIGNING_CERTIFICATE_PASSWORD`, and `WINDOWS_TIMESTAMP_URL`. With none
+configured, the same release is produced unsigned and verified by SHA-256.
+
 ## Running the tests
 
 ```
@@ -89,12 +120,13 @@ immediately as it's dragged.
 
 ## Settings file (`settings.json`)
 
-`settings.json` is created next to the executable the first time it runs.
-
-The settings file is plain JSON, stored next to the application (or next to
-`SoundMixer.exe` for the packaged build), and is safe to edit by hand while
-the app is not running. If the format changes in a future version, the file
-is migrated automatically on load.
+For source and portable runs, `settings.json` is created next to the source
+tree or executable. An installed copy stores it in
+`%LOCALAPPDATA%\GetItSimple\SoundMixer\settings.json`, regardless of installer
+scope. A legacy file beside an installed executable is migrated atomically
+only when the target file does not already exist. The file is plain JSON and
+is safe to edit by hand while the app is not running. If the format changes
+in a future version, it is migrated automatically on load.
 
 | Field                  | Type            | Description                                                                                                                                                     |
 | ---------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
