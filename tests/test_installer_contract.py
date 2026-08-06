@@ -49,7 +49,7 @@ def test_silent_and_winget_installs_do_not_use_the_finish_launch_callback():
     assert "Scope: machine" in winget
 
 
-def test_winget_user_installer_can_run_from_an_administrator_context():
+def test_winget_installers_defer_elevation_to_the_installer():
     shell = shutil.which("pwsh") or shutil.which("powershell")
     assert shell is not None
 
@@ -92,8 +92,12 @@ def test_winget_user_installer_can_run_from_an_administrator_context():
     user_installer, machine_installer = manifest.split("- Architecture: x64")[1:]
     assert "Scope: user" in user_installer
     assert "ElevationRequirement:" not in user_installer
+    assert "ExpectedReturnCodes:" in user_installer
+    assert "InstallerReturnCode: 5" in user_installer
+    assert "ReturnResponse: alreadyInstalled" in user_installer
     assert "Scope: machine" in machine_installer
-    assert "ElevationRequirement: elevatesSelf" in machine_installer
+    assert "ElevationRequirement:" not in machine_installer
+    assert "ExpectedReturnCodes:" not in machine_installer
 
 
 def test_machine_migration_cleans_up_the_in_place_user_uninstaller():

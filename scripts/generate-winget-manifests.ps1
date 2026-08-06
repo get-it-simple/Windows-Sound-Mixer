@@ -58,6 +58,9 @@ ReleaseDate: $ReleaseDate
 Installers:
 - Architecture: x64
   Scope: user
+  ExpectedReturnCodes:
+  - InstallerReturnCode: 5
+    ReturnResponse: alreadyInstalled
   InstallerUrl: $baseUrl/$userName
   InstallerSha256: $userHash
   AppsAndFeaturesEntries:
@@ -67,7 +70,6 @@ Installers:
     ProductCode: $packageId
 - Architecture: x64
   Scope: machine
-  ElevationRequirement: elevatesSelf
   InstallerUrl: $baseUrl/$machineName
   InstallerSha256: $machineHash
   AppsAndFeaturesEntries:
