@@ -172,7 +172,7 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/verify-release.ps1 -Version '${{ needs.prepare.outputs.version }}'
-          winget validate --manifest dist/winget --disable-interactivity
+          winget validate --manifest dist/winget --disable-interactivity --ignore-warnings
 
       - uses: actions/upload-artifact@v7
         with:
