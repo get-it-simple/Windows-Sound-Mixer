@@ -44,3 +44,13 @@ def test_silent_and_winget_installs_do_not_use_the_finish_launch_callback():
     assert "SilentWithProgress: /SILENTWITHPROGRESS" in winget
     assert "Scope: user" in winget
     assert "Scope: machine" in winget
+
+
+def test_machine_migration_cleans_up_the_in_place_user_uninstaller():
+    source = INSTALLER_SOURCE.read_text(encoding="utf-8")
+    body = _function_body(source, "RemovePreviousUserVersion")
+
+    assert "_?=$UserInstallDir" in body
+    assert 'Delete "$UserInstallDir\\Uninstall.exe"' in body
+    assert 'RMDir "$UserInstallDir"' in body
+    assert body.index('Delete "$UserInstallDir\\Uninstall.exe"') > body.index("ExecWait")

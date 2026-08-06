@@ -358,10 +358,16 @@ FunctionEnd
 Function RemovePreviousUserVersion
   StrCmp $UserUninstaller "" done
   ExecWait '$UserUninstaller /S /UPGRADE _?=$UserInstallDir' $0
-  StrCmp $0 0 done
+  StrCmp $0 0 cleanup
   MessageBox MB_OK|MB_ICONSTOP "$(OldUninstallFailed)" /SD IDOK
   SetErrorLevel 3
   Quit
+cleanup:
+  ; _?= keeps the uninstaller in place so ExecWait can observe its result.
+  ; Once it exits, the bootstrap must remove the executable and directory
+  ; that the in-place uninstaller could not delete while it was running.
+  Delete "$UserInstallDir\Uninstall.exe"
+  RMDir "$UserInstallDir"
 done:
 FunctionEnd
 !endif
