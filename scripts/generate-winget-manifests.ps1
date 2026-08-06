@@ -58,7 +58,6 @@ ReleaseDate: $ReleaseDate
 Installers:
 - Architecture: x64
   Scope: user
-  ElevationRequirement: elevationProhibited
   InstallerUrl: $baseUrl/$userName
   InstallerSha256: $userHash
   AppsAndFeaturesEntries:
