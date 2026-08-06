@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 REQUIREMENTS_FILE = ROOT / "requirements.txt"
+VERSION_FILE = ROOT / "sound_mixer" / "__init__.py"
 
 
 def _parse_requirement(line: str) -> tuple[str, str, str] | None:
@@ -54,7 +55,56 @@ def _install(specs: list[str]) -> None:
     subprocess.run([sys.executable, "-m", "pip", "install", *specs], check=True)
 
 
+def _read_app_version() -> str:
+    match = re.search(r'^__version__\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"', VERSION_FILE.read_text(encoding="utf-8"), re.MULTILINE)
+    if match is None:
+        raise RuntimeError(f"Could not read application version from {VERSION_FILE}")
+    return match.group(1)
+
+
+def _write_version_resource(version: str) -> Path:
+    version_parts = tuple(int(part) for part in version.split(".")) + (0,)
+    build_dir = ROOT / "build"
+    build_dir.mkdir(parents=True, exist_ok=True)
+    path = build_dir / "version_info.txt"
+    path.write_text(
+        f"""VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers={version_parts},
+    prodvers={version_parts},
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo([
+      StringTable(
+        u'040904B0',
+        [
+          StringStruct(u'CompanyName', u'Get it Simple'),
+          StringStruct(u'FileDescription', u'Sound Mixer'),
+          StringStruct(u'FileVersion', u'{version}.0'),
+          StringStruct(u'InternalName', u'SoundMixer'),
+          StringStruct(u'LegalCopyright', u'Copyright (c) 2026 Get it Simple'),
+          StringStruct(u'OriginalFilename', u'SoundMixer.exe'),
+          StringStruct(u'ProductName', u'Sound Mixer'),
+          StringStruct(u'ProductVersion', u'{version}')
+        ]
+      )
+    ]),
+    VarFileInfo([VarStruct(u'Translation', [1033, 1200])])
+  ]
+)\n""",
+        encoding="utf-8",
+    )
+    return path
+
+
 def _run_pyinstaller() -> None:
+    version_resource = _write_version_resource(_read_app_version())
     args = [
         sys.executable,
         "-m",
@@ -63,8 +113,18 @@ def _run_pyinstaller() -> None:
         "SoundMixer",
         "--onefile",
         "--windowed",
+        "--clean",
+        "--noconfirm",
+        "--distpath",
+        str(ROOT / "dist"),
+        "--workpath",
+        str(ROOT / "build" / "pyinstaller"),
+        "--specpath",
+        str(ROOT / "build"),
         "--icon",
         str(ROOT / "resources" / "icons" / "app.ico"),
+        "--version-file",
+        str(version_resource),
         "--add-data",
         f"{ROOT / 'resources'}{os.pathsep}resources",
         str(ROOT / "sound_mixer" / "__main__.py"),

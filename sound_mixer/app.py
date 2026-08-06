@@ -7,6 +7,7 @@ import sound_mixer.i18n as i18n
 from sound_mixer.audio import create_backend
 from sound_mixer.autostart.registry import AutostartManager, AutostartUnavailableError
 from sound_mixer.hotkeys.manager import HotkeyManager
+from sound_mixer.instance_control import InstanceController
 from sound_mixer.mixer.model import MixerModel
 from sound_mixer.mixer.subprocess_manager import SubprocessManager
 from sound_mixer.overlay.window import OverlayWindow
@@ -31,6 +32,11 @@ class SoundMixerApp:
     def __init__(self) -> None:
         self.qt_app = QApplication(sys.argv)
         self.qt_app.setQuitOnLastWindowClosed(False)
+        self.instance_controller = InstanceController(self._shutdown_for_update, self.qt_app)
+        self._is_primary_instance = self.instance_controller.start()
+        if not self._is_primary_instance:
+            return
+
         self.settings = SettingsStore(default_settings_path())
         self.settings.load()
         install_deferred_saves(self.settings, self.qt_app)
@@ -66,6 +72,10 @@ class SoundMixerApp:
         )
         self.tray.show()
         self.model.set_master_mute_listener(self.tray.set_muted)
+
+    def _shutdown_for_update(self) -> None:
+        self.settings.flush()
+        QTimer.singleShot(0, self.qt_app.quit)
 
     def _set_overlay_visible(self, visible: bool) -> None:
         if visible:
@@ -147,6 +157,8 @@ class SoundMixerApp:
         self.overlay.refresh_view()
 
     def run(self) -> int:
+        if not self._is_primary_instance:
+            return 0
         if self.settings.get_overlay_geometry()["visible_on_start"]:
             self.overlay.show()
         try:
@@ -154,3 +166,4 @@ class SoundMixerApp:
         finally:
             self.hotkeys.stop()
             self.settings.flush()
+            self.instance_controller.close()
