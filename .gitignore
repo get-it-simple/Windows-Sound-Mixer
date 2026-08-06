@@ -10,3 +10,4 @@ settings.json.bak
 .venv/
 venv/
 PROJECT_INSTRUCTIONS.md
+WINGET_RELEASE_GUIDE.local.md
