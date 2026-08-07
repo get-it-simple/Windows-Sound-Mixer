@@ -43,6 +43,10 @@ unelevated bootstrap and a controlled elevated file/registry phase. Both
 support normal interactive installation, `/S`, `/SILENTWITHPROGRESS`, and the
 standard NSIS `/D=<absolute-path>` override.
 
+The WinGet manifest uses the machine installer, whose bootstrap requests
+elevation only for the protected file and registry phase. The user installer
+remains available as a release asset for direct installation without UAC.
+
 To prepare the five release assets, checksums, and the four WinGet 1.12
 manifests locally:
 
