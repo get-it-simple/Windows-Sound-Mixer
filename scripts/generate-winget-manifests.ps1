@@ -13,19 +13,14 @@ $root = Split-Path -Parent $PSScriptRoot
 $assets = [System.IO.Path]::GetFullPath((Join-Path $root $AssetsDirectory))
 $output = [System.IO.Path]::GetFullPath((Join-Path $root $OutputDirectory))
 $packageId = "GetItSimple.SoundMixer"
-$userName = "SoundMixer-$Version-x64-user-setup.exe"
 $machineName = "SoundMixer-$Version-x64-machine-setup.exe"
-$userPath = Join-Path $assets $userName
 $machinePath = Join-Path $assets $machineName
 
-foreach ($path in @($userPath, $machinePath)) {
-    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-        throw "Release asset not found: $path"
-    }
+if (-not (Test-Path -LiteralPath $machinePath -PathType Leaf)) {
+    throw "Release asset not found: $machinePath"
 }
 
 New-Item -ItemType Directory -Path $output -Force | Out-Null
-$userHash = (Get-FileHash -LiteralPath $userPath -Algorithm SHA256).Hash
 $machineHash = (Get-FileHash -LiteralPath $machinePath -Algorithm SHA256).Hash
 $baseUrl = "https://github.com/$Repository/releases/download/$Version"
 
@@ -56,18 +51,6 @@ InstallModes:
 UpgradeBehavior: install
 ReleaseDate: $ReleaseDate
 Installers:
-- Architecture: x64
-  Scope: user
-  ExpectedReturnCodes:
-  - InstallerReturnCode: 5
-    ReturnResponse: alreadyInstalled
-  InstallerUrl: $baseUrl/$userName
-  InstallerSha256: $userHash
-  AppsAndFeaturesEntries:
-  - DisplayName: Sound Mixer
-    Publisher: Get it Simple
-    DisplayVersion: $Version
-    ProductCode: $packageId
 - Architecture: x64
   Scope: machine
   InstallerUrl: $baseUrl/$machineName

@@ -35,14 +35,12 @@ if ($manifestFiles.Count -ne 4) {
     throw "The WinGet bundle must contain exactly four YAML manifests."
 }
 $installerManifest = Get-Content -LiteralPath (Join-Path $manifests "GetItSimple.SoundMixer.installer.yaml") -Raw
-foreach ($scope in @("user", "machine")) {
-    $name = "SoundMixer-$Version-x64-$scope-setup.exe"
-    $actualHash = (Get-FileHash -LiteralPath (Join-Path $release $name) -Algorithm SHA256).Hash
-    $pattern = "InstallerUrl:\s+\S+/$([regex]::Escape($name))\r?\n\s+InstallerSha256:\s+([0-9A-Fa-f]{64})"
-    $match = [regex]::Match($installerManifest, $pattern)
-    if (-not $match.Success -or $match.Groups[1].Value -ne $actualHash) {
-        throw "WinGet hash mismatch for the $scope installer."
-    }
+$name = "SoundMixer-$Version-x64-machine-setup.exe"
+$actualHash = (Get-FileHash -LiteralPath (Join-Path $release $name) -Algorithm SHA256).Hash
+$pattern = "InstallerUrl:\s+\S+/$([regex]::Escape($name))\r?\n\s+InstallerSha256:\s+([0-9A-Fa-f]{64})"
+$match = [regex]::Match($installerManifest, $pattern)
+if (-not $match.Success -or $match.Groups[1].Value -ne $actualHash) {
+    throw "WinGet hash mismatch for the machine installer."
 }
 
 Write-Host "Release checksums and WinGet installer hashes are consistent."

@@ -45,11 +45,10 @@ def test_silent_and_winget_installs_do_not_use_the_finish_launch_callback():
     assert "Call FinishRun" not in installer
     assert "Silent: /S" in winget
     assert "SilentWithProgress: /SILENTWITHPROGRESS" in winget
-    assert "Scope: user" in winget
     assert "Scope: machine" in winget
 
 
-def test_winget_installers_defer_elevation_to_the_installer():
+def test_winget_uses_only_the_self_elevating_machine_installer():
     shell = shutil.which("pwsh") or shutil.which("powershell")
     assert shell is not None
 
@@ -60,8 +59,7 @@ def test_winget_installers_defer_elevation_to_the_installer():
         assets = temporary_path / "assets"
         output = temporary_path / "winget"
         assets.mkdir()
-        for scope in ("user", "machine"):
-            (assets / f"SoundMixer-0.9.3-x64-{scope}-setup.exe").write_bytes(scope.encode())
+        (assets / "SoundMixer-0.9.3-x64-machine-setup.exe").write_bytes(b"machine")
 
         subprocess.run(
             [
@@ -89,15 +87,12 @@ def test_winget_installers_defer_elevation_to_the_installer():
             encoding="utf-8"
         )
 
-    user_installer, machine_installer = manifest.split("- Architecture: x64")[1:]
-    assert "Scope: user" in user_installer
-    assert "ElevationRequirement:" not in user_installer
-    assert "ExpectedReturnCodes:" in user_installer
-    assert "InstallerReturnCode: 5" in user_installer
-    assert "ReturnResponse: alreadyInstalled" in user_installer
-    assert "Scope: machine" in machine_installer
-    assert "ElevationRequirement:" not in machine_installer
-    assert "ExpectedReturnCodes:" not in machine_installer
+    installers = manifest.split("- Architecture: x64")[1:]
+    assert len(installers) == 1
+    assert "Scope: machine" in installers[0]
+    assert "ElevationRequirement:" not in installers[0]
+    assert "SoundMixer-0.9.3-x64-machine-setup.exe" in installers[0]
+    assert "SoundMixer-0.9.3-x64-user-setup.exe" not in manifest
 
 
 def test_machine_migration_cleans_up_the_in_place_user_uninstaller():
