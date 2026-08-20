@@ -58,7 +58,6 @@ Installers:
   AppsAndFeaturesEntries:
   - DisplayName: Sound Mixer
     Publisher: Get it Simple
-    DisplayVersion: $Version
     ProductCode: $packageId
 ManifestType: installer
 ManifestVersion: 1.12.0
@@ -113,9 +112,14 @@ $files = @{
     "$packageId.locale.uk-UA.yaml" = $ukLocaleManifest
 }
 
+$encoding = [System.Text.UTF8Encoding]::new($false)
+
 foreach ($entry in $files.GetEnumerator()) {
     $path = Join-Path $output $entry.Key
-    [System.IO.File]::WriteAllText($path, $entry.Value.Trim() + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
+    # WinGet manifests are stored as UTF-8 without BOM and CRLF line endings,
+    # regardless of the line endings this script file happens to be checked out with.
+    $content = ($entry.Value.Trim() -replace "`r`n", "`n") -replace "`n", "`r`n"
+    [System.IO.File]::WriteAllText($path, $content + "`r`n", $encoding)
 }
 
 Get-ChildItem -LiteralPath $output -Filter "*.yaml" | Sort-Object Name | Select-Object -ExpandProperty FullName
