@@ -37,6 +37,7 @@ def _get_sections(vertical: bool = False) -> list[tuple[str, list[tuple[str, str
             t("guide_section_hotkeys"),
             [
                 (t("guide_hotkey_toggle"), t("guide_hotkey_toggle_desc")),
+                (t("guide_hotkey_mini"), t("guide_hotkey_mini_desc")),
                 (t("guide_hotkey_vol"), t("guide_hotkey_vol_desc")),
                 (t("guide_hotkey_focus"), t("guide_hotkey_focus_desc")),
                 (t("guide_hotkey_mute"), t("guide_hotkey_mute_desc")),

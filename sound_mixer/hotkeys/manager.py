@@ -26,6 +26,7 @@ else:
 
 class HotkeyManager(QObject, QAbstractNativeEventFilter):
     toggle_overlay = Signal()
+    toggle_mini_widget = Signal()
     volume_up = Signal()
     volume_down = Signal()
     focus_next = Signal()

@@ -11,6 +11,7 @@ from sound_mixer.instance_control import InstanceController
 from sound_mixer.mixer.model import MixerModel
 from sound_mixer.mixer.subprocess_manager import SubprocessManager
 from sound_mixer.overlay.window import OverlayWindow
+from sound_mixer.overlay.mini_widget import MiniWidget
 from sound_mixer.paths import default_settings_path
 from sound_mixer.settings.store import SettingsStore
 from sound_mixer.settings_window.window import SettingsWindow
@@ -48,9 +49,14 @@ class SoundMixerApp:
         self.overlay = OverlayWindow(self.model, self.settings, subprocess_manager=self.subprocess_manager)
         self.overlay.visibility_changed.connect(self._on_overlay_visibility_changed)
         self.overlay.settings_requested.connect(self._open_settings)
+        self.mini_widget = MiniWidget(self.model, self.settings)
+        self.overlay.model_changed.connect(self.mini_widget.refresh_view)
+        self.mini_widget.model_changed.connect(self.overlay.refresh_view)
+        self.mini_widget.set_enabled(self.settings.get_mini_widget_enabled(), persist=False)
 
         self.hotkeys = HotkeyManager(self.settings)
         self.hotkeys.toggle_overlay.connect(self._on_toggle_overlay_hotkey)
+        self.hotkeys.toggle_mini_widget.connect(self._on_toggle_mini_widget_hotkey)
         self.hotkeys.volume_up.connect(self._on_volume_up_hotkey)
         self.hotkeys.volume_down.connect(self._on_volume_down_hotkey)
         self.hotkeys.focus_next.connect(self._on_focus_next_hotkey)
@@ -104,6 +110,12 @@ class SoundMixerApp:
                 if self.overlay is not None:
                     self.overlay.retranslate()
                     self.overlay.sync_subprocess_management_toggle()
+                    self.model.refresh()
+                    self.overlay.refresh_view()
+                mini_widget = getattr(self, "mini_widget", None)
+                if mini_widget is not None:
+                    mini_widget.retranslate()
+                    mini_widget.sync_from_settings()
                 self.tray.retranslate()
                 self.tray.set_autostart_enabled(self.settings.get_autostart_enabled())
         finally:
@@ -132,29 +144,36 @@ class SoundMixerApp:
     def _on_toggle_overlay_hotkey(self) -> None:
         self.tray.toggle_overlay_action.trigger()
 
+    def _on_toggle_mini_widget_hotkey(self) -> None:
+        self.mini_widget.set_enabled(not self.mini_widget.is_enabled())
+
+    def _refresh_views(self) -> None:
+        self.overlay.refresh_view()
+        self.mini_widget.refresh_view()
+
     def _on_volume_up_hotkey(self) -> None:
         self.model.adjust_volume(self.settings.get_arrow_step())
-        self.overlay.refresh_view()
+        self._refresh_views()
 
     def _on_volume_down_hotkey(self) -> None:
         self.model.adjust_volume(-self.settings.get_arrow_step())
-        self.overlay.refresh_view()
+        self._refresh_views()
 
     def _on_focus_next_hotkey(self) -> None:
         self.model.move_focus(1)
-        self.overlay.refresh_view()
+        self._refresh_views()
 
     def _on_focus_prev_hotkey(self) -> None:
         self.model.move_focus(-1)
-        self.overlay.refresh_view()
+        self._refresh_views()
 
     def _on_mute_toggle_hotkey(self) -> None:
         self.model.toggle_mute()
-        self.overlay.refresh_view()
+        self._refresh_views()
 
     def _on_subprocess_manager_tick(self) -> None:
         self.model.refresh()
-        self.overlay.refresh_view()
+        self._refresh_views()
 
     def run(self) -> int:
         if not self._is_primary_instance:
@@ -165,5 +184,6 @@ class SoundMixerApp:
             return self.qt_app.exec()
         finally:
             self.hotkeys.stop()
+            self.mini_widget.stop()
             self.settings.flush()
             self.instance_controller.close()

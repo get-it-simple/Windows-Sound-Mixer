@@ -1,4 +1,4 @@
-CURRENT_VERSION = 7
+CURRENT_VERSION = 8
 
 MIN_UI_SCALE = 0.5
 MAX_UI_SCALE = 3.0
@@ -9,6 +9,7 @@ LAYOUT_MODES = (LAYOUT_HORIZONTAL, LAYOUT_VERTICAL)
 
 DEFAULT_HOTKEYS = [
     {"action": "toggle_overlay", "combo": "ctrl+alt+num5", "enabled": True},
+    {"action": "toggle_mini_widget", "combo": "", "enabled": False},
     {"action": "volume_up", "combo": "", "enabled": False},
     {"action": "volume_down", "combo": "", "enabled": False},
     {"action": "focus_next", "combo": "", "enabled": False},
@@ -42,5 +43,14 @@ DEFAULT_SETTINGS = {
     "subprocess_management": {
         "interval_seconds": 5,
         "apps": [],
+    },
+    "whitelist": {
+        "enabled": False,
+        "apps": [],
+    },
+    "mini_widget": {
+        "enabled": False,
+        "x": 100,
+        "y": 40,
     },
 }

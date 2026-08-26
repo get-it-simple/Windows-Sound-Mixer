@@ -99,6 +99,10 @@ non-Windows platforms.
   reads the executable file and enumerates window titles - it never opens
   process handles or reads another process's memory.
 - Per-application volume levels and mute state persist between restarts.
+- Settings → Whitelist can limit both volume interfaces to enabled application
+  paths selected through a reusable drag-and-drop list. The system/master
+  control remains available in the main overlay, while the existing ignored
+  list still takes priority over an allowed application.
 - Always-on-top, frameless overlay that stays visible over fullscreen and
   borderless games without stealing input focus or injecting into other
   processes.
@@ -136,6 +140,14 @@ non-Windows platforms.
   via the native Windows `RegisterHotKey` API for compatibility with
   key-remapping tools. Global hotkeys are paused while Settings is open so
   editing a shortcut cannot trigger an existing action.
+- An optional independent mini volume widget shows every visible application
+  as a centered percentage above its icon, without a background or entry
+  limit. Entries wrap into additional rows at the screen edge. Scroll over an
+  icon to change its volume, click it to toggle mute, or hover and drag the
+  centered pin button to move the widget. The pin remains briefly visible after
+  the pointer leaves the widget, making it easy to reach without precise cursor
+  movement. Its visibility and position persist,
+  and it temporarily hides when no matching audio application is active.
 - System tray icon with Show/Hide Overlay, Settings, Start with Windows, and
   Exit.
 - Optional autostart on Windows login via the `HKCU\...\Run` registry key (no
@@ -179,23 +191,26 @@ in a future version, it is migrated automatically on load.
 | `overlay`              | object          | Overlay window state: `"layout_mode"` (`"horizontal"` or `"vertical"`), `"visible_on_start"` (bool), and one `{ "x", "y", "width", "height" }` (pixels) block per layout mode under `"horizontal"` and `"vertical"`, so each mode keeps its own position and size. |
 | `tooltip_delay_ms`     | integer         | Delay, in milliseconds, before action button tooltips appear.                                                                                                   |
 | `volume_step`          | object          | `{ "arrow": float, "scroll": float }` - volume change per arrow-key press and per scroll wheel notch.                                                           |
-| `ui_scale`             | float (0.5-3.0) | Overlay interface scale factor (fonts, icons, sliders). 1.0 is 100%.                                                                                            |
+| `ui_scale`             | float (0.5-3.0) | Overlay and mini-widget interface scale factor (fonts, icons, sliders). 1.0 is 100%.                                                                            |
 | `default_app_volume`   | float (0.0-1.0) | Initial volume applied to apps the first time they appear, if not already in `app_volumes`.                                                                     |
 | `transparency_enabled` | bool            | Whether the overlay background uses the translucent acrylic effect. If disabled, the overlay has a solid background.                                            |
 | `ignored_apps`         | array of string | Lowercase executable paths (e.g. `"d:/games/mygame/game.exe"`) hidden from the main entry list. Legacy bare executable names (e.g. `"discord.exe"`) still hide every app with that file name. Ignored entries can be revealed via the expand button. |
 | `language`             | string          | UI language code (`"en"`, `"uk"`) or `"system"` to follow the Windows locale. Defaults to `"system"`. Changes take effect immediately when saved from Settings. |
 | `subprocess_management` | object          | `{ "interval_seconds": int, "apps": [{ "path": string, "enabled": bool }] }` - shared polling interval and the list of host executables (e.g. sandbox/launcher apps) whose child processes need active background scanning because they don't trigger the normal session-created event. The scan itself is also gated by a session-only on/off switch in the overlay (not persisted - always starts off). |
+| `whitelist`             | object          | `{ "enabled": bool, "apps": [{ "path": string, "enabled": bool }] }` - optional display filter for both the main overlay and mini widget. Full normalized paths distinguish same-named apps; bare session names fall back to matching an enabled path's file name. |
+| `mini_widget`           | object          | `{ "enabled": bool, "x": int, "y": int }` - persisted visibility and screen position of the independent transparent mini volume widget. |
 
 ### Hotkey actions
 
-| Action           | Default combo   | Effect                                                 |
-| ---------------- | --------------- | ------------------------------------------------------ |
-| `toggle_overlay` | `ctrl+alt+num5` | Show/hide the overlay.                                 |
-| `volume_up`      | (none)          | Increase the focused entry's volume by the arrow step. |
-| `volume_down`    | (none)          | Decrease the focused entry's volume by the arrow step. |
-| `focus_next`     | (none)          | Move focus to the next entry.                          |
-| `focus_prev`     | (none)          | Move focus to the previous entry.                      |
-| `mute_toggle`    | (none)          | Toggle mute on the focused entry.                      |
+| Action               | Default combo   | Effect                                                 |
+| -------------------- | --------------- | ------------------------------------------------------ |
+| `toggle_overlay`     | `ctrl+alt+num5` | Show/hide the overlay.                                 |
+| `toggle_mini_widget` | (none)          | Show/hide the mini volume widget and persist the state.|
+| `volume_up`          | (none)          | Increase the focused entry's volume by the arrow step. |
+| `volume_down`        | (none)          | Decrease the focused entry's volume by the arrow step. |
+| `focus_next`         | (none)          | Move focus to the next entry.                          |
+| `focus_prev`         | (none)          | Move focus to the previous entry.                      |
+| `mute_toggle`        | (none)          | Toggle mute on the focused entry.                      |
 
 Hotkey combos are stored as `+`-separated key names, e.g. `ctrl+alt+num5`,
 `ctrl+shift+f9`, `win+s`. In Settings they are shown key

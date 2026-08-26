@@ -245,17 +245,65 @@ class SettingsStore:
         return copy.deepcopy(self.data["subprocess_management"]["apps"])
 
     def set_managed_apps(self, apps: list[dict]) -> None:
+        self.data["subprocess_management"]["apps"] = self._dedupe_apps(apps)
+        self.save()
+
+    def get_whitelist_enabled(self) -> bool:
+        return bool(self.data["whitelist"]["enabled"])
+
+    def set_whitelist_enabled(self, enabled: bool) -> None:
+        self.data["whitelist"]["enabled"] = bool(enabled)
+        self.save()
+
+    def get_whitelist_apps(self) -> list[dict]:
+        return copy.deepcopy(self.data["whitelist"]["apps"])
+
+    def set_whitelist_apps(self, apps: list[dict]) -> None:
+        self.data["whitelist"]["apps"] = self._dedupe_apps(apps)
+        self.save()
+
+    def is_app_whitelisted(self, exe: str) -> bool:
+        if not self.get_whitelist_enabled():
+            return True
+        key = normalize_app_key(exe)
+        enabled_paths = [
+            normalize_app_key(app["path"])
+            for app in self.data["whitelist"]["apps"]
+            if app.get("enabled") and app.get("path")
+        ]
+        if key in enabled_paths:
+            return True
+        if "/" not in key:
+            return any(legacy_app_key(path) == key for path in enabled_paths)
+        return False
+
+    def get_mini_widget_enabled(self) -> bool:
+        return bool(self.data["mini_widget"]["enabled"])
+
+    def set_mini_widget_enabled(self, enabled: bool) -> None:
+        self.data["mini_widget"]["enabled"] = bool(enabled)
+        self.save()
+
+    def get_mini_widget_position(self) -> dict:
+        state = self.data["mini_widget"]
+        return {"x": int(state["x"]), "y": int(state["y"])}
+
+    def set_mini_widget_position(self, x: int, y: int) -> None:
+        self.data["mini_widget"].update({"x": int(x), "y": int(y)})
+        self._request_save()
+
+    @staticmethod
+    def _dedupe_apps(apps: list[dict]) -> list[dict]:
         seen: set[str] = set()
         deduped = []
         for app in apps:
             path = app["path"]
-            key = path.lower()
+            key = normalize_app_key(path)
             if key in seen:
                 continue
             seen.add(key)
             deduped.append({"path": path, "enabled": bool(app.get("enabled", True))})
-        self.data["subprocess_management"]["apps"] = deduped
-        self.save()
+        return deduped
 
 
 def _merge_defaults(data: dict, defaults: dict) -> dict:

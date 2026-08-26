@@ -76,6 +76,18 @@ def _migrate_6_to_7(data: dict) -> dict:
     return data
 
 
+def _migrate_7_to_8(data: dict) -> dict:
+    data = dict(data)
+    data.setdefault("whitelist", {"enabled": False, "apps": []})
+    data.setdefault("mini_widget", {"enabled": False, "x": 100, "y": 40})
+    hotkeys = list(data.get("hotkeys") or DEFAULT_SETTINGS["hotkeys"])
+    if not any(hotkey.get("action") == "toggle_mini_widget" for hotkey in hotkeys):
+        hotkeys.insert(1, {"action": "toggle_mini_widget", "combo": "", "enabled": False})
+    data["hotkeys"] = hotkeys
+    data["version"] = 8
+    return data
+
+
 MIGRATIONS = {
     0: _migrate_0_to_1,
     1: _migrate_1_to_2,
@@ -84,6 +96,7 @@ MIGRATIONS = {
     4: _migrate_4_to_5,
     5: _migrate_5_to_6,
     6: _migrate_6_to_7,
+    7: _migrate_7_to_8,
 }
 
 

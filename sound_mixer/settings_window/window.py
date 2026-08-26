@@ -33,7 +33,7 @@ from sound_mixer.settings.schema import (
     MIN_UI_SCALE,
 )
 from sound_mixer.settings.store import SettingsStore
-from sound_mixer.settings_window.managed_apps_editor import AppDropZone, ManagedAppRow
+from sound_mixer.settings_window.managed_apps_editor import AppListEditor, ManagedAppRow
 
 MODIFIER_OPTIONS = [
     ("", "Select"),
@@ -79,6 +79,7 @@ KEY_OPTIONS = [
 def _action_labels() -> dict[str, str]:
     return {
         "toggle_overlay": t("action_toggle_overlay"),
+        "toggle_mini_widget": t("action_toggle_mini_widget"),
         "volume_up": t("action_volume_up"),
         "volume_down": t("action_volume_down"),
         "focus_next": t("action_focus_next"),
@@ -315,6 +316,7 @@ class SettingsWindow(QDialog):
         tabs = QTabWidget(self)
         tabs.addTab(self._build_general_tab(), t("tab_general"))
         tabs.addTab(self._build_hotkeys_tab(), t("tab_hotkeys"))
+        tabs.addTab(self._build_whitelist_tab(), t("tab_whitelist"))
         tabs.addTab(self._build_subprocess_management_tab(), t("tab_subprocess_management"))
         tabs.addTab(self._build_about_tab(), t("tab_about"))
         layout.addWidget(tabs)
@@ -350,6 +352,12 @@ class SettingsWindow(QDialog):
         self._transparency_checkbox.setStyleSheet(toggle_switch_style("transparencyToggle"))
         self._transparency_checkbox.setChecked(self._settings.get_transparency_enabled())
         layout.addWidget(self._field(t("transparent_overlay_background"), self._transparency_checkbox, tab))
+
+        self._mini_widget_checkbox = QCheckBox(tab)
+        self._mini_widget_checkbox.setObjectName("miniWidgetToggle")
+        self._mini_widget_checkbox.setStyleSheet(toggle_switch_style("miniWidgetToggle"))
+        self._mini_widget_checkbox.setChecked(self._settings.get_mini_widget_enabled())
+        layout.addWidget(self._field(t("show_mini_widget"), self._mini_widget_checkbox, tab))
 
         self._tooltip_delay_spinbox = QSpinBox(tab)
         self._tooltip_delay_spinbox.setRange(0, 10000)
@@ -465,38 +473,41 @@ class SettingsWindow(QDialog):
         self._subprocess_interval_spinbox.setValue(self._settings.get_subprocess_management_interval_seconds())
         layout.addWidget(self._field(t("subprocess_scan_interval"), self._subprocess_interval_spinbox, tab))
 
-        drop_zone = AppDropZone(tab)
-        drop_zone.app_dropped.connect(self._on_managed_app_dropped)
-        layout.addWidget(drop_zone)
-        self._managed_app_drop_zone = drop_zone
-
-        rows_container = QWidget(tab)
-        self._managed_app_rows_layout = QVBoxLayout(rows_container)
-        self._managed_app_rows_layout.setContentsMargins(0, 8, 0, 0)
-        self._managed_app_rows_layout.setSpacing(6)
-        layout.addWidget(rows_container)
-
-        for app in self._settings.get_managed_apps():
-            self._add_managed_app_row(app["path"], app["enabled"])
+        editor = AppListEditor(self._settings.get_managed_apps(), tab)
+        layout.addWidget(editor)
+        self._managed_apps_editor = editor
+        self._managed_app_drop_zone = editor.drop_zone
+        self._managed_app_rows_layout = editor.rows_layout
+        self._managed_app_rows = editor.rows
 
         layout.addStretch(1)
         return tab
 
     def _on_managed_app_dropped(self, path: str) -> None:
-        if any(row.path.lower() == path.lower() for row in self._managed_app_rows):
-            return
-        self._add_managed_app_row(path, True)
+        self._managed_apps_editor.add_path(path)
 
     def _add_managed_app_row(self, path: str, enabled: bool) -> None:
-        row = ManagedAppRow(path, enabled, self)
-        row.remove_requested.connect(lambda r=row: self._remove_managed_app_row(r))
-        self._managed_app_rows_layout.addWidget(row)
-        self._managed_app_rows.append(row)
+        self._managed_apps_editor.add_row(path, enabled)
 
     def _remove_managed_app_row(self, row: ManagedAppRow) -> None:
-        self._managed_app_rows.remove(row)
-        self._managed_app_rows_layout.removeWidget(row)
-        row.deleteLater()
+        self._managed_apps_editor.remove_row(row)
+
+    def _build_whitelist_tab(self) -> QWidget:
+        tab = QWidget(self)
+        layout = QVBoxLayout(tab)
+
+        self._whitelist_checkbox = QCheckBox(tab)
+        self._whitelist_checkbox.setObjectName("whitelistToggle")
+        self._whitelist_checkbox.setStyleSheet(toggle_switch_style("whitelistToggle"))
+        self._whitelist_checkbox.setChecked(self._settings.get_whitelist_enabled())
+        layout.addWidget(self._field(t("whitelist_mode"), self._whitelist_checkbox, tab))
+
+        editor = AppListEditor(self._settings.get_whitelist_apps(), tab)
+        layout.addWidget(editor)
+        layout.addStretch(1)
+        self._whitelist_editor = editor
+        self._whitelist_app_rows = editor.rows
+        return tab
 
     def _build_about_tab(self) -> QWidget:
         tab = QWidget(self)
@@ -535,15 +546,16 @@ class SettingsWindow(QDialog):
         self._settings.set_autostart_enabled(autostart_enabled)
         self._settings.set_visible_on_start(self._start_opened_checkbox.isChecked())
         self._settings.set_transparency_enabled(self._transparency_checkbox.isChecked())
+        self._settings.set_mini_widget_enabled(self._mini_widget_checkbox.isChecked())
         self._settings.set_tooltip_delay_ms(self._tooltip_delay_spinbox.value())
         self._settings.set_arrow_step(self._arrow_step_spinbox.value() / 100)
         self._settings.set_scroll_step(self._scroll_step_spinbox.value() / 100)
         self._settings.set_default_app_volume(self._default_app_volume_spinbox.value() / 100)
         self._settings.set_language(self._language_combo.currentData())
         self._settings.set_subprocess_management_interval_seconds(self._subprocess_interval_spinbox.value())
-        self._settings.set_managed_apps(
-            [{"path": row.path, "enabled": row.is_enabled()} for row in self._managed_app_rows]
-        )
+        self._settings.set_managed_apps(self._managed_apps_editor.apps())
+        self._settings.set_whitelist_enabled(self._whitelist_checkbox.isChecked())
+        self._settings.set_whitelist_apps(self._whitelist_editor.apps())
 
         for action, combo, enabled in hotkey_updates:
             self._settings.set_hotkey(action, combo, enabled)

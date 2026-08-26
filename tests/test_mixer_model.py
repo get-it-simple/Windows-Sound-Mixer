@@ -450,3 +450,52 @@ def test_ignoring_one_install_keeps_the_other_visible(tmp_path):
 
     assert [entry.key for entry in model.ignored_entries] == [voidrunner.key]
     assert [entry.key for entry in model.entries if not entry.is_master] == [webruntime_game.key]
+
+
+def test_whitelist_keeps_master_and_only_enabled_allowed_apps(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+    store.set_whitelist_apps([{"path": "aurora.exe", "enabled": True}, {"path": "lumen.exe", "enabled": False}])
+    store.set_whitelist_enabled(True)
+
+    model = MixerModel(make_backend(), store)
+
+    assert [entry.key for entry in model.entries] == [MASTER_KEY, "aurora.exe"]
+    assert model.ignored_entries == []
+
+
+def test_whitelist_uses_full_path_before_basename_fallback(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+    store.set_whitelist_apps([{"path": "G:/Games/VOIDRUNNER/Game.exe", "enabled": True}])
+    store.set_whitelist_enabled(True)
+    voidrunner, webruntime_game = _game_sessions()
+
+    model = MixerModel(FakeAudioBackend(sessions=[voidrunner, webruntime_game]), store)
+
+    assert [entry.key for entry in model.entries if not entry.is_master] == [voidrunner.key]
+
+
+def test_ignored_allowed_app_stays_out_of_active_entries(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+    store.set_whitelist_apps([{"path": "aurora.exe", "enabled": True}])
+    store.set_whitelist_enabled(True)
+    store.add_ignored_app("aurora.exe")
+
+    model = MixerModel(make_backend(), store)
+
+    assert [entry.key for entry in model.entries] == [MASTER_KEY]
+    assert [entry.key for entry in model.ignored_entries] == ["aurora.exe"]
+
+
+def test_keyed_volume_and_mute_operations_focus_matching_app(settings):
+    backend = make_backend()
+    model = MixerModel(backend, settings)
+
+    model.adjust_volume_by_key("lumen.exe", -0.2)
+    muted = model.toggle_mute_by_key("lumen.exe")
+
+    assert model.focused_entry.key == "lumen.exe"
+    assert model.focused_entry.volume == pytest.approx(0.8)
+    assert muted is True

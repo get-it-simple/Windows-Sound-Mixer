@@ -263,6 +263,7 @@ class _TitleBar(QFrame):
 class OverlayWindow(QWidget):
     visibility_changed = Signal(bool)
     settings_requested = Signal()
+    model_changed = Signal()
 
     def __init__(
         self,
@@ -637,6 +638,7 @@ class OverlayWindow(QWidget):
             self._model.refresh()
         except Exception:
             return
+        self.model_changed.emit()
 
     def _refresh(self) -> None:
         try:
@@ -644,6 +646,7 @@ class OverlayWindow(QWidget):
         except Exception:
             return
         self._sync_entry_widgets()
+        self.model_changed.emit()
 
     def _pause_refresh(self) -> None:
         self._refresh_timer.stop()
@@ -852,12 +855,14 @@ class OverlayWindow(QWidget):
         self._model.focused_index = index
         self._model.set_volume(value, index)
         self._sync_entry_widgets()
+        self.model_changed.emit()
 
     def _on_mute_toggled(self, widget: EntryWidget) -> None:
         index = self._entry_widgets.index(widget)
         self._model.focused_index = index
         self._model.toggle_mute(index)
         self._sync_entry_widgets()
+        self.model_changed.emit()
 
     def _on_focus_requested(self, widget: EntryWidget) -> None:
         index = self._entry_widgets.index(widget)
@@ -869,36 +874,42 @@ class OverlayWindow(QWidget):
         self._model.focused_index = index
         self._model.adjust_volume(direction * self._settings.get_scroll_step(), index)
         self._sync_entry_widgets()
+        self.model_changed.emit()
 
     def _on_ignore_requested(self, widget: EntryWidget) -> None:
         index = self._entry_widgets.index(widget)
         key = self._model.entries[index].key
         self._model.ignore_app(key)
         self._sync_entry_widgets()
+        self.model_changed.emit()
 
     def _on_ignored_volume_changed(self, widget: EntryWidget, value: float) -> None:
         index = self._ignored_widgets.index(widget)
         key = self._model.ignored_entries[index].key
         self._model.set_ignored_volume(key, value)
         self._sync_entry_widgets()
+        self.model_changed.emit()
 
     def _on_ignored_mute_toggled(self, widget: EntryWidget) -> None:
         index = self._ignored_widgets.index(widget)
         key = self._model.ignored_entries[index].key
         self._model.toggle_ignored_mute(key)
         self._sync_entry_widgets()
+        self.model_changed.emit()
 
     def _on_ignored_scrolled(self, widget: EntryWidget, direction: int) -> None:
         index = self._ignored_widgets.index(widget)
         key = self._model.ignored_entries[index].key
         self._model.adjust_ignored_volume(key, direction * self._settings.get_scroll_step())
         self._sync_entry_widgets()
+        self.model_changed.emit()
 
     def _on_unignore_requested(self, widget: EntryWidget) -> None:
         index = self._ignored_widgets.index(widget)
         key = self._model.ignored_entries[index].key
         self._model.unignore_app(key)
         self._sync_entry_widgets()
+        self.model_changed.emit()
 
     def _on_expand_ignored(self) -> None:
         self._ignored_expanded = True
@@ -964,3 +975,4 @@ class OverlayWindow(QWidget):
             super().keyPressEvent(event)
             return
         self._sync_entry_widgets()
+        self.model_changed.emit()

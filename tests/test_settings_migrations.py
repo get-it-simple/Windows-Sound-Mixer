@@ -205,3 +205,28 @@ def test_migrates_v6_to_v7_defaults_when_overlay_missing():
     assert migrated["overlay"]["layout_mode"] == "horizontal"
     assert migrated["overlay"]["visible_on_start"] is False
     assert migrated["overlay"]["horizontal"]["width"] == DEFAULT_SETTINGS["overlay"]["horizontal"]["width"]
+
+
+def test_migrates_v7_to_v8_adds_whitelist_mini_widget_and_hotkey():
+    v7 = {
+        "version": 7,
+        "hotkeys": [{"action": "toggle_overlay", "combo": "ctrl+shift+m", "enabled": True}],
+    }
+
+    migrated = migrate(v7)
+
+    assert migrated["version"] == CURRENT_VERSION
+    assert migrated["whitelist"] == {"enabled": False, "apps": []}
+    assert migrated["mini_widget"] == {"enabled": False, "x": 100, "y": 40}
+    assert migrated["hotkeys"][0] == {
+        "action": "toggle_overlay",
+        "combo": "ctrl+shift+m",
+        "enabled": True,
+    }
+    assert sum(hotkey["action"] == "toggle_mini_widget" for hotkey in migrated["hotkeys"]) == 1
+
+
+def test_migrates_partial_v7_hotkeys_to_complete_defaults():
+    migrated = migrate({"version": 7})
+
+    assert migrated["hotkeys"] == DEFAULT_SETTINGS["hotkeys"]

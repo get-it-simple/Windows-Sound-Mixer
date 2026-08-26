@@ -562,3 +562,54 @@ def test_setting_geometry_keeps_visible_on_start(tmp_path):
     store.set_overlay_geometry(1, 2, 300, 400)
 
     assert store.get_visible_on_start() is True
+
+
+def test_whitelist_defaults_disabled_and_allows_every_app(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+
+    assert store.get_whitelist_enabled() is False
+    assert store.get_whitelist_apps() == []
+    assert store.is_app_whitelisted("C:/Apps/Aurora.exe") is True
+
+
+def test_whitelist_matches_normalized_path_and_bare_name_fallback(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+    store.set_whitelist_apps([{"path": r"C:\Apps\Aurora.exe", "enabled": True}])
+    store.set_whitelist_enabled(True)
+
+    assert store.is_app_whitelisted("c:/apps/aurora.exe") is True
+    assert store.is_app_whitelisted("AURORA.EXE") is True
+    assert store.is_app_whitelisted("C:/Other/Aurora.exe") is False
+    assert store.is_app_whitelisted("lumen.exe") is False
+
+
+def test_whitelist_ignores_disabled_apps_and_dedupes_separators(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+    store.set_whitelist_apps(
+        [
+            {"path": r"C:\Apps\Aurora.exe", "enabled": False},
+            {"path": "c:/apps/aurora.exe", "enabled": True},
+        ]
+    )
+    store.set_whitelist_enabled(True)
+
+    assert store.get_whitelist_apps() == [{"path": r"C:\Apps\Aurora.exe", "enabled": False}]
+    assert store.is_app_whitelisted("aurora.exe") is False
+
+
+def test_mini_widget_state_and_position_round_trip(tmp_path):
+    path = tmp_path / "settings.json"
+    store = SettingsStore(path)
+    store.load()
+
+    store.set_mini_widget_enabled(True)
+    store.set_mini_widget_position(321, 123)
+    store.flush()
+
+    reloaded = SettingsStore(path)
+    reloaded.load()
+    assert reloaded.get_mini_widget_enabled() is True
+    assert reloaded.get_mini_widget_position() == {"x": 321, "y": 123}
