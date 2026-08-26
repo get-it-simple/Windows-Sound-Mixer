@@ -81,6 +81,21 @@ def test_disabled_hotkey_is_not_registered(qapp, settings, monkeypatch):
     assert fake_user32.registered == {}
 
 
+def test_mini_widget_hotkey_registers_and_emits(qapp, settings, monkeypatch):
+    fake_user32 = FakeUser32()
+    monkeypatch.setattr(manager_module, "user32", fake_user32)
+    settings.set_hotkey("toggle_overlay", "ctrl+alt+num5", enabled=False)
+    settings.set_hotkey("toggle_mini_widget", "ctrl+alt+num6", enabled=True)
+    hotkey_manager = HotkeyManager(settings)
+    received = []
+    hotkey_manager.toggle_mini_widget.connect(lambda: received.append(True))
+
+    hotkey_manager.start()
+    hotkey_manager._handle_hotkey(next(iter(fake_user32.registered)))
+
+    assert received == [True]
+
+
 def test_failed_registration_is_not_tracked(qapp, settings, monkeypatch):
     fake_user32 = FakeUser32()
     fake_user32.RegisterHotKey = lambda hwnd, hotkey_id, modifiers, vk: False
@@ -90,5 +105,4 @@ def test_failed_registration_is_not_tracked(qapp, settings, monkeypatch):
     hotkey_manager.start()
 
     assert hotkey_manager._hotkey_ids == {}
-
 

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from sound_mixer.app_key import normalize_app_key
 from sound_mixer.volume import clamp_volume
 
 
@@ -11,6 +12,10 @@ class FakeAudioSession:
     icon_path: str = ""
     volume: float = 1.0
     muted: bool = False
+    key: str = ""
+
+    def __post_init__(self) -> None:
+        self.key = normalize_app_key(self.key or self.process_name)
 
     def set_volume(self, level: float) -> None:
         self.volume = clamp_volume(level)

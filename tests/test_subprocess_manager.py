@@ -15,13 +15,13 @@ def _fake_process_iter(running_names):
 
 
 def test_is_any_managed_app_running_matches_by_basename():
-    running = _fake_process_iter(["Sandbox.exe", "explorer.exe"])
+    running = _fake_process_iter(["Sandbox.exe", "shell.exe"])
 
     assert is_any_managed_app_running(["C:/Games/sandbox.exe"], process_iter=running) is True
 
 
 def test_is_any_managed_app_running_false_when_not_running():
-    running = _fake_process_iter(["explorer.exe"])
+    running = _fake_process_iter(["shell.exe"])
 
     assert is_any_managed_app_running(["C:/Games/sandbox.exe"], process_iter=running) is False
 

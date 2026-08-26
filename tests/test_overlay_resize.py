@@ -48,9 +48,9 @@ def test_resize_handle_drag_resizes_window(qapp, fake_backend, settings):
     overlay = make_overlay(qapp, fake_backend, settings)
     overlay.resize(320, overlay.height())
 
-    handle = overlay._resize_handle_width
+    handle = overlay._resize_handle
     handle._drag_start_pos = 100
-    handle._start_width = overlay.width()
+    handle._start_size = overlay.width()
 
     handle.mouseMoveEvent(move_event(global_x=140))
 
@@ -61,9 +61,9 @@ def test_resize_handle_clamps_to_minimum_width(qapp, fake_backend, settings):
     overlay = make_overlay(qapp, fake_backend, settings)
     overlay.resize(320, overlay.height())
 
-    handle = overlay._resize_handle_width
+    handle = overlay._resize_handle
     handle._drag_start_pos = 100
-    handle._start_width = overlay.width()
+    handle._start_size = overlay.width()
 
     handle.mouseMoveEvent(move_event(global_x=100 - overlay.width()))
 
@@ -103,7 +103,7 @@ def test_dragging_resize_handle_pauses_and_resumes_refresh(qapp, fake_backend, s
     overlay = make_overlay(qapp, fake_backend, settings)
     assert overlay._refresh_timer.isActive()
 
-    handle = overlay._resize_handle_width
+    handle = overlay._resize_handle
     handle.mousePressEvent(press_event(QPointF(10, 10)))
     assert not overlay._refresh_timer.isActive()
 
@@ -123,7 +123,7 @@ def test_window_height_grows_with_entry_count(qapp, fake_backend, settings):
     initial_height = overlay.height()
     initial_count = len(overlay._entry_widgets)
 
-    fake_backend.add_session(FakeAudioSession(pid=300, process_name="discord.exe", display_name="Discord", volume=1.0))
+    fake_backend.add_session(FakeAudioSession(pid=300, process_name="nimbus.exe", display_name="Nimbus", volume=1.0))
     overlay._model.refresh()
     overlay.refresh_view()
 

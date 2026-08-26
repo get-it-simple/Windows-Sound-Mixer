@@ -5,8 +5,15 @@ import os
 from pathlib import Path
 from typing import Callable, Optional
 
+from sound_mixer.app_key import legacy_app_key, normalize_app_key
 from sound_mixer.settings.migrations import migrate
-from sound_mixer.settings.schema import DEFAULT_SETTINGS, MAX_UI_SCALE, MIN_UI_SCALE
+from sound_mixer.settings.schema import (
+    DEFAULT_SETTINGS,
+    LAYOUT_HORIZONTAL,
+    LAYOUT_MODES,
+    MAX_UI_SCALE,
+    MIN_UI_SCALE,
+)
 from sound_mixer.volume import clamp_volume
 
 logger = logging.getLogger(__name__)
@@ -75,22 +82,27 @@ class SettingsStore:
         for app in self.data["app_volumes"].values():
             app["volume"] = clamp_volume(app.get("volume", 1.0))
 
+    def _app_entry(self, key: str) -> dict:
+        volumes = self.data["app_volumes"]
+        key = normalize_app_key(key)
+        if key in volumes:
+            return volumes[key]
+        return volumes.get(legacy_app_key(key), {})
+
     def get_app_volume(self, exe: str) -> float:
-        exe = exe.lower()
-        return self.data["app_volumes"].get(exe, {}).get("volume", self.data["default_app_volume"])
+        return self._app_entry(exe).get("volume", self.data["default_app_volume"])
 
     def set_app_volume(self, exe: str, level: float) -> None:
-        exe = exe.lower()
+        exe = normalize_app_key(exe)
         entry = self.data["app_volumes"].setdefault(exe, {"volume": 1.0, "muted": False})
         entry["volume"] = clamp_volume(level)
         self._request_save()
 
     def get_app_muted(self, exe: str) -> bool:
-        exe = exe.lower()
-        return self.data["app_volumes"].get(exe, {}).get("muted", False)
+        return self._app_entry(exe).get("muted", False)
 
     def set_app_muted(self, exe: str, muted: bool) -> None:
-        exe = exe.lower()
+        exe = normalize_app_key(exe)
         entry = self.data["app_volumes"].setdefault(exe, {"volume": 1.0, "muted": False})
         entry["muted"] = bool(muted)
         self._request_save()
@@ -135,12 +147,27 @@ class SettingsStore:
         self.data["tooltip_delay_ms"] = int(ms)
         self.save()
 
-    def get_overlay_geometry(self) -> dict:
-        return self.data["overlay"]
+    def get_layout_mode(self) -> str:
+        mode = self.data["overlay"].get("layout_mode")
+        return mode if mode in LAYOUT_MODES else LAYOUT_HORIZONTAL
 
-    def set_overlay_geometry(self, x: int, y: int, width: int, height: int) -> None:
-        overlay = self.data["overlay"]
-        overlay.update({"x": x, "y": y, "width": width, "height": height})
+    def set_layout_mode(self, mode: str) -> None:
+        self.data["overlay"]["layout_mode"] = mode if mode in LAYOUT_MODES else LAYOUT_HORIZONTAL
+        self.save()
+
+    def get_visible_on_start(self) -> bool:
+        return self.data["overlay"]["visible_on_start"]
+
+    def set_visible_on_start(self, enabled: bool) -> None:
+        self.data["overlay"]["visible_on_start"] = bool(enabled)
+        self.save()
+
+    def get_overlay_geometry(self, mode: str | None = None) -> dict:
+        return self.data["overlay"][mode if mode in LAYOUT_MODES else self.get_layout_mode()]
+
+    def set_overlay_geometry(self, x: int, y: int, width: int, height: int, mode: str | None = None) -> None:
+        geometry = self.get_overlay_geometry(mode)
+        geometry.update({"x": x, "y": y, "width": width, "height": height})
         self.save()
 
     def get_arrow_step(self) -> float:
@@ -182,18 +209,22 @@ class SettingsStore:
         return self.data["ignored_apps"]
 
     def is_app_ignored(self, exe: str) -> bool:
-        return exe.lower() in self.data["ignored_apps"]
+        exe = normalize_app_key(exe)
+        ignored = self.data["ignored_apps"]
+        return exe in ignored or legacy_app_key(exe) in ignored
 
     def add_ignored_app(self, exe: str) -> None:
-        exe = exe.lower()
-        if exe not in self.data["ignored_apps"]:
+        exe = normalize_app_key(exe)
+        if not self.is_app_ignored(exe):
             self.data["ignored_apps"].append(exe)
             self.save()
 
     def remove_ignored_app(self, exe: str) -> None:
-        exe = exe.lower()
-        if exe in self.data["ignored_apps"]:
-            self.data["ignored_apps"].remove(exe)
+        exe = normalize_app_key(exe)
+        ignored = self.data["ignored_apps"]
+        removed = [key for key in (exe, legacy_app_key(exe)) if key in ignored]
+        if removed:
+            self.data["ignored_apps"] = [key for key in ignored if key not in removed]
             self.save()
 
     def get_language(self) -> str:
@@ -214,17 +245,65 @@ class SettingsStore:
         return copy.deepcopy(self.data["subprocess_management"]["apps"])
 
     def set_managed_apps(self, apps: list[dict]) -> None:
+        self.data["subprocess_management"]["apps"] = self._dedupe_apps(apps)
+        self.save()
+
+    def get_whitelist_enabled(self) -> bool:
+        return bool(self.data["whitelist"]["enabled"])
+
+    def set_whitelist_enabled(self, enabled: bool) -> None:
+        self.data["whitelist"]["enabled"] = bool(enabled)
+        self.save()
+
+    def get_whitelist_apps(self) -> list[dict]:
+        return copy.deepcopy(self.data["whitelist"]["apps"])
+
+    def set_whitelist_apps(self, apps: list[dict]) -> None:
+        self.data["whitelist"]["apps"] = self._dedupe_apps(apps)
+        self.save()
+
+    def is_app_whitelisted(self, exe: str) -> bool:
+        if not self.get_whitelist_enabled():
+            return True
+        key = normalize_app_key(exe)
+        enabled_paths = [
+            normalize_app_key(app["path"])
+            for app in self.data["whitelist"]["apps"]
+            if app.get("enabled") and app.get("path")
+        ]
+        if key in enabled_paths:
+            return True
+        if "/" not in key:
+            return any(legacy_app_key(path) == key for path in enabled_paths)
+        return False
+
+    def get_mini_widget_enabled(self) -> bool:
+        return bool(self.data["mini_widget"]["enabled"])
+
+    def set_mini_widget_enabled(self, enabled: bool) -> None:
+        self.data["mini_widget"]["enabled"] = bool(enabled)
+        self.save()
+
+    def get_mini_widget_position(self) -> dict:
+        state = self.data["mini_widget"]
+        return {"x": int(state["x"]), "y": int(state["y"])}
+
+    def set_mini_widget_position(self, x: int, y: int) -> None:
+        self.data["mini_widget"].update({"x": int(x), "y": int(y)})
+        self._request_save()
+
+    @staticmethod
+    def _dedupe_apps(apps: list[dict]) -> list[dict]:
         seen: set[str] = set()
         deduped = []
         for app in apps:
             path = app["path"]
-            key = path.lower()
+            key = normalize_app_key(path)
             if key in seen:
                 continue
             seen.add(key)
             deduped.append({"path": path, "enabled": bool(app.get("enabled", True))})
-        self.data["subprocess_management"]["apps"] = deduped
-        self.save()
+        return deduped
 
 
 def _merge_defaults(data: dict, defaults: dict) -> dict:

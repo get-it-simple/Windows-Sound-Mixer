@@ -12,7 +12,11 @@ from sound_mixer.i18n import t
 from sound_mixer.overlay.icons import load_icon
 
 
-def _get_sections() -> list[tuple[str, list[tuple[str, str]]]]:
+def _get_sections(vertical: bool = False) -> list[tuple[str, list[tuple[str, str]]]]:
+    focus_desc = t("guide_arrows_focus_desc")
+    volume_desc = t("guide_arrows_volume_desc")
+    up_down_desc = volume_desc if vertical else focus_desc
+    left_right_desc = focus_desc if vertical else volume_desc
     return [
         (
             t("guide_section_mouse"),
@@ -25,14 +29,15 @@ def _get_sections() -> list[tuple[str, list[tuple[str, str]]]]:
         (
             t("guide_section_keyboard"),
             [
-                (t("guide_arrows_ud"), t("guide_arrows_ud_desc")),
-                (t("guide_arrows_lr"), t("guide_arrows_lr_desc")),
+                (t("guide_arrows_ud"), up_down_desc),
+                (t("guide_arrows_lr"), left_right_desc),
             ],
         ),
         (
             t("guide_section_hotkeys"),
             [
                 (t("guide_hotkey_toggle"), t("guide_hotkey_toggle_desc")),
+                (t("guide_hotkey_mini"), t("guide_hotkey_mini_desc")),
                 (t("guide_hotkey_vol"), t("guide_hotkey_vol_desc")),
                 (t("guide_hotkey_focus"), t("guide_hotkey_focus_desc")),
                 (t("guide_hotkey_mute"), t("guide_hotkey_mute_desc")),
@@ -210,8 +215,9 @@ class _FullSizeScrollArea(QScrollArea):
 
 
 class GuideDialog(QDialog):
-    def __init__(self, parent=None) -> None:
+    def __init__(self, vertical: bool = False, parent=None) -> None:
         super().__init__(parent)
+        self._vertical = vertical
         self.setWindowTitle(t("controls_guide_title"))
         self.setWindowIcon(load_icon("logo"))
         self.setMinimumWidth(640)
@@ -248,7 +254,7 @@ class GuideDialog(QDialog):
         content_layout.setContentsMargins(16, 16, 16, 16)
         content_layout.setSpacing(20)
 
-        for title, rows in _get_sections():
+        for title, rows in _get_sections(self._vertical):
             content_layout.addWidget(self._build_section(title, rows, content))
 
         content_layout.addStretch(1)

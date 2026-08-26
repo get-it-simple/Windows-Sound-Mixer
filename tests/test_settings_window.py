@@ -30,6 +30,7 @@ def test_accept_saves_general_settings(qapp, settings):
     window._arrow_step_spinbox.setValue(10)
     window._scroll_step_spinbox.setValue(4)
     window._default_app_volume_spinbox.setValue(75)
+    window._mini_widget_checkbox.setChecked(True)
     window.accept()
 
     assert settings.get_autostart_enabled() is True
@@ -38,6 +39,7 @@ def test_accept_saves_general_settings(qapp, settings):
     assert settings.get_arrow_step() == 0.1
     assert settings.get_scroll_step() == 0.04
     assert settings.get_default_app_volume() == 0.75
+    assert settings.get_mini_widget_enabled() is True
 
 
 def test_accept_applies_transparency_to_overlay(qapp, fake_backend, settings):
@@ -301,6 +303,26 @@ def test_cancel_does_not_persist_subprocess_management_changes(qapp, settings):
     assert settings.get_managed_apps() == []
 
 
+def test_whitelist_tab_loads_and_saves_independent_app_list(qapp, settings):
+    settings.set_managed_apps([{"path": "C:/Apps/Launcher.exe", "enabled": True}])
+    settings.set_whitelist_apps([{"path": "C:/Apps/Aurora.exe", "enabled": False}])
+    window = SettingsWindow(settings)
+
+    assert len(window._managed_app_rows) == 1
+    assert len(window._whitelist_app_rows) == 1
+    assert window._whitelist_app_rows[0].path == "C:/Apps/Aurora.exe"
+    window._whitelist_checkbox.setChecked(True)
+    window._whitelist_editor.add_path("C:/Apps/Lumen.exe")
+    window.accept()
+
+    assert settings.get_whitelist_enabled() is True
+    assert settings.get_whitelist_apps() == [
+        {"path": "C:/Apps/Aurora.exe", "enabled": False},
+        {"path": "C:/Apps/Lumen.exe", "enabled": True},
+    ]
+    assert settings.get_managed_apps() == [{"path": "C:/Apps/Launcher.exe", "enabled": True}]
+
+
 def test_accept_saves_language(qapp, settings):
     window = SettingsWindow(settings)
     uk_index = window._language_combo.findData("uk")
@@ -309,3 +331,65 @@ def test_accept_saves_language(qapp, settings):
     window.accept()
 
     assert settings.get_language() == "uk"
+
+
+def test_start_opened_checkbox_reflects_setting(qapp, settings):
+    settings.set_visible_on_start(True)
+
+    window = SettingsWindow(settings)
+
+    assert window._start_opened_checkbox.isChecked() is True
+    assert window._start_opened_checkbox.objectName() == "startOpenedToggle"
+    assert "::indicator" in window._start_opened_checkbox.styleSheet()
+
+
+def test_accept_saves_start_opened(qapp, settings):
+    window = SettingsWindow(settings)
+
+    window._start_opened_checkbox.setChecked(True)
+    window.accept()
+
+    assert settings.get_visible_on_start() is True
+
+
+def test_layout_mode_combo_reflects_setting(qapp, settings):
+    settings.set_layout_mode("vertical")
+
+    window = SettingsWindow(settings)
+
+    assert window._layout_mode_combo.currentData() == "vertical"
+
+
+def test_accept_saves_layout_mode_without_overlay(qapp, settings):
+    window = SettingsWindow(settings)
+
+    window._layout_mode_combo.setCurrentIndex(window._layout_mode_combo.findData("vertical"))
+    window.accept()
+
+    assert settings.get_layout_mode() == "vertical"
+
+
+def test_accept_applies_layout_mode_to_overlay(qapp, fake_backend, settings):
+    from PySide6.QtCore import Qt
+
+    from sound_mixer.mixer.model import MixerModel
+
+    model = MixerModel(fake_backend, settings)
+    overlay = OverlayWindow(model, settings)
+    window = SettingsWindow(settings, overlay=overlay)
+
+    window._layout_mode_combo.setCurrentIndex(window._layout_mode_combo.findData("vertical"))
+    window.accept()
+
+    assert settings.get_layout_mode() == "vertical"
+    assert overlay.layout_mode() == "vertical"
+    assert overlay._entry_widgets[0]._slider.orientation() == Qt.Orientation.Vertical
+
+
+def test_cancel_does_not_change_layout_mode(qapp, settings):
+    window = SettingsWindow(settings)
+
+    window._layout_mode_combo.setCurrentIndex(window._layout_mode_combo.findData("vertical"))
+    window.reject()
+
+    assert settings.get_layout_mode() == "horizontal"

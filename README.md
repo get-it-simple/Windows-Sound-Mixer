@@ -77,47 +77,25 @@ non-Windows platforms.
 <details>
 <summary>Features</summary>
 
-- One overlay listing the system/master volume plus every app currently
-  playing audio, each entry showing the app's own icon (the app's display
-  name is shown as a tooltip) above its slider, numeric volume field, and mute
-  button. The system entry uses a speaker icon, and apps whose icon can't be
-  read use a generic fallback icon.
-- Per-application volume levels and mute state persist between restarts.
-- Always-on-top, frameless overlay that stays visible over fullscreen and
-  borderless games without stealing input focus or injecting into other
-  processes.
-- Windows 11 acrylic transparency/blur effect with rounded corners and a dark
-  title bar. The transparency can be turned off in Settings for a solid
-  background.
-- The overlay can be resized by dragging its right or bottom edge; the new
-  size is restored on the next launch.
-- The focused entry is highlighted with the current Windows accent color.
-- Mouse control: drag sliders, scroll to adjust volume, click an entry to
-  focus it. Scrolling over an entry's slider or volume field also adjusts its
-  volume.
-- Keyboard control: Up/Down moves focus between entries, Left/Right adjusts
-  the focused entry's volume.
-- Configurable global hotkeys (default `Ctrl+Alt+Num5` toggles the overlay),
-  captured from a shortcut input, then registered
-  via the native Windows `RegisterHotKey` API for compatibility with
-  key-remapping tools. Global hotkeys are paused while Settings is open so
-  editing a shortcut cannot trigger an existing action.
-- System tray icon with Show/Hide Overlay, Settings, Start with Windows, and
-  Exit.
-- Optional autostart on Windows login via the `HKCU\...\Run` registry key (no
-  administrator rights required), toggled with a switch in Settings.
-- The interface scale in Settings is a slider that applies to the overlay
-immediately as it's dragged.
-- Settings → Sub-process Management lets you flag host applications (e.g.
-  sandbox or launcher tools) that spawn child processes without triggering
-  the normal audio-session notification. While a flagged app is running, its
-  child processes are re-scanned on a shared, configurable interval so they
-  still get their default/persisted volume.
-- A small switch in the overlay's title bar (before the Settings button)
-  turns that background scanning on or off for the current session. It's
-  hidden unless at least one managed app is enabled, and it always starts
-  off on launch — configuring apps never costs anything until you flip it on.
-  </details>
+- Independent volume and mute controls for the system and every active audio
+  application, with app icons and readable display names.
+- Persistent per-application levels, mute states, hotkeys, overlay layout, and
+  other preferences in a human-editable JSON file.
+- Compact always-on-top overlay with optional Windows 11 acrylic transparency,
+  accent-colored focus, and automatic recovery from off-screen positions.
+- Horizontal and vertical layouts with independent saved size and position.
+- Mouse, scroll wheel, and layout-aware arrow-key controls.
+- Configurable global hotkeys, including overlay and mini-widget toggles,
+  volume adjustment, focus navigation, and mute.
+- Optional transparent mini widget for quick volume and mute control.
+- Whitelist and ignored-app filters shared by the overlay and mini widget.
+- System tray controls, optional launch at Windows login, and a setting to show
+  the overlay immediately on startup.
+- Adjustable interface scale, volume steps, tooltip delay, and transparency.
+- Optional background scanning for audio child processes created by selected
+  launchers, sandboxes, and other host applications.
+
+</details>
 
 <details>
 <summary>Extra details</summary>
@@ -137,29 +115,32 @@ in a future version, it is migrated automatically on load.
 | `version`              | integer         | Settings schema version, used for migrations.                                                                                                                   |
 | `master_volume`        | float (0.0-1.0) | System master volume level.                                                                                                                                     |
 | `master_muted`         | bool            | System master mute state.                                                                                                                                       |
-| `app_volumes`          | object          | Per-application volume/mute, keyed by lowercase executable name (e.g. `"chrome.exe"`). Each value is `{ "volume": float, "muted": bool }`.                      |
+| `app_volumes`          | object          | Per-application volume/mute, keyed by the lowercase executable path with forward slashes (e.g. `"d:/games/mygame/game.exe"`), so two apps that share a file name keep separate settings. Each value is `{ "volume": float, "muted": bool }`. A bare executable name (e.g. `"chrome.exe"`) is still read as a legacy key and applies to any app with that file name. |
 | `hotkeys`              | array           | Global hotkey bindings. Each entry is `{ "action": string, "combo": string, "enabled": bool }`.                                                                 |
 | `autostart_enabled`    | bool            | Whether the app starts automatically on Windows login.                                                                                                          |
-| `overlay`              | object          | Overlay window state: `{ "x", "y", "width", "height" }` (pixels) and `"visible_on_start"` (bool).                                                               |
+| `overlay`              | object          | Overlay window state: `"layout_mode"` (`"horizontal"` or `"vertical"`), `"visible_on_start"` (bool), and one `{ "x", "y", "width", "height" }` (pixels) block per layout mode under `"horizontal"` and `"vertical"`, so each mode keeps its own position and size. |
 | `tooltip_delay_ms`     | integer         | Delay, in milliseconds, before action button tooltips appear.                                                                                                   |
 | `volume_step`          | object          | `{ "arrow": float, "scroll": float }` - volume change per arrow-key press and per scroll wheel notch.                                                           |
-| `ui_scale`             | float (0.5-3.0) | Overlay interface scale factor (fonts, icons, sliders). 1.0 is 100%.                                                                                            |
+| `ui_scale`             | float (0.5-3.0) | Overlay and mini-widget interface scale factor (fonts, icons, sliders). 1.0 is 100%.                                                                            |
 | `default_app_volume`   | float (0.0-1.0) | Initial volume applied to apps the first time they appear, if not already in `app_volumes`.                                                                     |
 | `transparency_enabled` | bool            | Whether the overlay background uses the translucent acrylic effect. If disabled, the overlay has a solid background.                                            |
-| `ignored_apps`         | array of string | Lowercase executable names (e.g. `"discord.exe"`) hidden from the main entry list. Ignored entries can be revealed via the expand button.                       |
+| `ignored_apps`         | array of string | Lowercase executable paths (e.g. `"d:/games/mygame/game.exe"`) hidden from the main entry list. Legacy bare executable names (e.g. `"discord.exe"`) still hide every app with that file name. Ignored entries can be revealed via the expand button. |
 | `language`             | string          | UI language code (`"en"`, `"uk"`) or `"system"` to follow the Windows locale. Defaults to `"system"`. Changes take effect immediately when saved from Settings. |
 | `subprocess_management` | object          | `{ "interval_seconds": int, "apps": [{ "path": string, "enabled": bool }] }` - shared polling interval and the list of host executables (e.g. sandbox/launcher apps) whose child processes need active background scanning because they don't trigger the normal session-created event. The scan itself is also gated by a session-only on/off switch in the overlay (not persisted - always starts off). |
+| `whitelist`             | object          | `{ "enabled": bool, "apps": [{ "path": string, "enabled": bool }] }` - optional display filter for both the main overlay and mini widget. Full normalized paths distinguish same-named apps; bare session names fall back to matching an enabled path's file name. |
+| `mini_widget`           | object          | `{ "enabled": bool, "x": int, "y": int }` - persisted visibility and screen position of the independent transparent mini volume widget. |
 
 ### Hotkey actions
 
-| Action           | Default combo   | Effect                                                 |
-| ---------------- | --------------- | ------------------------------------------------------ |
-| `toggle_overlay` | `ctrl+alt+num5` | Show/hide the overlay.                                 |
-| `volume_up`      | (none)          | Increase the focused entry's volume by the arrow step. |
-| `volume_down`    | (none)          | Decrease the focused entry's volume by the arrow step. |
-| `focus_next`     | (none)          | Move focus to the next entry.                          |
-| `focus_prev`     | (none)          | Move focus to the previous entry.                      |
-| `mute_toggle`    | (none)          | Toggle mute on the focused entry.                      |
+| Action               | Default combo   | Effect                                                 |
+| -------------------- | --------------- | ------------------------------------------------------ |
+| `toggle_overlay`     | `ctrl+alt+num5` | Show/hide the overlay.                                 |
+| `toggle_mini_widget` | (none)          | Show/hide the mini volume widget and persist the state.|
+| `volume_up`          | (none)          | Increase the focused entry's volume by the arrow step. |
+| `volume_down`        | (none)          | Decrease the focused entry's volume by the arrow step. |
+| `focus_next`         | (none)          | Move focus to the next entry.                          |
+| `focus_prev`         | (none)          | Move focus to the previous entry.                      |
+| `mute_toggle`        | (none)          | Toggle mute on the focused entry.                      |
 
 Hotkey combos are stored as `+`-separated key names, e.g. `ctrl+alt+num5`,
 `ctrl+shift+f9`, `win+s`. In Settings they are shown key
@@ -175,9 +156,10 @@ digit keys are written as `num0`-`num9`.
 - The acrylic blur effect requires Windows 11 22H2 or later; on older Windows
   versions the overlay falls back to a plain semi-transparent background.
 - On startup, the overlay briefly flashes near its last position and then
-  hides again (unless "show overlay on start" is enabled). This is required
-  for the acrylic blur to render correctly once the overlay is later shown
-  via a hotkey or the tray.
+  hides again. This is required for the acrylic blur to render correctly once
+  the overlay is later shown via a hotkey or the tray. With "Start opened"
+  enabled the same flash still happens, and the overlay is reopened right
+  after it.
 - Global hotkeys are subject to Windows UIPI: an elevated foreground
   application will not receive hotkeys from a non-elevated Sound Mixer, and
   vice versa.

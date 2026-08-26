@@ -1,10 +1,15 @@
-CURRENT_VERSION = 5
+CURRENT_VERSION = 8
 
 MIN_UI_SCALE = 0.5
 MAX_UI_SCALE = 3.0
 
+LAYOUT_HORIZONTAL = "horizontal"
+LAYOUT_VERTICAL = "vertical"
+LAYOUT_MODES = (LAYOUT_HORIZONTAL, LAYOUT_VERTICAL)
+
 DEFAULT_HOTKEYS = [
     {"action": "toggle_overlay", "combo": "ctrl+alt+num5", "enabled": True},
+    {"action": "toggle_mini_widget", "combo": "", "enabled": False},
     {"action": "volume_up", "combo": "", "enabled": False},
     {"action": "volume_down", "combo": "", "enabled": False},
     {"action": "focus_next", "combo": "", "enabled": False},
@@ -20,11 +25,10 @@ DEFAULT_SETTINGS = {
     "hotkeys": DEFAULT_HOTKEYS,
     "autostart_enabled": False,
     "overlay": {
-        "x": 100,
-        "y": 100,
-        "width": 320,
-        "height": 400,
+        "layout_mode": LAYOUT_HORIZONTAL,
         "visible_on_start": False,
+        LAYOUT_HORIZONTAL: {"x": 100, "y": 100, "width": 320, "height": 400},
+        LAYOUT_VERTICAL: {"x": 100, "y": 100, "width": 420, "height": 340},
     },
     "tooltip_delay_ms": 500,
     "volume_step": {
@@ -39,5 +43,14 @@ DEFAULT_SETTINGS = {
     "subprocess_management": {
         "interval_seconds": 5,
         "apps": [],
+    },
+    "whitelist": {
+        "enabled": False,
+        "apps": [],
+    },
+    "mini_widget": {
+        "enabled": False,
+        "x": 100,
+        "y": 40,
     },
 }

@@ -60,7 +60,7 @@ class MixerModel:
         ignored_entries: list[MixerEntry] = []
         current_pids: set[int] = set()
         for session in self._backend.enumerate_sessions():
-            exe = session.process_name.lower()
+            exe = session.key
             current_pids.add(session.pid)
             if session.pid not in self._known_pids:
                 session.set_volume(self._settings.get_app_volume(exe))
@@ -73,6 +73,9 @@ class MixerModel:
                 muted=session.muted,
                 icon_path=session.icon_path,
             )
+
+            if not self._settings.is_app_whitelisted(exe):
+                continue
 
             if self._settings.is_app_ignored(exe):
                 ignored_entries.append(entry)
@@ -144,6 +147,27 @@ class MixerModel:
         self._notify_master_mute()
         return muted
 
+    def focus_key(self, key: str) -> bool:
+        for index, entry in enumerate(self.entries):
+            if entry.key == key:
+                self.focused_index = index
+                return True
+        return False
+
+    def adjust_volume_by_key(self, key: str, delta: float) -> float:
+        for index, entry in enumerate(self.entries):
+            if entry.key == key:
+                self.focused_index = index
+                return self.adjust_volume(delta, index)
+        return 0.0
+
+    def toggle_mute_by_key(self, key: str) -> bool:
+        for index, entry in enumerate(self.entries):
+            if entry.key == key:
+                self.focused_index = index
+                return self.toggle_mute(index)
+        return False
+
     def ignore_app(self, key: str) -> None:
         self._settings.add_ignored_app(key)
         self.refresh()
@@ -178,12 +202,12 @@ class MixerModel:
                 return muted
         return False
 
-    def _set_session_volume(self, exe: str, level: float) -> None:
+    def _set_session_volume(self, key: str, level: float) -> None:
         for session in self._backend.enumerate_sessions():
-            if session.process_name.lower() == exe:
+            if session.key == key:
                 session.set_volume(level)
 
-    def _set_session_muted(self, exe: str, muted: bool) -> None:
+    def _set_session_muted(self, key: str, muted: bool) -> None:
         for session in self._backend.enumerate_sessions():
-            if session.process_name.lower() == exe:
+            if session.key == key:
                 session.set_muted(muted)

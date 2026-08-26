@@ -2,6 +2,7 @@ import sys
 
 from sound_mixer.settings_window.managed_apps_editor import (
     AppDropZone,
+    AppListEditor,
     ManagedAppRow,
     resolve_app_display_name,
 )
@@ -72,3 +73,13 @@ def test_app_drop_zone_drop_event_emits_path(qapp):
     zone.dropEvent(event)
 
     assert emitted == ["C:/Games/sandbox.exe"]
+
+
+def test_app_list_editor_adds_dedupes_removes_and_exports_rows(qapp):
+    editor = AppListEditor([{"path": "C:/Apps/Aurora.exe", "enabled": False}])
+
+    editor.add_path("c:/apps/aurora.exe")
+    editor.add_path("C:/Apps/Lumen.exe")
+    editor.remove_row(editor.rows[0])
+
+    assert editor.apps() == [{"path": "C:/Apps/Lumen.exe", "enabled": True}]

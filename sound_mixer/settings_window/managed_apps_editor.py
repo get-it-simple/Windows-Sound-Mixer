@@ -2,7 +2,7 @@ import os
 from typing import Optional
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QCheckBox, QFrame, QHBoxLayout, QLabel, QSizePolicy, QWidget
+from PySide6.QtWidgets import QCheckBox, QFrame, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from sound_mixer.audio.win_names import get_exe_friendly_name
 from sound_mixer.i18n import t
@@ -83,3 +83,51 @@ class ManagedAppRow(QFrame):
 
     def retranslate(self) -> None:
         self._remove_button.setToolTip(t("remove_managed_app_tooltip"))
+
+
+class AppListEditor(QWidget):
+    def __init__(self, apps: list[dict], parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.rows: list[ManagedAppRow] = []
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        self.drop_zone = AppDropZone(self)
+        self.drop_zone.app_dropped.connect(self.add_path)
+        layout.addWidget(self.drop_zone)
+
+        rows_container = QWidget(self)
+        self.rows_layout = QVBoxLayout(rows_container)
+        self.rows_layout.setContentsMargins(0, 8, 0, 0)
+        self.rows_layout.setSpacing(6)
+        layout.addWidget(rows_container)
+
+        for app in apps:
+            self.add_row(app["path"], app.get("enabled", True))
+
+    def add_path(self, path: str) -> None:
+        if any(row.path.lower() == path.lower() for row in self.rows):
+            return
+        self.add_row(path, True)
+
+    def add_row(self, path: str, enabled: bool) -> ManagedAppRow:
+        row = ManagedAppRow(path, enabled, self)
+        row.remove_requested.connect(lambda r=row: self.remove_row(r))
+        self.rows_layout.addWidget(row)
+        self.rows.append(row)
+        return row
+
+    def remove_row(self, row: ManagedAppRow) -> None:
+        self.rows.remove(row)
+        self.rows_layout.removeWidget(row)
+        row.deleteLater()
+
+    def apps(self) -> list[dict]:
+        return [{"path": row.path, "enabled": row.is_enabled()} for row in self.rows]
+
+    def retranslate(self) -> None:
+        self.drop_zone.retranslate()
+        for row in self.rows:
+            row.retranslate()
