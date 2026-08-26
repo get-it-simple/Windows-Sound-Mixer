@@ -60,7 +60,7 @@ class MixerModel:
         ignored_entries: list[MixerEntry] = []
         current_pids: set[int] = set()
         for session in self._backend.enumerate_sessions():
-            exe = session.process_name.lower()
+            exe = session.key
             current_pids.add(session.pid)
             if session.pid not in self._known_pids:
                 session.set_volume(self._settings.get_app_volume(exe))
@@ -178,12 +178,12 @@ class MixerModel:
                 return muted
         return False
 
-    def _set_session_volume(self, exe: str, level: float) -> None:
+    def _set_session_volume(self, key: str, level: float) -> None:
         for session in self._backend.enumerate_sessions():
-            if session.process_name.lower() == exe:
+            if session.key == key:
                 session.set_volume(level)
 
-    def _set_session_muted(self, exe: str, muted: bool) -> None:
+    def _set_session_muted(self, key: str, muted: bool) -> None:
         for session in self._backend.enumerate_sessions():
-            if session.process_name.lower() == exe:
+            if session.key == key:
                 session.set_muted(muted)

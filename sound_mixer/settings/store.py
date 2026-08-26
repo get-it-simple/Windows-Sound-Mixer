@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from typing import Callable, Optional
 
+from sound_mixer.app_key import legacy_app_key, normalize_app_key
 from sound_mixer.settings.migrations import migrate
 from sound_mixer.settings.schema import DEFAULT_SETTINGS, MAX_UI_SCALE, MIN_UI_SCALE
 from sound_mixer.volume import clamp_volume
@@ -75,22 +76,27 @@ class SettingsStore:
         for app in self.data["app_volumes"].values():
             app["volume"] = clamp_volume(app.get("volume", 1.0))
 
+    def _app_entry(self, key: str) -> dict:
+        volumes = self.data["app_volumes"]
+        key = normalize_app_key(key)
+        if key in volumes:
+            return volumes[key]
+        return volumes.get(legacy_app_key(key), {})
+
     def get_app_volume(self, exe: str) -> float:
-        exe = exe.lower()
-        return self.data["app_volumes"].get(exe, {}).get("volume", self.data["default_app_volume"])
+        return self._app_entry(exe).get("volume", self.data["default_app_volume"])
 
     def set_app_volume(self, exe: str, level: float) -> None:
-        exe = exe.lower()
+        exe = normalize_app_key(exe)
         entry = self.data["app_volumes"].setdefault(exe, {"volume": 1.0, "muted": False})
         entry["volume"] = clamp_volume(level)
         self._request_save()
 
     def get_app_muted(self, exe: str) -> bool:
-        exe = exe.lower()
-        return self.data["app_volumes"].get(exe, {}).get("muted", False)
+        return self._app_entry(exe).get("muted", False)
 
     def set_app_muted(self, exe: str, muted: bool) -> None:
-        exe = exe.lower()
+        exe = normalize_app_key(exe)
         entry = self.data["app_volumes"].setdefault(exe, {"volume": 1.0, "muted": False})
         entry["muted"] = bool(muted)
         self._request_save()
@@ -182,18 +188,22 @@ class SettingsStore:
         return self.data["ignored_apps"]
 
     def is_app_ignored(self, exe: str) -> bool:
-        return exe.lower() in self.data["ignored_apps"]
+        exe = normalize_app_key(exe)
+        ignored = self.data["ignored_apps"]
+        return exe in ignored or legacy_app_key(exe) in ignored
 
     def add_ignored_app(self, exe: str) -> None:
-        exe = exe.lower()
-        if exe not in self.data["ignored_apps"]:
+        exe = normalize_app_key(exe)
+        if not self.is_app_ignored(exe):
             self.data["ignored_apps"].append(exe)
             self.save()
 
     def remove_ignored_app(self, exe: str) -> None:
-        exe = exe.lower()
-        if exe in self.data["ignored_apps"]:
-            self.data["ignored_apps"].remove(exe)
+        exe = normalize_app_key(exe)
+        ignored = self.data["ignored_apps"]
+        removed = [key for key in (exe, legacy_app_key(exe)) if key in ignored]
+        if removed:
+            self.data["ignored_apps"] = [key for key in ignored if key not in removed]
             self.save()
 
     def get_language(self) -> str:

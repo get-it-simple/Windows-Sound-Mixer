@@ -123,7 +123,7 @@ def test_window_height_grows_with_entry_count(qapp, fake_backend, settings):
     initial_height = overlay.height()
     initial_count = len(overlay._entry_widgets)
 
-    fake_backend.add_session(FakeAudioSession(pid=300, process_name="discord.exe", display_name="Discord", volume=1.0))
+    fake_backend.add_session(FakeAudioSession(pid=300, process_name="nimbus.exe", display_name="Nimbus", volume=1.0))
     overlay._model.refresh()
     overlay.refresh_view()
 

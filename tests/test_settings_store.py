@@ -260,7 +260,7 @@ def test_ignored_apps_default_empty(tmp_path):
     store.load()
 
     assert store.get_ignored_apps() == []
-    assert store.is_app_ignored("discord.exe") is False
+    assert store.is_app_ignored("nimbus.exe") is False
 
 
 def test_add_ignored_app_persists(tmp_path):
@@ -268,33 +268,33 @@ def test_add_ignored_app_persists(tmp_path):
     store = SettingsStore(path)
     store.load()
 
-    store.add_ignored_app("discord.exe")
+    store.add_ignored_app("nimbus.exe")
 
-    assert store.is_app_ignored("discord.exe") is True
+    assert store.is_app_ignored("nimbus.exe") is True
 
     reloaded = SettingsStore(path)
     reloaded.load()
-    assert reloaded.is_app_ignored("discord.exe") is True
+    assert reloaded.is_app_ignored("nimbus.exe") is True
 
 
 def test_add_ignored_app_normalises_case(tmp_path):
     store = SettingsStore(tmp_path / "settings.json")
     store.load()
 
-    store.add_ignored_app("Discord.EXE")
+    store.add_ignored_app("Nimbus.EXE")
 
-    assert store.is_app_ignored("discord.exe") is True
-    assert "discord.exe" in store.get_ignored_apps()
+    assert store.is_app_ignored("nimbus.exe") is True
+    assert "nimbus.exe" in store.get_ignored_apps()
 
 
 def test_add_ignored_app_idempotent(tmp_path):
     store = SettingsStore(tmp_path / "settings.json")
     store.load()
 
-    store.add_ignored_app("discord.exe")
-    store.add_ignored_app("discord.exe")
+    store.add_ignored_app("nimbus.exe")
+    store.add_ignored_app("nimbus.exe")
 
-    assert store.get_ignored_apps().count("discord.exe") == 1
+    assert store.get_ignored_apps().count("nimbus.exe") == 1
 
 
 def test_remove_ignored_app(tmp_path):
@@ -302,14 +302,14 @@ def test_remove_ignored_app(tmp_path):
     store = SettingsStore(path)
     store.load()
 
-    store.add_ignored_app("discord.exe")
-    store.remove_ignored_app("discord.exe")
+    store.add_ignored_app("nimbus.exe")
+    store.remove_ignored_app("nimbus.exe")
 
-    assert store.is_app_ignored("discord.exe") is False
+    assert store.is_app_ignored("nimbus.exe") is False
 
     reloaded = SettingsStore(path)
     reloaded.load()
-    assert reloaded.is_app_ignored("discord.exe") is False
+    assert reloaded.is_app_ignored("nimbus.exe") is False
 
 
 def test_remove_ignored_app_not_present_is_noop(tmp_path):
@@ -426,3 +426,72 @@ def test_get_managed_apps_returns_a_copy(tmp_path):
     apps[0]["enabled"] = False
 
     assert store.get_managed_apps()[0]["enabled"] is True
+
+
+def test_app_volume_stored_under_full_path_key(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+
+    store.set_app_volume("D:/Games/MyGame/Game.exe", 0.35)
+
+    assert store.data["app_volumes"]["d:/games/mygame/game.exe"]["volume"] == pytest.approx(0.35)
+    assert store.get_app_volume("d:/games/mygame/game.exe") == pytest.approx(0.35)
+
+
+def test_same_file_name_in_different_folders_keeps_separate_volumes(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+
+    store.set_app_volume("G:/Games/VOIDRUNNER/Game.exe", 0.2)
+    store.set_app_volume("D:/Downloads/Starfall Demo/game.exe", 0.9)
+
+    assert store.get_app_volume("G:/Games/VOIDRUNNER/Game.exe") == pytest.approx(0.2)
+    assert store.get_app_volume("D:/Downloads/Starfall Demo/game.exe") == pytest.approx(0.9)
+
+
+def test_legacy_file_name_key_still_applies_to_a_path_key(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+    store.data["app_volumes"]["nimbus.exe"] = {"volume": 0.42, "muted": True}
+
+    assert store.get_app_volume("C:/Users/me/AppData/Local/Nimbus/Nimbus.exe") == pytest.approx(0.42)
+    assert store.get_app_muted("C:/Users/me/AppData/Local/Nimbus/Nimbus.exe") is True
+
+
+def test_path_key_takes_precedence_over_legacy_file_name_key(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+    store.data["app_volumes"]["game.exe"] = {"volume": 0.42, "muted": False}
+    store.set_app_volume("D:/Games/MyGame/Game.exe", 0.75)
+
+    assert store.get_app_volume("D:/Games/MyGame/Game.exe") == pytest.approx(0.75)
+    assert store.get_app_volume("G:/Other/Game.exe") == pytest.approx(0.42)
+
+
+def test_legacy_ignored_file_name_hides_a_path_key_app(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+    store.data["ignored_apps"].append("nimbus.exe")
+
+    assert store.is_app_ignored("C:/Programs/Nimbus/Nimbus.exe") is True
+
+
+def test_unignoring_removes_the_legacy_file_name_entry(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+    store.data["ignored_apps"].append("nimbus.exe")
+
+    store.remove_ignored_app("C:/Programs/Nimbus/Nimbus.exe")
+
+    assert store.is_app_ignored("C:/Programs/Nimbus/Nimbus.exe") is False
+    assert store.get_ignored_apps() == []
+
+
+def test_ignoring_one_install_does_not_ignore_another_with_the_same_name(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+
+    store.add_ignored_app("G:/Games/VOIDRUNNER/Game.exe")
+
+    assert store.is_app_ignored("G:/Games/VOIDRUNNER/Game.exe") is True
+    assert store.is_app_ignored("D:/Downloads/Starfall Demo/game.exe") is False

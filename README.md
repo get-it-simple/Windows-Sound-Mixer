@@ -82,6 +82,22 @@ non-Windows platforms.
   name is shown as a tooltip) above its slider, numeric volume field, and mute
   button. The system entry uses a speaker icon, and apps whose icon can't be
   read use a generic fallback icon.
+- Application display names are resolved from the executable's version
+  resource (`FileDescription`/`ProductName`) and, when that name is generic or
+  missing, from the title of a visible window owned by the same application -
+  either another process running the same executable or a relative in the same
+  process tree and install folder. This is what makes multi-process runtimes
+  (games and apps that run one windowed process alongside several background
+  ones) show their real name instead of the runtime's. A window title is only
+  adopted after it stays unchanged across two checks, so titles that carry
+  changing content (a playing track, an open tab) never replace the app's own
+  name. A title that merely repeats the version-resource name or the executable
+  file name is treated as a placeholder rather than an answer, and titles that
+  keep changing while an app starts up do not settle the name for good - a game
+  that shows its engine's project name or a patcher's progress before its real
+  title is still picked up once that title stops changing. Name resolution only
+  reads the executable file and enumerates window titles - it never opens
+  process handles or reads another process's memory.
 - Per-application volume levels and mute state persist between restarts.
 - Always-on-top, frameless overlay that stays visible over fullscreen and
   borderless games without stealing input focus or injecting into other
@@ -137,7 +153,7 @@ in a future version, it is migrated automatically on load.
 | `version`              | integer         | Settings schema version, used for migrations.                                                                                                                   |
 | `master_volume`        | float (0.0-1.0) | System master volume level.                                                                                                                                     |
 | `master_muted`         | bool            | System master mute state.                                                                                                                                       |
-| `app_volumes`          | object          | Per-application volume/mute, keyed by lowercase executable name (e.g. `"chrome.exe"`). Each value is `{ "volume": float, "muted": bool }`.                      |
+| `app_volumes`          | object          | Per-application volume/mute, keyed by the lowercase executable path with forward slashes (e.g. `"d:/games/mygame/game.exe"`), so two apps that share a file name keep separate settings. Each value is `{ "volume": float, "muted": bool }`. A bare executable name (e.g. `"chrome.exe"`) is still read as a legacy key and applies to any app with that file name. |
 | `hotkeys`              | array           | Global hotkey bindings. Each entry is `{ "action": string, "combo": string, "enabled": bool }`.                                                                 |
 | `autostart_enabled`    | bool            | Whether the app starts automatically on Windows login.                                                                                                          |
 | `overlay`              | object          | Overlay window state: `{ "x", "y", "width", "height" }` (pixels) and `"visible_on_start"` (bool).                                                               |
@@ -146,7 +162,7 @@ in a future version, it is migrated automatically on load.
 | `ui_scale`             | float (0.5-3.0) | Overlay interface scale factor (fonts, icons, sliders). 1.0 is 100%.                                                                                            |
 | `default_app_volume`   | float (0.0-1.0) | Initial volume applied to apps the first time they appear, if not already in `app_volumes`.                                                                     |
 | `transparency_enabled` | bool            | Whether the overlay background uses the translucent acrylic effect. If disabled, the overlay has a solid background.                                            |
-| `ignored_apps`         | array of string | Lowercase executable names (e.g. `"discord.exe"`) hidden from the main entry list. Ignored entries can be revealed via the expand button.                       |
+| `ignored_apps`         | array of string | Lowercase executable paths (e.g. `"d:/games/mygame/game.exe"`) hidden from the main entry list. Legacy bare executable names (e.g. `"discord.exe"`) still hide every app with that file name. Ignored entries can be revealed via the expand button. |
 | `language`             | string          | UI language code (`"en"`, `"uk"`) or `"system"` to follow the Windows locale. Defaults to `"system"`. Changes take effect immediately when saved from Settings. |
 | `subprocess_management` | object          | `{ "interval_seconds": int, "apps": [{ "path": string, "enabled": bool }] }` - shared polling interval and the list of host executables (e.g. sandbox/launcher apps) whose child processes need active background scanning because they don't trigger the normal session-created event. The scan itself is also gated by a session-only on/off switch in the overlay (not persisted - always starts off). |
 

@@ -6,14 +6,14 @@ from sound_mixer.settings.schema import CURRENT_VERSION
 
 def test_migrates_legacy_v0_document():
     legacy = {
-        "volumes": {"chrome.exe": {"volume": 0.5, "muted": False}},
+        "volumes": {"aurora.exe": {"volume": 0.5, "muted": False}},
         "master_volume": 0.7,
     }
 
     migrated = migrate(legacy)
 
     assert migrated["version"] == CURRENT_VERSION
-    assert migrated["app_volumes"] == {"chrome.exe": {"volume": 0.5, "muted": False}}
+    assert migrated["app_volumes"] == {"aurora.exe": {"volume": 0.5, "muted": False}}
     assert "volumes" not in migrated
     assert migrated["master_muted"] is False
     assert "volume_step" in migrated
@@ -43,25 +43,25 @@ def test_migrates_v1_to_v2_adds_ignored_apps():
     v1 = {
         "version": 1,
         "master_volume": 0.5,
-        "app_volumes": {"chrome.exe": {"volume": 0.8, "muted": False}},
+        "app_volumes": {"aurora.exe": {"volume": 0.8, "muted": False}},
     }
 
     migrated = migrate(v1)
 
     assert migrated["version"] == CURRENT_VERSION
     assert migrated["ignored_apps"] == []
-    assert migrated["app_volumes"] == {"chrome.exe": {"volume": 0.8, "muted": False}}
+    assert migrated["app_volumes"] == {"aurora.exe": {"volume": 0.8, "muted": False}}
 
 
 def test_migrates_v1_preserves_existing_ignored_apps():
     v1 = {
         "version": 1,
-        "ignored_apps": ["discord.exe"],
+        "ignored_apps": ["nimbus.exe"],
     }
 
     migrated = migrate(v1)
 
-    assert migrated["ignored_apps"] == ["discord.exe"]
+    assert migrated["ignored_apps"] == ["nimbus.exe"]
 
 
 def test_migrates_v2_to_v3_adds_language():
@@ -141,3 +141,33 @@ def test_migrates_v4_to_v5_defaults_when_process_monitor_missing():
     migrated = migrate(v4)
 
     assert migrated["subprocess_management"] == {"interval_seconds": 5, "apps": []}
+
+
+def test_migrates_v5_to_v6_normalises_app_keys():
+    v5 = {
+        "version": 5,
+        "app_volumes": {"Aurora.exe": {"volume": 0.5, "muted": False}},
+        "ignored_apps": ["Nimbus.exe"],
+    }
+
+    migrated = migrate(v5)
+
+    assert migrated["version"] == CURRENT_VERSION
+    assert migrated["app_volumes"] == {"aurora.exe": {"volume": 0.5, "muted": False}}
+    assert migrated["ignored_apps"] == ["nimbus.exe"]
+
+
+def test_migrates_v5_keeps_file_name_keys_usable():
+    v5 = {"version": 5, "app_volumes": {"aurora.exe": {"volume": 0.5, "muted": False}}}
+
+    migrated = migrate(v5)
+
+    assert migrated["app_volumes"] == {"aurora.exe": {"volume": 0.5, "muted": False}}
+
+
+def test_migrates_v5_normalises_path_separators():
+    v5 = {"version": 5, "app_volumes": {r"D:\Games\MyGame\Game.exe": {"volume": 0.5}}}
+
+    migrated = migrate(v5)
+
+    assert migrated["app_volumes"] == {"d:/games/mygame/game.exe": {"volume": 0.5}}

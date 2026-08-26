@@ -31,19 +31,45 @@ if sys.platform == "win32":
         ctypes.POINTER(ctypes.wintypes.UINT),
     ]
 
-    _user32 = ctypes.windll.user32
+    _user32 = ctypes.WinDLL("user32")
     _WNDENUMPROC = ctypes.WINFUNCTYPE(
         ctypes.wintypes.BOOL, ctypes.wintypes.HWND, ctypes.wintypes.LPARAM
     )
+
+    _user32.EnumWindows.restype = ctypes.wintypes.BOOL
+    _user32.EnumWindows.argtypes = [_WNDENUMPROC, ctypes.wintypes.LPARAM]
+    _user32.IsWindowVisible.restype = ctypes.wintypes.BOOL
+    _user32.IsWindowVisible.argtypes = [ctypes.wintypes.HWND]
+    _user32.GetAncestor.restype = ctypes.wintypes.HWND
+    _user32.GetAncestor.argtypes = [ctypes.wintypes.HWND, ctypes.wintypes.UINT]
+    _user32.GetDesktopWindow.restype = ctypes.wintypes.HWND
+    _user32.GetDesktopWindow.argtypes = []
+    _user32.GetWindowTextLengthW.restype = ctypes.c_int
+    _user32.GetWindowTextLengthW.argtypes = [ctypes.wintypes.HWND]
+    _user32.GetWindowTextW.restype = ctypes.c_int
+    _user32.GetWindowTextW.argtypes = [
+        ctypes.wintypes.HWND,
+        ctypes.wintypes.LPWSTR,
+        ctypes.c_int,
+    ]
+    _user32.GetWindowThreadProcessId.restype = ctypes.wintypes.DWORD
+    _user32.GetWindowThreadProcessId.argtypes = [
+        ctypes.wintypes.HWND,
+        ctypes.POINTER(ctypes.wintypes.DWORD),
+    ]
 else:
     _GetFileVersionInfoSizeW = _GetFileVersionInfoW = _VerQueryValueW = None
     _user32 = None
     _WNDENUMPROC = None
 
+GA_PARENT = 1
+
+
+def first_version_string(value: str) -> str:
+    return value.split("\x00")[0].strip()
+
 
 def get_exe_friendly_name(exe_path: str) -> str:
-    """Read FileDescription then ProductName from the exe file's version
-    resources via version.dll.  Reads from disk only — no process handle."""
     if _GetFileVersionInfoSizeW is None or not exe_path:
         return ""
     try:
@@ -81,7 +107,9 @@ def get_exe_friendly_name(exe_path: str) -> str:
                     and p_val.value
                     and n_val.value > 1
                 ):
-                    name = ctypes.wstring_at(p_val.value, n_val.value - 1).strip()
+                    name = first_version_string(
+                        ctypes.wstring_at(p_val.value, n_val.value - 1)
+                    )
                     if name:
                         return name
     except Exception:
@@ -89,39 +117,40 @@ def get_exe_friendly_name(exe_path: str) -> str:
     return ""
 
 
-def get_process_window_title(pid: int) -> str:
-    """Return the title of the longest visible top-level window belonging to
-    the given process.  Uses EnumWindows and GetWindowText — the same calls
-    the taskbar makes, safe with all anti-cheat systems."""
-    if _user32 is None or not pid:
-        return ""
+def is_named_app_window(visible: bool, top_level: bool, length: int) -> bool:
+    return bool(visible) and top_level and length > 0
+
+
+def get_window_titles_by_pid() -> dict[int, str]:
+    if _user32 is None:
+        return {}
     try:
-        titles: list[str] = []
+        titles: dict[int, str] = {}
+        desktop = _user32.GetDesktopWindow()
 
         def _callback(hwnd: int, _: int) -> bool:
             try:
-                if not _user32.IsWindowVisible(hwnd):
-                    return True
-                if _user32.GetParent(hwnd):
+                ancestor = _user32.GetAncestor(hwnd, GA_PARENT)
+                top_level = not ancestor or ancestor == desktop
+                length = _user32.GetWindowTextLengthW(hwnd)
+                if not is_named_app_window(_user32.IsWindowVisible(hwnd), top_level, length):
                     return True
                 win_pid = ctypes.wintypes.DWORD()
                 _user32.GetWindowThreadProcessId(hwnd, ctypes.byref(win_pid))
-                if win_pid.value != pid:
-                    return True
-                length = _user32.GetWindowTextLengthW(hwnd)
-                if length <= 0:
+                pid = win_pid.value
+                if not pid:
                     return True
                 buf = ctypes.create_unicode_buffer(length + 1)
                 _user32.GetWindowTextW(hwnd, buf, length + 1)
                 title = buf.value.strip()
-                if title:
-                    titles.append(title)
+                if title and len(title) > len(titles.get(pid, "")):
+                    titles[pid] = title
             except Exception:
                 pass
             return True
 
         _user32.EnumWindows(_WNDENUMPROC(_callback), 0)
-        return max(titles, key=len) if titles else ""
+        return titles
     except Exception:
         pass
-    return ""
+    return {}

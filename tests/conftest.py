@@ -25,8 +25,8 @@ def qapp() -> QApplication:
 def fake_backend() -> FakeAudioBackend:
     return FakeAudioBackend(
         sessions=[
-            FakeAudioSession(pid=100, process_name="chrome.exe", display_name="Google Chrome", volume=1.0),
-            FakeAudioSession(pid=200, process_name="spotify.exe", display_name="Spotify", volume=1.0),
+            FakeAudioSession(pid=100, process_name="aurora.exe", display_name="Aurora Browser", volume=1.0),
+            FakeAudioSession(pid=200, process_name="lumen.exe", display_name="Lumen", volume=1.0),
         ],
         master_volume=0.5,
     )

@@ -47,7 +47,7 @@ def test_new_entry_widgets_inherit_current_scale(qapp, fake_backend, settings):
     settings.set_ui_scale(1.5)
     overlay.apply_scale()
 
-    fake_backend.add_session(FakeAudioSession(pid=300, process_name="discord.exe", display_name="Discord", volume=1.0))
+    fake_backend.add_session(FakeAudioSession(pid=300, process_name="nimbus.exe", display_name="Nimbus", volume=1.0))
     overlay._model.refresh()
     overlay.refresh_view()
 

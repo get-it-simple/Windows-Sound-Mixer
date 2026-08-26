@@ -39,7 +39,7 @@ def wheel_event_horizontal(direction: int = 1) -> QWheelEvent:
 
 
 def make_entry(volume: float = 0.5, muted: bool = False) -> MixerEntry:
-    return MixerEntry(key="chrome.exe", display_name="Google Chrome", volume=volume, muted=muted, is_master=False)
+    return MixerEntry(key="aurora.exe", display_name="Aurora Browser", volume=volume, muted=muted, is_master=False)
 
 
 def test_set_entry_updates_spinbox_value(qapp):
@@ -142,7 +142,7 @@ def test_set_entry_shows_display_name_as_tooltip(qapp):
 
     widget.set_entry(make_entry(volume=0.5), focused=False)
 
-    assert widget._icon_label.toolTip() == "Google Chrome"
+    assert widget._icon_label.toolTip() == "Aurora Browser"
 
 
 def test_set_entry_keeps_icon_container_visible_for_master(qapp):
@@ -280,7 +280,7 @@ def test_scroll_down_with_alt_held_decreases_volume(qapp):
 def test_process_name_label_text_set_from_entry(qapp):
     widget = EntryWidget()
     widget.set_entry(make_entry(volume=0.5), focused=False)
-    assert widget._process_name_label.text() == "Google Chrome"
+    assert widget._process_name_label.text() == "Aurora Browser"
 
 
 def test_process_name_label_is_left_aligned(qapp):

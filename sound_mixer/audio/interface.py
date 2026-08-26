@@ -4,6 +4,7 @@ from typing import Protocol, runtime_checkable
 @runtime_checkable
 class AudioSession(Protocol):
     pid: int
+    key: str
     process_name: str
     display_name: str
     icon_path: str
