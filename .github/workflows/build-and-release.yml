@@ -191,11 +191,15 @@ jobs:
         with:
           name: sound-mixer-${{ needs.prepare.outputs.version }}
           path: release
-      - name: Publish immutable tag release
+      - name: Publish release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
           version='${{ needs.prepare.outputs.version }}'
-          gh release create "$version" release/* --verify-tag --generate-notes --title "$version" --repo "$GITHUB_REPOSITORY"
+          if gh release view "$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$version" release/* --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$version" release/* --verify-tag --generate-notes --title "$version" --repo "$GITHUB_REPOSITORY"
+          fi
