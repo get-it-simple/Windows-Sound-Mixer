@@ -77,95 +77,25 @@ non-Windows platforms.
 <details>
 <summary>Features</summary>
 
-- One overlay listing the system/master volume plus every app currently
-  playing audio, each entry showing the app's own icon (the app's display
-  name is shown as a tooltip) above its slider, numeric volume field, and mute
-  button. The system entry uses a speaker icon, and apps whose icon can't be
-  read use a generic fallback icon.
-- Application display names are resolved from the executable's version
-  resource (`FileDescription`/`ProductName`) and, when that name is generic or
-  missing, from the title of a visible window owned by the same application -
-  either another process running the same executable or a relative in the same
-  process tree and install folder. This is what makes multi-process runtimes
-  (games and apps that run one windowed process alongside several background
-  ones) show their real name instead of the runtime's. A window title is only
-  adopted after it stays unchanged across two checks, so titles that carry
-  changing content (a playing track, an open tab) never replace the app's own
-  name. A title that merely repeats the version-resource name or the executable
-  file name is treated as a placeholder rather than an answer, and titles that
-  keep changing while an app starts up do not settle the name for good - a game
-  that shows its engine's project name or a patcher's progress before its real
-  title is still picked up once that title stops changing. Name resolution only
-  reads the executable file and enumerates window titles - it never opens
-  process handles or reads another process's memory.
-- Per-application volume levels and mute state persist between restarts.
-- Settings → Whitelist can limit both volume interfaces to enabled application
-  paths selected through a reusable drag-and-drop list. The system/master
-  control remains available in the main overlay, while the existing ignored
-  list still takes priority over an allowed application.
-- Always-on-top, frameless overlay that stays visible over fullscreen and
-  borderless games without stealing input focus or injecting into other
-  processes.
-- Windows 11 acrylic transparency/blur effect with rounded corners and a dark
-  title bar. The transparency can be turned off in Settings for a solid
-  background.
-- Settings → Volume controls layout switches the overlay between `horizontal`
-  (stacked rows with horizontal sliders, the default) and `vertical`
-  (side-by-side columns with vertical faders). Each mode keeps its own window
-  position and size. A vertical column is a compact strip - icon, mute, volume
-  value and fader, centered - and the application name is shown on hover
-  instead of under the fader.
-- The title bar follows the layout mode: a full-width strip on top in horizontal
-  mode, and a narrow icon-only column on the left in vertical mode. Hovering the
-  title icon shows the Sound Mixer name and version, while the window buttons
-  remain stacked below it.
-- The overlay can be resized by dragging its right edge in horizontal mode, or
-  its bottom edge in vertical mode; the other dimension is sized to fit the
-  entries. In vertical mode the bottom edge starts after the title column and
-  stops at the smallest height that still fits the faders and visible title
-  controls. The bottom scrollbar stays hidden through six visible entries and
-  appears only when that limit is exceeded. The size is restored on the next
-  launch, per layout mode.
-- If the saved position falls outside every screen (for example after a
-  resolution or monitor change), the overlay is centered on screen instead.
-- The focused entry is highlighted with the current Windows accent color.
-- Mouse control: drag sliders, scroll to adjust volume, click an entry to
-  focus it. Scrolling over an entry's slider or volume field also adjusts its
-  volume.
-- Keyboard control: in horizontal mode Up/Down moves focus between entries and
-  Left/Right adjusts the focused entry's volume; in vertical mode the axes swap,
-  so Left/Right moves focus and Up/Down adjusts the volume.
-- Configurable global hotkeys (default `Ctrl+Alt+Num5` toggles the overlay),
-  captured from a shortcut input, then registered
-  via the native Windows `RegisterHotKey` API for compatibility with
-  key-remapping tools. Global hotkeys are paused while Settings is open so
-  editing a shortcut cannot trigger an existing action.
-- An optional independent mini volume widget shows every visible application
-  as a centered percentage above its icon, without a background or entry
-  limit. Entries wrap into additional rows at the screen edge. Scroll over an
-  icon to change its volume, click it to toggle mute, or hover and drag the
-  centered pin button to move the widget. The pin remains briefly visible after
-  the pointer leaves the widget, making it easy to reach without precise cursor
-  movement. Its visibility and position persist,
-  and it temporarily hides when no matching audio application is active.
-- System tray icon with Show/Hide Overlay, Settings, Start with Windows, and
-  Exit.
-- Optional autostart on Windows login via the `HKCU\...\Run` registry key (no
-  administrator rights required), toggled with a switch in Settings.
-- Settings → Start opened makes the overlay appear right away on launch instead
-  of waiting for a hotkey or the tray.
-- The interface scale in Settings is a slider that applies to the overlay
-immediately as it's dragged.
-- Settings → Sub-process Management lets you flag host applications (e.g.
-  sandbox or launcher tools) that spawn child processes without triggering
-  the normal audio-session notification. While a flagged app is running, its
-  child processes are re-scanned on a shared, configurable interval so they
-  still get their default/persisted volume.
-- A small switch in the overlay's title bar (before the Settings button)
-  turns that background scanning on or off for the current session. It's
-  hidden unless at least one managed app is enabled, and it always starts
-  off on launch — configuring apps never costs anything until you flip it on.
-  </details>
+- Independent volume and mute controls for the system and every active audio
+  application, with app icons and readable display names.
+- Persistent per-application levels, mute states, hotkeys, overlay layout, and
+  other preferences in a human-editable JSON file.
+- Compact always-on-top overlay with optional Windows 11 acrylic transparency,
+  accent-colored focus, and automatic recovery from off-screen positions.
+- Horizontal and vertical layouts with independent saved size and position.
+- Mouse, scroll wheel, and layout-aware arrow-key controls.
+- Configurable global hotkeys, including overlay and mini-widget toggles,
+  volume adjustment, focus navigation, and mute.
+- Optional transparent mini widget for quick volume and mute control.
+- Whitelist and ignored-app filters shared by the overlay and mini widget.
+- System tray controls, optional launch at Windows login, and a setting to show
+  the overlay immediately on startup.
+- Adjustable interface scale, volume steps, tooltip delay, and transparency.
+- Optional background scanning for audio child processes created by selected
+  launchers, sandboxes, and other host applications.
+
+</details>
 
 <details>
 <summary>Extra details</summary>
