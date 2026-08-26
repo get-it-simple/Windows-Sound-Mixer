@@ -26,7 +26,12 @@ from sound_mixer.i18n import AVAILABLE_LANGUAGES, language_display_name, t
 from sound_mixer.mixer.subprocess_manager import SubprocessManager
 from sound_mixer.overlay.icons import bordered_input_style, icon_path, load_icon, toggle_switch_style
 from sound_mixer.overlay.window import OverlayWindow
-from sound_mixer.settings.schema import MAX_UI_SCALE, MIN_UI_SCALE
+from sound_mixer.settings.schema import (
+    LAYOUT_HORIZONTAL,
+    LAYOUT_VERTICAL,
+    MAX_UI_SCALE,
+    MIN_UI_SCALE,
+)
 from sound_mixer.settings.store import SettingsStore
 from sound_mixer.settings_window.managed_apps_editor import AppDropZone, ManagedAppRow
 
@@ -334,6 +339,12 @@ class SettingsWindow(QDialog):
         self._autostart_checkbox.setChecked(self._settings.get_autostart_enabled())
         layout.addWidget(self._field(t("start_with_windows"), self._autostart_checkbox, tab))
 
+        self._start_opened_checkbox = QCheckBox(tab)
+        self._start_opened_checkbox.setObjectName("startOpenedToggle")
+        self._start_opened_checkbox.setStyleSheet(toggle_switch_style("startOpenedToggle"))
+        self._start_opened_checkbox.setChecked(self._settings.get_visible_on_start())
+        layout.addWidget(self._field(t("start_opened"), self._start_opened_checkbox, tab))
+
         self._transparency_checkbox = QCheckBox(tab)
         self._transparency_checkbox.setObjectName("transparencyToggle")
         self._transparency_checkbox.setStyleSheet(toggle_switch_style("transparencyToggle"))
@@ -382,6 +393,14 @@ class SettingsWindow(QDialog):
         scale_layout.addWidget(self._ui_scale_slider)
         scale_layout.addWidget(self._ui_scale_label)
         layout.addWidget(self._field(t("interface_scale"), scale_row, tab))
+
+        self._layout_mode_combo = QComboBox(tab)
+        self._layout_mode_combo.addItem(t("layout_horizontal"), LAYOUT_HORIZONTAL)
+        self._layout_mode_combo.addItem(t("layout_vertical"), LAYOUT_VERTICAL)
+        mode_index = self._layout_mode_combo.findData(self._settings.get_layout_mode())
+        if mode_index >= 0:
+            self._layout_mode_combo.setCurrentIndex(mode_index)
+        layout.addWidget(self._field(t("overlay_layout"), self._layout_mode_combo, tab))
 
         self._language_combo = QComboBox(tab)
         self._language_combo.addItem(t("language_system"), "system")
@@ -496,7 +515,7 @@ class SettingsWindow(QDialog):
     def _show_guide(self) -> None:
         from sound_mixer.overlay.guide import GuideDialog
 
-        GuideDialog(parent=self).exec()
+        GuideDialog(vertical=self._layout_mode_combo.currentData() == LAYOUT_VERTICAL, parent=self).exec()
 
     def accept(self) -> None:
         try:
@@ -514,6 +533,7 @@ class SettingsWindow(QDialog):
 
         autostart_enabled = self._autostart_checkbox.isChecked()
         self._settings.set_autostart_enabled(autostart_enabled)
+        self._settings.set_visible_on_start(self._start_opened_checkbox.isChecked())
         self._settings.set_transparency_enabled(self._transparency_checkbox.isChecked())
         self._settings.set_tooltip_delay_ms(self._tooltip_delay_spinbox.value())
         self._settings.set_arrow_step(self._arrow_step_spinbox.value() / 100)
@@ -540,8 +560,12 @@ class SettingsWindow(QDialog):
         if self._hotkeys is not None:
             self._hotkeys.reload()
 
+        layout_mode = self._layout_mode_combo.currentData()
         if self._overlay is not None:
+            self._overlay.set_layout_mode(layout_mode)
             self._overlay.apply_scale()
+        else:
+            self._settings.set_layout_mode(layout_mode)
 
         if self._subprocess_manager is not None:
             self._subprocess_manager.sync()

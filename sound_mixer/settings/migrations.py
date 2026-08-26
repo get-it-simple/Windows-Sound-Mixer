@@ -1,7 +1,12 @@
 import logging
 
 from sound_mixer.app_key import normalize_app_key
-from sound_mixer.settings.schema import CURRENT_VERSION
+from sound_mixer.settings.schema import (
+    CURRENT_VERSION,
+    DEFAULT_SETTINGS,
+    LAYOUT_HORIZONTAL,
+    LAYOUT_VERTICAL,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +62,20 @@ def _migrate_5_to_6(data: dict) -> dict:
     return data
 
 
+def _migrate_6_to_7(data: dict) -> dict:
+    data = dict(data)
+    overlay = dict(data.get("overlay") or {})
+    defaults = DEFAULT_SETTINGS["overlay"]
+    geometry = {key: overlay.pop(key, defaults[LAYOUT_HORIZONTAL][key]) for key in ("x", "y", "width", "height")}
+    overlay.setdefault(LAYOUT_HORIZONTAL, geometry)
+    overlay.setdefault(LAYOUT_VERTICAL, dict(defaults[LAYOUT_VERTICAL]))
+    overlay.setdefault("layout_mode", LAYOUT_HORIZONTAL)
+    overlay.setdefault("visible_on_start", defaults["visible_on_start"])
+    data["overlay"] = overlay
+    data["version"] = 7
+    return data
+
+
 MIGRATIONS = {
     0: _migrate_0_to_1,
     1: _migrate_1_to_2,
@@ -64,6 +83,7 @@ MIGRATIONS = {
     3: _migrate_3_to_4,
     4: _migrate_4_to_5,
     5: _migrate_5_to_6,
+    6: _migrate_6_to_7,
 }
 
 

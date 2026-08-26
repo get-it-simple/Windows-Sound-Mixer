@@ -7,7 +7,13 @@ from typing import Callable, Optional
 
 from sound_mixer.app_key import legacy_app_key, normalize_app_key
 from sound_mixer.settings.migrations import migrate
-from sound_mixer.settings.schema import DEFAULT_SETTINGS, MAX_UI_SCALE, MIN_UI_SCALE
+from sound_mixer.settings.schema import (
+    DEFAULT_SETTINGS,
+    LAYOUT_HORIZONTAL,
+    LAYOUT_MODES,
+    MAX_UI_SCALE,
+    MIN_UI_SCALE,
+)
 from sound_mixer.volume import clamp_volume
 
 logger = logging.getLogger(__name__)
@@ -141,12 +147,27 @@ class SettingsStore:
         self.data["tooltip_delay_ms"] = int(ms)
         self.save()
 
-    def get_overlay_geometry(self) -> dict:
-        return self.data["overlay"]
+    def get_layout_mode(self) -> str:
+        mode = self.data["overlay"].get("layout_mode")
+        return mode if mode in LAYOUT_MODES else LAYOUT_HORIZONTAL
 
-    def set_overlay_geometry(self, x: int, y: int, width: int, height: int) -> None:
-        overlay = self.data["overlay"]
-        overlay.update({"x": x, "y": y, "width": width, "height": height})
+    def set_layout_mode(self, mode: str) -> None:
+        self.data["overlay"]["layout_mode"] = mode if mode in LAYOUT_MODES else LAYOUT_HORIZONTAL
+        self.save()
+
+    def get_visible_on_start(self) -> bool:
+        return self.data["overlay"]["visible_on_start"]
+
+    def set_visible_on_start(self, enabled: bool) -> None:
+        self.data["overlay"]["visible_on_start"] = bool(enabled)
+        self.save()
+
+    def get_overlay_geometry(self, mode: str | None = None) -> dict:
+        return self.data["overlay"][mode if mode in LAYOUT_MODES else self.get_layout_mode()]
+
+    def set_overlay_geometry(self, x: int, y: int, width: int, height: int, mode: str | None = None) -> None:
+        geometry = self.get_overlay_geometry(mode)
+        geometry.update({"x": x, "y": y, "width": width, "height": height})
         self.save()
 
     def get_arrow_step(self) -> float:

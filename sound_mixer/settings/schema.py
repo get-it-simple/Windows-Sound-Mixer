@@ -1,7 +1,11 @@
-CURRENT_VERSION = 6
+CURRENT_VERSION = 7
 
 MIN_UI_SCALE = 0.5
 MAX_UI_SCALE = 3.0
+
+LAYOUT_HORIZONTAL = "horizontal"
+LAYOUT_VERTICAL = "vertical"
+LAYOUT_MODES = (LAYOUT_HORIZONTAL, LAYOUT_VERTICAL)
 
 DEFAULT_HOTKEYS = [
     {"action": "toggle_overlay", "combo": "ctrl+alt+num5", "enabled": True},
@@ -20,11 +24,10 @@ DEFAULT_SETTINGS = {
     "hotkeys": DEFAULT_HOTKEYS,
     "autostart_enabled": False,
     "overlay": {
-        "x": 100,
-        "y": 100,
-        "width": 320,
-        "height": 400,
+        "layout_mode": LAYOUT_HORIZONTAL,
         "visible_on_start": False,
+        LAYOUT_HORIZONTAL: {"x": 100, "y": 100, "width": 320, "height": 400},
+        LAYOUT_VERTICAL: {"x": 100, "y": 100, "width": 420, "height": 340},
     },
     "tooltip_delay_ms": 500,
     "volume_step": {

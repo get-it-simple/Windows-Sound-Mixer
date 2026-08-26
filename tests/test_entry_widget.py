@@ -394,3 +394,219 @@ def test_zero_delta_wheel_event_does_not_scroll(qapp):
     widget.wheelEvent(zero_event)
 
     assert scrolled == []
+
+
+def test_vertical_mode_uses_vertical_slider(qapp):
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QBoxLayout
+
+    widget = EntryWidget()
+    widget.set_layout_mode("vertical")
+
+    assert widget.is_vertical() is True
+    assert widget._slider.orientation() == Qt.Orientation.Vertical
+    assert widget.layout().direction() == QBoxLayout.Direction.TopToBottom
+
+
+def test_switching_back_to_horizontal_restores_slider_orientation(qapp):
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QBoxLayout
+
+    widget = EntryWidget()
+    widget.set_layout_mode("vertical")
+    widget.set_layout_mode("horizontal")
+
+    assert widget._slider.orientation() == Qt.Orientation.Horizontal
+    assert widget.layout().direction() == QBoxLayout.Direction.LeftToRight
+    assert widget.maximumWidth() > widget.sizeHint().width()
+
+
+def test_vertical_mode_pins_column_width_to_scale(qapp):
+    from sound_mixer.overlay.entry_widget import BASE_VERTICAL_ENTRY_WIDTH_PX
+
+    widget = EntryWidget()
+    widget.set_layout_mode("vertical")
+    widget.apply_scale(2.0)
+
+    expected = round(BASE_VERTICAL_ENTRY_WIDTH_PX * 2.0)
+    assert widget.width() == expected
+    assert widget.sizeHint().width() == expected
+
+
+def test_vertical_column_width_is_not_narrower_than_its_content(qapp):
+    widget = EntryWidget()
+    widget.set_layout_mode("vertical")
+    widget.set_entry(make_entry(volume=0.5), focused=False)
+
+    assert widget.sizeHint().width() >= widget.minimumSizeHint().width()
+
+
+def test_vertical_mode_hides_process_name_and_keeps_it_on_hover(qapp):
+    widget = EntryWidget()
+    widget.set_layout_mode("vertical")
+    widget.set_entry(
+        MixerEntry(key="p.exe", display_name="A Very Long Application Name", volume=0.5, muted=False),
+        focused=False,
+    )
+
+    assert widget._process_name_label.isHidden()
+    assert widget.toolTip() == "A Very Long Application Name"
+    assert widget._slider.toolTip() == "A Very Long Application Name"
+
+
+def test_switching_back_to_horizontal_shows_process_name_again(qapp):
+    widget = EntryWidget()
+    widget.set_entry(make_entry(volume=0.5), focused=False)
+    widget.set_layout_mode("vertical")
+
+    widget.set_layout_mode("horizontal")
+
+    assert not widget._process_name_label.isHidden()
+    assert widget._process_name_label.text() == "Aurora Browser"
+
+
+def test_horizontal_mode_shows_full_process_name(qapp):
+    widget = EntryWidget()
+    widget.set_entry(
+        MixerEntry(key="p.exe", display_name="A Very Long Application Name", volume=0.5, muted=False),
+        focused=False,
+    )
+
+    assert widget._process_name_label.text() == "A Very Long Application Name"
+
+
+@pytest.mark.parametrize("scale_percent", range(50, 301))
+def test_vertical_slider_handle_stays_round_at_every_scale(scale_percent):
+    css = slider_style(scale_percent / 100, "#3a96dd")
+
+    handle_size = int(re.search(r"QSlider::handle:vertical \{\s*width: (\d+)px", css).group(1))
+    groove_width = int(re.search(r"QSlider::groove:vertical \{\s*width: (\d+)px", css).group(1))
+
+    assert (handle_size - groove_width) % 2 == 0
+
+
+def test_vertical_slider_style_fills_below_the_handle(qapp):
+    css = slider_style(1.0, "#3a96dd")
+
+    filled = re.search(r"QSlider::add-page:vertical \{[^}]*background: ([^;]+);", css).group(1)
+
+    assert filled == "#3a96dd"
+
+
+def styled_vertical_widget(scale: float) -> EntryWidget:
+    from PySide6.QtWidgets import QFrame, QVBoxLayout
+
+    from sound_mixer.overlay.window import background_style
+
+    background = QFrame()
+    background.setObjectName("background")
+    background.setStyleSheet(background_style(scale, "#3a96dd", True, True))
+    layout = QVBoxLayout(background)
+    widget = EntryWidget(background)
+    layout.addWidget(widget)
+    widget.set_layout_mode("vertical")
+    widget.apply_scale(scale)
+    widget.set_entry(make_entry(volume=1.0), focused=False)
+    widget._background_holder = background
+    return widget
+
+
+@pytest.mark.parametrize("scale", [1.0, 1.5, 2.0, 3.0])
+def test_vertical_value_box_is_never_wider_than_the_mute_button(qapp, scale):
+    widget = styled_vertical_widget(scale)
+
+    assert widget._volume_spinbox.width() <= widget._mute_button.sizeHint().width()
+
+
+@pytest.mark.parametrize("scale", [1.0, 1.5, 2.0, 3.0])
+def test_vertical_value_box_matches_the_mute_button_width(qapp, scale):
+    widget = styled_vertical_widget(scale)
+
+    assert widget._volume_spinbox.width() == widget._mute_button.sizeHint().width()
+
+
+@pytest.mark.parametrize("scale", [1.0, 1.5, 2.0, 3.0])
+def test_vertical_value_font_is_smaller_than_the_body_font(qapp, scale):
+    from sound_mixer.overlay.entry_widget import BASE_VERTICAL_VALUE_FONT_PX
+
+    widget = styled_vertical_widget(scale)
+
+    assert BASE_VERTICAL_VALUE_FONT_PX < BASE_FONT_PX
+    assert widget._volume_spinbox.font().pixelSize() == round(BASE_VERTICAL_VALUE_FONT_PX * scale)
+
+
+@pytest.mark.parametrize("scale", [1.0, 1.5, 2.0, 3.0])
+def test_vertical_stylesheet_drives_the_value_font(qapp, scale):
+    from sound_mixer.overlay.entry_widget import BASE_VERTICAL_VALUE_FONT_PX
+    from sound_mixer.overlay.window import background_style
+
+    vertical = background_style(scale, "#3a96dd", True, True)
+    horizontal = background_style(scale, "#3a96dd", True, False)
+
+    vertical_rule = vertical.split("#background #entryWidget QSpinBox {")[1].split("}")[0]
+    horizontal_rule = horizontal.split("#background #entryWidget QSpinBox {")[1].split("}")[0]
+
+    assert f"font-size: {round(BASE_VERTICAL_VALUE_FONT_PX * scale)}px" in vertical_rule
+    assert f"font-size: {round(BASE_FONT_PX * scale)}px" in horizontal_rule
+
+
+def test_horizontal_value_box_keeps_its_own_width(qapp):
+    widget = EntryWidget()
+    widget.apply_scale(1.0)
+
+    assert widget._volume_spinbox.width() == widget._volume_spinbox.minimumSizeHint().width()
+    assert widget._volume_spinbox.font().pixelSize() == BASE_FONT_PX
+
+
+def test_vertical_mode_centers_every_element(qapp):
+    from PySide6.QtCore import Qt
+
+    widget = EntryWidget()
+    widget.set_layout_mode("vertical")
+    layout = widget.layout()
+
+    for child in (widget._icon_container, widget._mute_button, widget._volume_spinbox, widget._slider_column):
+        index = layout.indexOf(child)
+        assert layout.itemAt(index).alignment() & Qt.AlignmentFlag.AlignHCenter
+
+    column_layout = widget._slider_column.layout()
+    slider_index = column_layout.indexOf(widget._slider)
+    assert column_layout.itemAt(slider_index).alignment() & Qt.AlignmentFlag.AlignHCenter
+
+
+def test_horizontal_mode_centers_elements_vertically(qapp):
+    from PySide6.QtCore import Qt
+
+    widget = EntryWidget()
+    widget.set_layout_mode("vertical")
+    widget.set_layout_mode("horizontal")
+    layout = widget.layout()
+
+    index = layout.indexOf(widget._mute_button)
+    assert layout.itemAt(index).alignment() & Qt.AlignmentFlag.AlignVCenter
+
+
+def test_vertical_slider_is_thicker_than_the_horizontal_one(qapp):
+    css = slider_style(1.0, "#3a96dd")
+
+    horizontal = int(re.search(r"QSlider::groove:horizontal \{\s*height: (\d+)px", css).group(1))
+    vertical = int(re.search(r"QSlider::groove:vertical \{\s*width: (\d+)px", css).group(1))
+    h_handle = int(re.search(r"QSlider::handle:horizontal \{\s*width: (\d+)px", css).group(1))
+    v_handle = int(re.search(r"QSlider::handle:vertical \{\s*width: (\d+)px", css).group(1))
+
+    assert vertical > horizontal
+    assert v_handle > h_handle
+
+
+def test_vertical_slider_reserves_room_for_the_wider_handle(qapp):
+    from sound_mixer.overlay.entry_widget import BASE_VERTICAL_SLIDER_HEIGHT_PX
+
+    css = slider_style(1.0, "#3a96dd")
+    handle = int(re.search(r"QSlider::handle:vertical \{\s*width: (\d+)px", css).group(1))
+
+    widget = EntryWidget()
+    widget.set_layout_mode("vertical")
+    widget.apply_scale(1.0)
+
+    assert widget._slider.minimumWidth() >= handle
+    assert widget._slider.minimumHeight() == BASE_VERTICAL_SLIDER_HEIGHT_PX

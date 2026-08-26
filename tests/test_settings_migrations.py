@@ -1,7 +1,7 @@
 import logging
 
 from sound_mixer.settings.migrations import migrate
-from sound_mixer.settings.schema import CURRENT_VERSION
+from sound_mixer.settings.schema import CURRENT_VERSION, DEFAULT_SETTINGS
 
 
 def test_migrates_legacy_v0_document():
@@ -171,3 +171,37 @@ def test_migrates_v5_normalises_path_separators():
     migrated = migrate(v5)
 
     assert migrated["app_volumes"] == {"d:/games/mygame/game.exe": {"volume": 0.5}}
+
+
+def test_migrates_v6_to_v7_moves_geometry_into_horizontal_block():
+    v6 = {
+        "version": 6,
+        "overlay": {"x": 10, "y": 20, "width": 300, "height": 500, "visible_on_start": True},
+    }
+
+    migrated = migrate(v6)
+
+    assert migrated["version"] == CURRENT_VERSION
+    assert migrated["overlay"]["horizontal"] == {"x": 10, "y": 20, "width": 300, "height": 500}
+    assert migrated["overlay"]["visible_on_start"] is True
+    assert migrated["overlay"]["layout_mode"] == "horizontal"
+    assert set(migrated["overlay"]["vertical"]) == {"x", "y", "width", "height"}
+
+
+def test_migrates_v6_to_v7_drops_flat_geometry_keys():
+    v6 = {"version": 6, "overlay": {"x": 10, "y": 20, "width": 300, "height": 500}}
+
+    migrated = migrate(v6)
+
+    for key in ("x", "y", "width", "height"):
+        assert key not in migrated["overlay"]
+
+
+def test_migrates_v6_to_v7_defaults_when_overlay_missing():
+    v6 = {"version": 6}
+
+    migrated = migrate(v6)
+
+    assert migrated["overlay"]["layout_mode"] == "horizontal"
+    assert migrated["overlay"]["visible_on_start"] is False
+    assert migrated["overlay"]["horizontal"]["width"] == DEFAULT_SETTINGS["overlay"]["horizontal"]["width"]

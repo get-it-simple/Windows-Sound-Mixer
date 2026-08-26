@@ -31,8 +31,8 @@ def test_save_load_round_trip(tmp_path):
     data = reloaded.load()
 
     assert data["app_volumes"]["game.exe"]["volume"] == 0.3
-    assert data["overlay"]["x"] == 10
-    assert data["overlay"]["y"] == 20
+    assert data["overlay"]["horizontal"]["x"] == 10
+    assert data["overlay"]["horizontal"]["y"] == 20
     hotkey = next(h for h in data["hotkeys"] if h["action"] == "toggle_overlay")
     assert hotkey["combo"] == "ctrl+alt+num1"
 
@@ -495,3 +495,70 @@ def test_ignoring_one_install_does_not_ignore_another_with_the_same_name(tmp_pat
 
     assert store.is_app_ignored("G:/Games/VOIDRUNNER/Game.exe") is True
     assert store.is_app_ignored("D:/Downloads/Starfall Demo/game.exe") is False
+
+
+def test_layout_mode_defaults_to_horizontal(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+
+    assert store.get_layout_mode() == "horizontal"
+
+
+def test_layout_mode_round_trips(tmp_path):
+    path = tmp_path / "settings.json"
+    store = SettingsStore(path)
+    store.load()
+
+    store.set_layout_mode("vertical")
+
+    assert SettingsStore(path).load()["overlay"]["layout_mode"] == "vertical"
+
+
+def test_unknown_layout_mode_falls_back_to_horizontal(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+
+    store.set_layout_mode("diagonal")
+
+    assert store.get_layout_mode() == "horizontal"
+
+
+def test_hand_edited_unknown_layout_mode_is_read_as_horizontal(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+    store.data["overlay"]["layout_mode"] = "diagonal"
+
+    assert store.get_layout_mode() == "horizontal"
+
+
+def test_overlay_geometry_is_stored_per_layout_mode(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+
+    store.set_overlay_geometry(10, 20, 300, 400)
+    store.set_layout_mode("vertical")
+    store.set_overlay_geometry(50, 60, 500, 600)
+
+    assert store.get_overlay_geometry() == {"x": 50, "y": 60, "width": 500, "height": 600}
+    assert store.get_overlay_geometry("horizontal") == {"x": 10, "y": 20, "width": 300, "height": 400}
+
+
+def test_visible_on_start_round_trips(tmp_path):
+    path = tmp_path / "settings.json"
+    store = SettingsStore(path)
+    store.load()
+
+    assert store.get_visible_on_start() is False
+    store.set_visible_on_start(True)
+
+    assert SettingsStore(path).load()["overlay"]["visible_on_start"] is True
+
+
+def test_setting_geometry_keeps_visible_on_start(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+    store.set_visible_on_start(True)
+
+    store.set_overlay_geometry(1, 2, 300, 400)
+
+    assert store.get_visible_on_start() is True

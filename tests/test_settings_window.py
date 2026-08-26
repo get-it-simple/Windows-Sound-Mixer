@@ -309,3 +309,65 @@ def test_accept_saves_language(qapp, settings):
     window.accept()
 
     assert settings.get_language() == "uk"
+
+
+def test_start_opened_checkbox_reflects_setting(qapp, settings):
+    settings.set_visible_on_start(True)
+
+    window = SettingsWindow(settings)
+
+    assert window._start_opened_checkbox.isChecked() is True
+    assert window._start_opened_checkbox.objectName() == "startOpenedToggle"
+    assert "::indicator" in window._start_opened_checkbox.styleSheet()
+
+
+def test_accept_saves_start_opened(qapp, settings):
+    window = SettingsWindow(settings)
+
+    window._start_opened_checkbox.setChecked(True)
+    window.accept()
+
+    assert settings.get_visible_on_start() is True
+
+
+def test_layout_mode_combo_reflects_setting(qapp, settings):
+    settings.set_layout_mode("vertical")
+
+    window = SettingsWindow(settings)
+
+    assert window._layout_mode_combo.currentData() == "vertical"
+
+
+def test_accept_saves_layout_mode_without_overlay(qapp, settings):
+    window = SettingsWindow(settings)
+
+    window._layout_mode_combo.setCurrentIndex(window._layout_mode_combo.findData("vertical"))
+    window.accept()
+
+    assert settings.get_layout_mode() == "vertical"
+
+
+def test_accept_applies_layout_mode_to_overlay(qapp, fake_backend, settings):
+    from PySide6.QtCore import Qt
+
+    from sound_mixer.mixer.model import MixerModel
+
+    model = MixerModel(fake_backend, settings)
+    overlay = OverlayWindow(model, settings)
+    window = SettingsWindow(settings, overlay=overlay)
+
+    window._layout_mode_combo.setCurrentIndex(window._layout_mode_combo.findData("vertical"))
+    window.accept()
+
+    assert settings.get_layout_mode() == "vertical"
+    assert overlay.layout_mode() == "vertical"
+    assert overlay._entry_widgets[0]._slider.orientation() == Qt.Orientation.Vertical
+
+
+def test_cancel_does_not_change_layout_mode(qapp, settings):
+    window = SettingsWindow(settings)
+
+    window._layout_mode_combo.setCurrentIndex(window._layout_mode_combo.findData("vertical"))
+    window.reject()
+
+    assert settings.get_layout_mode() == "horizontal"

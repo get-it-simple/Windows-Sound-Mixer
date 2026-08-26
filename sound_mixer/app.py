@@ -66,7 +66,7 @@ class SoundMixerApp:
             on_open_settings=self._open_settings,
             on_toggle_autostart=self._set_autostart_enabled,
             on_exit=self.qt_app.quit,
-            overlay_visible=self.settings.get_overlay_geometry()["visible_on_start"],
+            overlay_visible=self.settings.get_visible_on_start(),
             autostart_enabled=self.settings.get_autostart_enabled(),
             muted=self.model.is_master_muted(),
         )
@@ -159,8 +159,8 @@ class SoundMixerApp:
     def run(self) -> int:
         if not self._is_primary_instance:
             return 0
-        if self.settings.get_overlay_geometry()["visible_on_start"]:
-            self.overlay.show()
+        if self.settings.get_visible_on_start():
+            self.overlay.show_on_start()
         try:
             return self.qt_app.exec()
         finally:

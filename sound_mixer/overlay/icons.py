@@ -1,12 +1,16 @@
 from PySide6.QtCore import QEvent, QFileInfo, QPoint, QTimer
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QTransform
 from PySide6.QtWidgets import QFileIconProvider, QToolButton, QToolTip
 
 from sound_mixer.paths import resource_path
 
 ICON_NAMES = ("volume", "muted", "settings", "help", "pin", "close", "toggle_on", "toggle_off", "app", "logo", "hide", "arrow_up", "dropdown_arrow", "trash")
 
-_icon_cache: dict[str, QIcon] = {}
+ROTATED_ICON_PX = 64
+TOGGLE_SWITCH_WIDTH_PX = 36
+TOGGLE_SWITCH_HEIGHT_PX = 20
+
+_icon_cache: dict[tuple[str, int], QIcon] = {}
 _app_icon_cache: dict[str, QIcon] = {}
 _icon_provider: QFileIconProvider | None = None
 
@@ -22,10 +26,15 @@ def icon_path(name: str) -> str:
     return str(resource_path("resources", "icons", f"{name}.svg"))
 
 
-def load_icon(name: str) -> QIcon:
-    if name not in _icon_cache:
-        _icon_cache[name] = QIcon(icon_path(name))
-    return _icon_cache[name]
+def load_icon(name: str, rotation: int = 0) -> QIcon:
+    key = (name, rotation % 360)
+    if key not in _icon_cache:
+        icon = QIcon(icon_path(name))
+        if key[1]:
+            pixmap = icon.pixmap(ROTATED_ICON_PX, ROTATED_ICON_PX)
+            icon = QIcon(pixmap.transformed(QTransform().rotate(key[1])))
+        _icon_cache[key] = icon
+    return _icon_cache[key]
 
 
 def _provider() -> QFileIconProvider:
@@ -67,8 +76,8 @@ def toggle_switch_style(object_name: str) -> str:
     on_path = icon_path("toggle_on").replace("\\", "/")
     return f"""
 QCheckBox#{object_name}::indicator {{
-    width: 36px;
-    height: 20px;
+    width: {TOGGLE_SWITCH_WIDTH_PX}px;
+    height: {TOGGLE_SWITCH_HEIGHT_PX}px;
     image: url({off_path});
 }}
 QCheckBox#{object_name}::indicator:checked {{

@@ -4,21 +4,43 @@ from ctypes import wintypes
 from typing import Optional
 
 from PySide6.QtCore import QSize, Qt, QTimer, Signal
-from PySide6.QtWidgets import QCheckBox, QFrame, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtWidgets import (
+    QBoxLayout,
+    QCheckBox,
+    QFrame,
+    QLabel,
+    QScrollArea,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
 from sound_mixer import __version__
 from sound_mixer.audio.session_listener import AudioSessionListener
 from sound_mixer.i18n import t
 from sound_mixer.mixer.model import MixerModel
 from sound_mixer.mixer.subprocess_manager import SubprocessManager
-from sound_mixer.overlay.entry_widget import EntryWidget
-from sound_mixer.overlay.icons import DelayedTooltipButton, load_icon, toggle_switch_style
+from sound_mixer.overlay.entry_widget import (
+    BASE_VERTICAL_VALUE_FONT_PX,
+    VALUE_TEXT_PADDING_PX,
+    EntryWidget,
+)
+from sound_mixer.overlay.icons import (
+    TOGGLE_SWITCH_HEIGHT_PX,
+    TOGGLE_SWITCH_WIDTH_PX,
+    DelayedTooltipButton,
+    load_icon,
+    toggle_switch_style,
+)
 from sound_mixer.overlay.win_effects import WM_DWMCOLORIZATIONCOLORCHANGED, apply_acrylic_effect, get_accent_color
+from sound_mixer.settings.schema import LAYOUT_HORIZONTAL, LAYOUT_VERTICAL
 from sound_mixer.settings.store import SettingsStore
 
 REFRESH_INTERVAL_MS = 1000
 GEOMETRY_SAVE_DELAY_MS = 300
 WARM_UP_HIDE_DELAY_MS = 150
+WARM_UP_RESHOW_DELAY_MS = 50
 
 BASE_FONT_PX = 13
 BASE_ICON_PX = 16
@@ -28,7 +50,10 @@ BASE_VERSION_FONT_PX = 11
 BASE_DIVIDER_MARGIN_PX = 4
 
 MIN_OVERLAY_WIDTH = 200
+MAX_WIDGET_SIZE = 16777215
 RESIZE_HANDLE_WIDTH_PX = 6
+RESIZE_HANDLE_HEIGHT_PX = 6
+MIN_VISIBLE_PX = 48
 MAX_VISIBLE_ENTRIES = 6
 BACKGROUND_BORDER_PX = 1
 
@@ -40,7 +65,7 @@ def _accent_rgba(hex_color: str, alpha: int) -> str:
     return f"rgba({r}, {g}, {b}, {alpha})"
 
 
-def background_style(scale: float, accent_color: str, transparent: bool = True) -> str:
+def background_style(scale: float, accent_color: str, transparent: bool = True, vertical: bool = False) -> str:
     font_px = round(BASE_FONT_PX * scale)
     title_font_px = round(BASE_TITLE_FONT_PX * scale)
     version_font_px = round(BASE_VERSION_FONT_PX * scale)
@@ -48,6 +73,12 @@ def background_style(scale: float, accent_color: str, transparent: bool = True) 
     entry_radius = round(10 * scale)
     background_color = "rgba(32, 32, 32, 140)" if transparent else "rgb(32, 32, 32)"
     accent_bg = _accent_rgba(accent_color, 45)
+    ignored_button_padding = (
+        f"{round(4 * scale)}px {round(2 * scale)}px" if vertical else f"{round(4 * scale)}px"
+    )
+    value_padding = round((VALUE_TEXT_PADDING_PX if vertical else 8) * scale)
+    value_font_px = round((BASE_VERTICAL_VALUE_FONT_PX if vertical else BASE_FONT_PX) * scale)
+    ignored_button_width = "" if vertical else "\n    width: 100%;"
     return f"""
 #background {{
     background-color: {background_color};
@@ -99,8 +130,9 @@ def background_style(scale: float, accent_color: str, transparent: bool = True) 
     background: rgba(0, 0, 0, 70);
     border: none;
     border-radius: {control_radius}px;
-    padding: {round(4 * scale)}px {round(8 * scale)}px;
+    padding: {round(4 * scale)}px {value_padding}px;
     min-height: {font_px}px;
+    font-size: {value_font_px}px;
     color: #f2f2f5;
 }}
 #background #entryWidget #processNameLabel {{
@@ -131,6 +163,27 @@ def background_style(scale: float, accent_color: str, transparent: bool = True) 
 #background QScrollBar::add-page:vertical, #background QScrollBar::sub-page:vertical {{
     background: none;
 }}
+#background QScrollBar:horizontal {{
+    height: {round(8 * scale)}px;
+    background: transparent;
+    margin: 2px;
+}}
+#background QScrollBar::handle:horizontal {{
+    background: rgba(255, 255, 255, 60);
+    border-radius: {round(4 * scale)}px;
+    min-width: 24px;
+}}
+#background QScrollBar::handle:horizontal:hover {{
+    background: rgba(255, 255, 255, 90);
+}}
+#background QScrollBar::add-line:horizontal, #background QScrollBar::sub-line:horizontal {{
+    width: 0px;
+    border: none;
+    background: none;
+}}
+#background QScrollBar::add-page:horizontal, #background QScrollBar::sub-page:horizontal {{
+    background: none;
+}}
 #background #ignoredDivider {{
     color: rgba(255, 255, 255, 40);
 }}
@@ -138,8 +191,7 @@ def background_style(scale: float, accent_color: str, transparent: bool = True) 
     background: rgba(255, 255, 255, 8);
     border: none;
     border-radius: {control_radius}px;
-    padding: {round(4 * scale)}px;
-    width: 100%;
+    padding: {ignored_button_padding};{ignored_button_width}
 }}
 #background #expandButton:hover, #background #collapseButton:hover {{
     background: rgba(255, 255, 255, 18);
@@ -150,24 +202,34 @@ def background_style(scale: float, accent_color: str, transparent: bool = True) 
 class _ResizeHandle(QWidget):
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
-        self.setCursor(Qt.CursorShape.SizeHorCursor)
+        self._vertical = False
         self._drag_start_pos: int | None = None
-        self._start_width = 0
+        self._start_size = 0
+        self.set_vertical(False)
+
+    def set_vertical(self, vertical: bool) -> None:
+        self._vertical = vertical
+        self.setCursor(Qt.CursorShape.SizeVerCursor if vertical else Qt.CursorShape.SizeHorCursor)
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             window = self.window()
-            self._drag_start_pos = event.globalPosition().toPoint().x()
-            self._start_width = window.width()
+            position = event.globalPosition().toPoint()
+            self._drag_start_pos = position.y() if self._vertical else position.x()
+            self._start_size = window.height() if self._vertical else window.width()
             window._pause_refresh()
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
         if self._drag_start_pos is not None and event.buttons() & Qt.MouseButton.LeftButton:
-            delta = event.globalPosition().toPoint().x() - self._drag_start_pos
+            position = event.globalPosition().toPoint()
             window = self.window()
-            new_width = max(MIN_OVERLAY_WIDTH, self._start_width + delta)
-            window.resize(new_width, window.height())
+            if self._vertical:
+                delta = position.y() - self._drag_start_pos
+                window.resize(window.width(), max(window.minimumHeight(), self._start_size + delta))
+            else:
+                delta = position.x() - self._drag_start_pos
+                window.resize(max(window.minimumWidth(), self._start_size + delta), window.height())
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:
@@ -216,6 +278,10 @@ class OverlayWindow(QWidget):
         self._entry_widgets: list[EntryWidget] = []
         self._ignored_widgets: list[EntryWidget] = []
         self._ignored_expanded = False
+        self._layout_mode = settings.get_layout_mode()
+        self._vertical = self._layout_mode == LAYOUT_VERTICAL
+        self._warming_up = False
+        self._show_after_warm_up = False
 
         self.setWindowTitle(t("sound_mixer_title"))
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -226,14 +292,17 @@ class OverlayWindow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setMinimumWidth(MIN_OVERLAY_WIDTH)
         self._accent_color = get_accent_color()
-        self._build_ui()
-        self._restore_geometry()
-        self.apply_scale()
-        apply_acrylic_effect(self, self._settings.get_transparency_enabled())
 
         self._geometry_save_timer = QTimer(self)
         self._geometry_save_timer.setSingleShot(True)
         self._geometry_save_timer.timeout.connect(self._save_geometry)
+
+        self._build_ui()
+        self._apply_layout_mode()
+        self._restore_geometry()
+        self.apply_scale()
+        self._ensure_on_screen()
+        apply_acrylic_effect(self, self._settings.get_transparency_enabled())
 
         self._refresh_timer = QTimer(self)
         self._refresh_timer.timeout.connect(self._refresh)
@@ -247,10 +316,22 @@ class OverlayWindow(QWidget):
             self._warm_up_acrylic()
 
     def _warm_up_acrylic(self) -> None:
-        visible_on_start = self._settings.get_overlay_geometry()["visible_on_start"]
+        self._warming_up = True
         self.show()
-        if not visible_on_start:
-            QTimer.singleShot(WARM_UP_HIDE_DELAY_MS, self.close)
+        QTimer.singleShot(WARM_UP_HIDE_DELAY_MS, self._finish_warm_up)
+
+    def _finish_warm_up(self) -> None:
+        self._warming_up = False
+        self.close()
+        if self._show_after_warm_up:
+            self._show_after_warm_up = False
+            QTimer.singleShot(WARM_UP_RESHOW_DELAY_MS, self.show)
+
+    def show_on_start(self) -> None:
+        if self._warming_up:
+            self._show_after_warm_up = True
+            return
+        self.show()
 
     def _build_ui(self) -> None:
         outer_layout = QVBoxLayout(self)
@@ -261,15 +342,16 @@ class OverlayWindow(QWidget):
         outer_layout.addWidget(background)
         self._background = background
 
-        layout = QVBoxLayout(background)
+        layout = QBoxLayout(QBoxLayout.Direction.TopToBottom, background)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
+        self._background_layout = layout
         title_bar = self._build_title_bar(background)
         layout.addWidget(title_bar)
 
         self._active_container = QWidget()
         self._active_container.setObjectName("entryContainer")
-        self._active_layout = QVBoxLayout(self._active_container)
+        self._active_layout = QBoxLayout(QBoxLayout.Direction.TopToBottom, self._active_container)
         self._active_layout.setContentsMargins(0, 0, 0, 0)
         self._active_layout.setSpacing(0)
 
@@ -288,7 +370,7 @@ class OverlayWindow(QWidget):
 
         self._ignored_container = QWidget()
         self._ignored_container.setObjectName("entryContainer")
-        self._ignored_layout = QVBoxLayout(self._ignored_container)
+        self._ignored_layout = QBoxLayout(QBoxLayout.Direction.TopToBottom, self._ignored_container)
         self._ignored_layout.setContentsMargins(0, 0, 0, 0)
         self._ignored_layout.setSpacing(0)
         self._ignored_container.hide()
@@ -303,7 +385,7 @@ class OverlayWindow(QWidget):
 
         scroll_container = QWidget()
         scroll_container.setObjectName("entryContainer")
-        self._container_layout = QVBoxLayout(scroll_container)
+        self._container_layout = QBoxLayout(QBoxLayout.Direction.TopToBottom, scroll_container)
         self._container_layout.setContentsMargins(0, 0, 0, 0)
         self._container_layout.setSpacing(0)
         self._container_layout.addWidget(self._active_container)
@@ -319,9 +401,10 @@ class OverlayWindow(QWidget):
         scroll_area.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         layout.addWidget(scroll_area)
+        self._scroll_area = scroll_area
 
         self._title_bar = title_bar
-        self._resize_handle_width = _ResizeHandle(self)
+        self._resize_handle = _ResizeHandle(self)
 
     def _refresh_accent_color(self) -> None:
         new_color = get_accent_color()
@@ -337,6 +420,7 @@ class OverlayWindow(QWidget):
         return super().nativeEvent(event_type, message)
 
     def showEvent(self, event) -> None:
+        self._ensure_on_screen()
         super().showEvent(event)
         self._refresh_accent_color()
         self._session_listener.stop()
@@ -355,6 +439,7 @@ class OverlayWindow(QWidget):
         title_bar.setObjectName("titleBar")
 
         icon_label = QLabel(title_bar)
+        icon_label.setToolTip(f"{t('sound_mixer_title')}\nv{__version__}")
         self._title_icon_label = icon_label
 
         name_label = QLabel(t("sound_mixer_title"), title_bar)
@@ -362,16 +447,19 @@ class OverlayWindow(QWidget):
         self._title_name_label = name_label
         version_label = QLabel(f"v{__version__}", title_bar)
         version_label.setObjectName("titleVersion")
+        self._title_version_label = version_label
 
         title_text_layout = QVBoxLayout()
         title_text_layout.setContentsMargins(0, 0, 0, 0)
         title_text_layout.setSpacing(0)
         title_text_layout.addWidget(name_label)
         title_text_layout.addWidget(version_label)
+        self._title_text_layout = title_text_layout
 
         subprocess_management_toggle = QCheckBox(title_bar)
         subprocess_management_toggle.setObjectName("subprocessManagementToggle")
         subprocess_management_toggle.setStyleSheet(toggle_switch_style("subprocessManagementToggle"))
+        subprocess_management_toggle.setFixedSize(TOGGLE_SWITCH_WIDTH_PX, TOGGLE_SWITCH_HEIGHT_PX)
         subprocess_management_toggle.setToolTip(t("subprocess_management_toggle_tooltip"))
         subprocess_management_toggle.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         subprocess_management_toggle.setVisible(False)
@@ -399,7 +487,7 @@ class OverlayWindow(QWidget):
         close_button.clicked.connect(self.close)
         self._close_button = close_button
 
-        layout = QHBoxLayout(title_bar)
+        layout = QBoxLayout(QBoxLayout.Direction.LeftToRight, title_bar)
         layout.addWidget(icon_label)
         layout.addLayout(title_text_layout)
         layout.addStretch(1)
@@ -413,6 +501,31 @@ class OverlayWindow(QWidget):
         geometry = self._settings.get_overlay_geometry()
         self.setGeometry(geometry["x"], geometry["y"], geometry["width"], geometry["height"])
 
+    def _ensure_on_screen(self) -> None:
+        screens = QGuiApplication.screens()
+        if not screens:
+            return
+
+        rect = self.frameGeometry()
+        screen = QGuiApplication.screenAt(rect.center()) or QGuiApplication.primaryScreen()
+        available = screen.availableGeometry()
+
+        if self._vertical and rect.height() > available.height():
+            self.resize(self.width(), max(self.minimumHeight(), available.height()))
+        elif not self._vertical and rect.width() > available.width():
+            self.resize(max(MIN_OVERLAY_WIDTH, available.width()), self.height())
+
+        rect = self.frameGeometry()
+        for candidate in screens:
+            overlap = candidate.availableGeometry().intersected(rect)
+            if overlap.width() >= min(MIN_VISIBLE_PX, rect.width()) and overlap.height() >= min(
+                MIN_VISIBLE_PX, rect.height()
+            ):
+                return
+
+        center = available.center()
+        self.move(center.x() - rect.width() // 2, center.y() - rect.height() // 2)
+
     def _save_geometry(self) -> None:
         geometry = self.geometry()
         self._settings.set_overlay_geometry(geometry.x(), geometry.y(), geometry.width(), geometry.height())
@@ -425,21 +538,63 @@ class OverlayWindow(QWidget):
         super().moveEvent(event)
 
     def resizeEvent(self, event) -> None:
-        title_bar_height = self._title_bar.height()
-        self._resize_handle_width.setGeometry(
-            self.width() - RESIZE_HANDLE_WIDTH_PX, title_bar_height, RESIZE_HANDLE_WIDTH_PX, self.height() - title_bar_height
-        )
-        self._resize_handle_width.raise_()
+        if self._vertical:
+            title_bar_width = self._title_bar.width()
+            self._resize_handle.setGeometry(
+                title_bar_width,
+                self.height() - RESIZE_HANDLE_HEIGHT_PX,
+                self.width() - title_bar_width,
+                RESIZE_HANDLE_HEIGHT_PX,
+            )
+        else:
+            title_bar_height = self._title_bar.height()
+            self._resize_handle.setGeometry(
+                self.width() - RESIZE_HANDLE_WIDTH_PX,
+                title_bar_height,
+                RESIZE_HANDLE_WIDTH_PX,
+                self.height() - title_bar_height,
+            )
+        self._resize_handle.raise_()
 
         self._schedule_geometry_save()
         super().resizeEvent(event)
 
-    def _update_window_height(self) -> None:
+    def _entry_extent(self, widget: EntryWidget) -> int:
+        hint = widget.sizeHint()
+        return hint.width() if self._vertical else hint.height()
+
+    def _widget_extent(self, widget: QWidget) -> int:
+        hint = widget.sizeHint()
+        return hint.width() if self._vertical else hint.height()
+
+    def _apply_minimum_height(self) -> None:
+        if not self._vertical:
+            return
+
+        entry_widgets = self._entry_widgets + self._ignored_widgets
+        entries_min = max((widget.minimumSizeHint().height() for widget in entry_widgets), default=0)
+        margins = self._container_layout.contentsMargins()
+        scrollbar_height = 0
+        if self._scroll_area.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOn:
+            scrollbar_height = self._scroll_area.horizontalScrollBar().sizeHint().height()
+        content_min = margins.top() + margins.bottom() + entries_min + scrollbar_height
+
+        target_height = max(
+            self._title_bar.sizeHint().height() + 2 * BACKGROUND_BORDER_PX,
+            content_min + 2 * BACKGROUND_BORDER_PX,
+        )
+        if self.minimumHeight() != target_height:
+            self.setMinimumHeight(target_height)
+
+    def _update_window_size(self) -> None:
+        self._update_horizontal_scrollbar_policy()
+        self._apply_minimum_height()
+
         all_ref_widgets = self._entry_widgets or self._ignored_widgets
         if not all_ref_widgets:
             return
 
-        entry_height = max(w.sizeHint().height() for w in all_ref_widgets)
+        entry_extent = max(self._entry_extent(w) for w in all_ref_widgets)
         spacing = self._container_layout.spacing()
         margins = self._container_layout.contentsMargins()
 
@@ -447,21 +602,31 @@ class OverlayWindow(QWidget):
         ignored_visible = len(self._ignored_widgets) if self._ignored_expanded else 0
         total_entries = min(active_count + ignored_visible, MAX_VISIBLE_ENTRIES)
 
-        entries_height = total_entries * entry_height + max(0, total_entries - 1) * spacing
+        entries_extent = total_entries * entry_extent + max(0, total_entries - 1) * spacing
 
-        extra_height = 0
+        extra_extent = 0
+        fallback = round(28 * self._settings.get_ui_scale())
         has_ignored = bool(self._ignored_widgets)
         if has_ignored and not self._ignored_expanded:
-            btn_h = self._expand_button.sizeHint().height()
-            extra_height += spacing + (btn_h if btn_h > 0 else round(28 * self._settings.get_ui_scale()))
+            btn = self._widget_extent(self._expand_button)
+            extra_extent += spacing + (btn if btn > 0 else fallback)
         elif has_ignored and self._ignored_expanded:
-            div_h = self._divider.sizeHint().height()
-            btn_h = self._collapse_button.sizeHint().height()
-            if div_h > 0:
-                extra_height += spacing + div_h
-            extra_height += spacing + (btn_h if btn_h > 0 else round(28 * self._settings.get_ui_scale()))
+            div = self._widget_extent(self._divider)
+            btn = self._widget_extent(self._collapse_button)
+            if div > 0:
+                extra_extent += spacing + div
+            extra_extent += spacing + (btn if btn > 0 else fallback)
 
-        container_height = margins.top() + margins.bottom() + entries_height + extra_height
+        if self._vertical:
+            container_width = margins.left() + margins.right() + entries_extent + extra_extent
+            target_width = (
+                self._title_bar.sizeHint().width() + container_width + 2 * BACKGROUND_BORDER_PX
+            )
+            if self.width() != target_width or self.minimumWidth() != target_width:
+                self.setFixedWidth(target_width)
+            return
+
+        container_height = margins.top() + margins.bottom() + entries_extent + extra_extent
         title_bar_height = self._title_bar.sizeHint().height()
         target_height = title_bar_height + container_height + 2 * BACKGROUND_BORDER_PX
         if self.height() != target_height or self.minimumHeight() != target_height:
@@ -489,10 +654,107 @@ class OverlayWindow(QWidget):
     def refresh_view(self) -> None:
         self._sync_entry_widgets()
 
+    def _apply_layout_mode(self) -> None:
+        vertical = self._vertical
+        direction = QBoxLayout.Direction.LeftToRight if vertical else QBoxLayout.Direction.TopToBottom
+        self._container_layout.setDirection(direction)
+        self._active_layout.setDirection(direction)
+        self._ignored_layout.setDirection(direction)
+        self._divider.setFrameShape(QFrame.Shape.VLine if vertical else QFrame.Shape.HLine)
+        self._background_layout.setDirection(direction)
+        self._apply_title_bar_mode()
+
+        rotation = -90 if vertical else 0
+        self._expand_button.setIcon(load_icon("dropdown_arrow", rotation))
+        self._collapse_button.setIcon(load_icon("arrow_up", rotation))
+
+        self._update_horizontal_scrollbar_policy()
+        self._scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff if vertical else Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self._resize_handle.set_vertical(vertical)
+
+        if vertical:
+            self.setMaximumHeight(MAX_WIDGET_SIZE)
+            self._apply_minimum_height()
+        else:
+            self.setMinimumHeight(0)
+            self.setMaximumHeight(MAX_WIDGET_SIZE)
+            self.setMinimumWidth(MIN_OVERLAY_WIDTH)
+            self.setMaximumWidth(MAX_WIDGET_SIZE)
+
+        for widget in self._entry_widgets + self._ignored_widgets:
+            widget.set_layout_mode(self._layout_mode)
+
+    def _apply_title_bar_mode(self) -> None:
+        vertical = self._vertical
+        title_layout = self._title_bar.layout()
+        title_layout.setDirection(
+            QBoxLayout.Direction.TopToBottom if vertical else QBoxLayout.Direction.LeftToRight
+        )
+        alignment = Qt.AlignmentFlag.AlignHCenter if vertical else Qt.AlignmentFlag.AlignVCenter
+        for widget in (
+            self._title_icon_label,
+            self._subprocess_management_toggle,
+            self._settings_button,
+            self._guide_button,
+            self._close_button,
+        ):
+            title_layout.setAlignment(widget, alignment)
+        title_layout.setAlignment(self._title_text_layout, alignment)
+
+        self._title_name_label.setVisible(not vertical)
+        self._title_version_label.setVisible(not vertical)
+
+        self._title_bar.setSizePolicy(
+            QSizePolicy.Policy.Maximum if vertical else QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Preferred if vertical else QSizePolicy.Policy.Maximum,
+        )
+
+    def layout_mode(self) -> str:
+        return self._layout_mode
+
+    def set_layout_mode(self, mode: str) -> None:
+        mode = LAYOUT_VERTICAL if mode == LAYOUT_VERTICAL else LAYOUT_HORIZONTAL
+        if mode == self._layout_mode:
+            return
+
+        self._geometry_save_timer.stop()
+        self._save_geometry()
+        self._settings.set_layout_mode(mode)
+        self._layout_mode = mode
+        self._vertical = mode == LAYOUT_VERTICAL
+
+        self._apply_layout_mode()
+        self._restore_geometry()
+        self.apply_scale()
+        self._ensure_on_screen()
+
+    def _apply_ignored_button_thickness(self) -> None:
+        for button in (self._expand_button, self._collapse_button):
+            button.ensurePolished()
+            if self._vertical:
+                button.setFixedWidth(button.sizeHint().height())
+            else:
+                button.setMinimumWidth(0)
+                button.setMaximumWidth(MAX_WIDGET_SIZE)
+
+    def _update_horizontal_scrollbar_policy(self) -> None:
+        visible_entries = len(self._entry_widgets)
+        if self._ignored_expanded:
+            visible_entries += len(self._ignored_widgets)
+        show_scrollbar = self._vertical and visible_entries > MAX_VISIBLE_ENTRIES
+        policy = (
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOn
+            if show_scrollbar
+            else Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self._scroll_area.setHorizontalScrollBarPolicy(policy)
+
     def apply_scale(self) -> None:
         scale = self._settings.get_ui_scale()
         transparent = self._settings.get_transparency_enabled()
-        self._background.setStyleSheet(background_style(scale, self._accent_color, transparent))
+        self._background.setStyleSheet(background_style(scale, self._accent_color, transparent, self._vertical))
 
         icon_px = round(BASE_ICON_PX * scale)
         logo_px = round(BASE_TITLE_LOGO_PX * scale)
@@ -502,12 +764,17 @@ class OverlayWindow(QWidget):
         self._close_button.setIconSize(QSize(icon_px, icon_px))
         self._expand_button.setIconSize(QSize(icon_px, icon_px))
         self._collapse_button.setIconSize(QSize(icon_px, icon_px))
+        self._apply_ignored_button_thickness()
 
         title_bar_layout = self._title_bar.layout()
         margin = round(12 * scale)
         spacing = round(10 * scale)
         title_bar_layout.setContentsMargins(margin, margin, margin, margin)
         title_bar_layout.setSpacing(spacing)
+
+        for label in (self._title_name_label, self._title_version_label):
+            label.ensurePolished()
+            label.updateGeometry()
 
         container_margin = round(8 * scale)
         self._container_layout.setContentsMargins(container_margin, container_margin, container_margin, container_margin)
@@ -520,7 +787,7 @@ class OverlayWindow(QWidget):
         for widget in self._entry_widgets + self._ignored_widgets:
             widget.apply_scale(scale, self._accent_color)
 
-        self._update_window_height()
+        self._update_window_size()
 
     def _make_active_widget(self) -> EntryWidget:
         widget = EntryWidget(self._active_container)
@@ -529,6 +796,7 @@ class OverlayWindow(QWidget):
         widget.focus_requested.connect(lambda w=widget: self._on_focus_requested(w))
         widget.scrolled.connect(lambda direction, w=widget: self._on_scrolled(w, direction))
         widget.ignore_requested.connect(lambda w=widget: self._on_ignore_requested(w))
+        widget.set_layout_mode(self._layout_mode)
         widget.apply_scale(self._settings.get_ui_scale(), self._accent_color)
         return widget
 
@@ -539,6 +807,7 @@ class OverlayWindow(QWidget):
         widget.mute_toggled.connect(lambda w=widget: self._on_ignored_mute_toggled(w))
         widget.scrolled.connect(lambda direction, w=widget: self._on_ignored_scrolled(w, direction))
         widget.ignore_requested.connect(lambda w=widget: self._on_unignore_requested(w))
+        widget.set_layout_mode(self._layout_mode)
         widget.apply_scale(self._settings.get_ui_scale(), self._accent_color)
         return widget
 
@@ -576,7 +845,7 @@ class OverlayWindow(QWidget):
         self._ignored_container.setVisible(has_ignored and self._ignored_expanded)
         self._collapse_button.setVisible(has_ignored and self._ignored_expanded)
 
-        self._update_window_height()
+        self._update_window_size()
 
     def _on_volume_changed(self, widget: EntryWidget, value: float) -> None:
         index = self._entry_widgets.index(widget)
@@ -642,7 +911,7 @@ class OverlayWindow(QWidget):
     def _show_guide(self) -> None:
         from sound_mixer.overlay.guide import GuideDialog
 
-        GuideDialog(parent=self).exec()
+        GuideDialog(vertical=self._vertical, parent=self).exec()
 
     def sync_subprocess_management_toggle(self) -> None:
         if self._subprocess_manager is None:
@@ -652,6 +921,7 @@ class OverlayWindow(QWidget):
         self._subprocess_management_toggle.blockSignals(True)
         self._subprocess_management_toggle.setChecked(self._subprocess_manager.is_active())
         self._subprocess_management_toggle.blockSignals(False)
+        self._apply_minimum_height()
 
     def _on_subprocess_management_toggled(self, checked: bool) -> None:
         if self._subprocess_manager is not None:
@@ -660,6 +930,7 @@ class OverlayWindow(QWidget):
     def retranslate(self) -> None:
         self.setWindowTitle(t("sound_mixer_title"))
         self._title_name_label.setText(t("sound_mixer_title"))
+        self._title_icon_label.setToolTip(f"{t('sound_mixer_title')}\nv{__version__}")
         self._expand_button.setToolTip(t("show_ignored"))
         self._collapse_button.setToolTip(t("hide_ignored"))
         self._settings_button.setToolTip(t("settings_tooltip"))
@@ -674,13 +945,20 @@ class OverlayWindow(QWidget):
 
     def keyPressEvent(self, event) -> None:
         key = event.key()
-        if key == Qt.Key.Key_Up:
+        if self._vertical:
+            focus_prev, focus_next = Qt.Key.Key_Left, Qt.Key.Key_Right
+            volume_down, volume_up = Qt.Key.Key_Down, Qt.Key.Key_Up
+        else:
+            focus_prev, focus_next = Qt.Key.Key_Up, Qt.Key.Key_Down
+            volume_down, volume_up = Qt.Key.Key_Left, Qt.Key.Key_Right
+
+        if key == focus_prev:
             self._model.move_focus(-1)
-        elif key == Qt.Key.Key_Down:
+        elif key == focus_next:
             self._model.move_focus(1)
-        elif key == Qt.Key.Key_Left:
+        elif key == volume_down:
             self._model.adjust_volume(-self._settings.get_arrow_step())
-        elif key == Qt.Key.Key_Right:
+        elif key == volume_up:
             self._model.adjust_volume(self._settings.get_arrow_step())
         else:
             super().keyPressEvent(event)

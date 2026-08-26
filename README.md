@@ -105,14 +105,32 @@ non-Windows platforms.
 - Windows 11 acrylic transparency/blur effect with rounded corners and a dark
   title bar. The transparency can be turned off in Settings for a solid
   background.
-- The overlay can be resized by dragging its right or bottom edge; the new
-  size is restored on the next launch.
+- Settings → Volume controls layout switches the overlay between `horizontal`
+  (stacked rows with horizontal sliders, the default) and `vertical`
+  (side-by-side columns with vertical faders). Each mode keeps its own window
+  position and size. A vertical column is a compact strip - icon, mute, volume
+  value and fader, centered - and the application name is shown on hover
+  instead of under the fader.
+- The title bar follows the layout mode: a full-width strip on top in horizontal
+  mode, and a narrow icon-only column on the left in vertical mode. Hovering the
+  title icon shows the Sound Mixer name and version, while the window buttons
+  remain stacked below it.
+- The overlay can be resized by dragging its right edge in horizontal mode, or
+  its bottom edge in vertical mode; the other dimension is sized to fit the
+  entries. In vertical mode the bottom edge starts after the title column and
+  stops at the smallest height that still fits the faders and visible title
+  controls. The bottom scrollbar stays hidden through six visible entries and
+  appears only when that limit is exceeded. The size is restored on the next
+  launch, per layout mode.
+- If the saved position falls outside every screen (for example after a
+  resolution or monitor change), the overlay is centered on screen instead.
 - The focused entry is highlighted with the current Windows accent color.
 - Mouse control: drag sliders, scroll to adjust volume, click an entry to
   focus it. Scrolling over an entry's slider or volume field also adjusts its
   volume.
-- Keyboard control: Up/Down moves focus between entries, Left/Right adjusts
-  the focused entry's volume.
+- Keyboard control: in horizontal mode Up/Down moves focus between entries and
+  Left/Right adjusts the focused entry's volume; in vertical mode the axes swap,
+  so Left/Right moves focus and Up/Down adjusts the volume.
 - Configurable global hotkeys (default `Ctrl+Alt+Num5` toggles the overlay),
   captured from a shortcut input, then registered
   via the native Windows `RegisterHotKey` API for compatibility with
@@ -122,6 +140,8 @@ non-Windows platforms.
   Exit.
 - Optional autostart on Windows login via the `HKCU\...\Run` registry key (no
   administrator rights required), toggled with a switch in Settings.
+- Settings → Start opened makes the overlay appear right away on launch instead
+  of waiting for a hotkey or the tray.
 - The interface scale in Settings is a slider that applies to the overlay
 immediately as it's dragged.
 - Settings → Sub-process Management lets you flag host applications (e.g.
@@ -156,7 +176,7 @@ in a future version, it is migrated automatically on load.
 | `app_volumes`          | object          | Per-application volume/mute, keyed by the lowercase executable path with forward slashes (e.g. `"d:/games/mygame/game.exe"`), so two apps that share a file name keep separate settings. Each value is `{ "volume": float, "muted": bool }`. A bare executable name (e.g. `"chrome.exe"`) is still read as a legacy key and applies to any app with that file name. |
 | `hotkeys`              | array           | Global hotkey bindings. Each entry is `{ "action": string, "combo": string, "enabled": bool }`.                                                                 |
 | `autostart_enabled`    | bool            | Whether the app starts automatically on Windows login.                                                                                                          |
-| `overlay`              | object          | Overlay window state: `{ "x", "y", "width", "height" }` (pixels) and `"visible_on_start"` (bool).                                                               |
+| `overlay`              | object          | Overlay window state: `"layout_mode"` (`"horizontal"` or `"vertical"`), `"visible_on_start"` (bool), and one `{ "x", "y", "width", "height" }` (pixels) block per layout mode under `"horizontal"` and `"vertical"`, so each mode keeps its own position and size. |
 | `tooltip_delay_ms`     | integer         | Delay, in milliseconds, before action button tooltips appear.                                                                                                   |
 | `volume_step`          | object          | `{ "arrow": float, "scroll": float }` - volume change per arrow-key press and per scroll wheel notch.                                                           |
 | `ui_scale`             | float (0.5-3.0) | Overlay interface scale factor (fonts, icons, sliders). 1.0 is 100%.                                                                                            |
@@ -191,9 +211,10 @@ digit keys are written as `num0`-`num9`.
 - The acrylic blur effect requires Windows 11 22H2 or later; on older Windows
   versions the overlay falls back to a plain semi-transparent background.
 - On startup, the overlay briefly flashes near its last position and then
-  hides again (unless "show overlay on start" is enabled). This is required
-  for the acrylic blur to render correctly once the overlay is later shown
-  via a hotkey or the tray.
+  hides again. This is required for the acrylic blur to render correctly once
+  the overlay is later shown via a hotkey or the tray. With "Start opened"
+  enabled the same flash still happens, and the overlay is reopened right
+  after it.
 - Global hotkeys are subject to Windows UIPI: an elevated foreground
   application will not receive hotkeys from a non-elevated Sound Mixer, and
   vice versa.

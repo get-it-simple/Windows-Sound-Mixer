@@ -1,35 +1,59 @@
 from PySide6.QtCore import QEvent, QSize, Qt, Signal
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QAbstractSpinBox, QFrame, QHBoxLayout, QLabel, QSlider, QSpinBox, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QAbstractSpinBox,
+    QBoxLayout,
+    QFrame,
+    QLabel,
+    QSlider,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
+)
 
 from sound_mixer.i18n import t
 from sound_mixer.mixer.model import MixerEntry
 from sound_mixer.overlay.icons import DelayedTooltipButton, load_app_icon, load_icon
+from sound_mixer.settings.schema import LAYOUT_VERTICAL
+
+MAX_WIDGET_SIZE = 16777215
 
 BASE_ICON_PX = 18
 BASE_APP_ICON_PX = 32
 BASE_SLIDER_HEIGHT_PX = 10
+BASE_VERTICAL_ENTRY_WIDTH_PX = 64
+BASE_VERTICAL_SLIDER_WIDTH_PX = 16
+BASE_VERTICAL_SLIDER_HEIGHT_PX = 130
 BASE_FONT_PX = 13
+BASE_VERTICAL_VALUE_FONT_PX = 12
+VALUE_TEXT_PADDING_PX = 2
 BASE_MARGIN_PX = 8
 BASE_SPACING_PX = 8
 
 
-def slider_style(scale: float, accent_color: str) -> str:
-    groove_height = max(1, round(2 * scale))
-    handle_size = round(9 * scale)
-    if (handle_size - groove_height) % 2:
+def _groove_and_handle(scale: float, groove_px: int, handle_px: int) -> tuple[int, int]:
+    groove_size = max(1, round(groove_px * scale))
+    handle_size = round(handle_px * scale)
+    if (handle_size - groove_size) % 2:
         handle_size += 1
-    margin = (handle_size - groove_height) // 2
+    return groove_size, handle_size
+
+
+def slider_style(scale: float, accent_color: str) -> str:
+    groove_size, handle_size = _groove_and_handle(scale, 2, 9)
+    margin = (handle_size - groove_size) // 2
+    v_groove_size, v_handle_size = _groove_and_handle(scale, 4, 13)
+    v_margin = (v_handle_size - v_groove_size) // 2
     return f"""
 QSlider::groove:horizontal {{
-    height: {groove_height}px;
+    height: {groove_size}px;
     background: #555555;
-    border-radius: {groove_height // 2}px;
+    border-radius: {groove_size // 2}px;
 }}
 QSlider::sub-page:horizontal {{
-    height: {groove_height}px;
+    height: {groove_size}px;
     background: {accent_color};
-    border-radius: {groove_height // 2}px;
+    border-radius: {groove_size // 2}px;
 }}
 QSlider::handle:horizontal {{
     width: {handle_size}px;
@@ -37,6 +61,23 @@ QSlider::handle:horizontal {{
     margin: -{margin}px 0;
     background: #ffffff;
     border-radius: {handle_size // 2}px;
+}}
+QSlider::groove:vertical {{
+    width: {v_groove_size}px;
+    background: #555555;
+    border-radius: {v_groove_size // 2}px;
+}}
+QSlider::add-page:vertical {{
+    width: {v_groove_size}px;
+    background: {accent_color};
+    border-radius: {v_groove_size // 2}px;
+}}
+QSlider::handle:vertical {{
+    width: {v_handle_size}px;
+    height: {v_handle_size}px;
+    margin: 0 -{v_margin}px;
+    background: #ffffff;
+    border-radius: {v_handle_size // 2}px;
 }}
 """
 
@@ -54,6 +95,9 @@ class EntryWidget(QFrame):
         self._current_icon = QIcon()
         self._app_icon_px = BASE_APP_ICON_PX
         self._is_master = False
+        self._vertical = False
+        self._vertical_width = BASE_VERTICAL_ENTRY_WIDTH_PX
+        self._scale = 1.0
         self._last_muted: bool | None = None
         self._last_icon_path: str | None = None
         self._last_display_name: str | None = None
@@ -105,25 +149,51 @@ class EntryWidget(QFrame):
         self._slider.installEventFilter(self)
         self._volume_spinbox.installEventFilter(self)
 
-        layout = QHBoxLayout(self)
+        layout = QBoxLayout(QBoxLayout.Direction.LeftToRight, self)
         layout.addWidget(self._icon_container)
         layout.addWidget(self._mute_button)
         layout.addWidget(self._volume_spinbox)
         layout.addWidget(self._slider_column, 1)
 
+    def set_layout_mode(self, mode: str) -> None:
+        vertical = mode == LAYOUT_VERTICAL
+        if vertical == self._vertical:
+            return
+        self._vertical = vertical
+
+        layout = self.layout()
+        layout.setDirection(QBoxLayout.Direction.TopToBottom if vertical else QBoxLayout.Direction.LeftToRight)
+        alignment = Qt.AlignmentFlag.AlignHCenter if vertical else Qt.AlignmentFlag.AlignVCenter
+        for widget in (self._icon_container, self._mute_button, self._volume_spinbox, self._slider_column):
+            layout.setAlignment(widget, alignment)
+
+        self._slider.setOrientation(Qt.Orientation.Vertical if vertical else Qt.Orientation.Horizontal)
+        self._slider_column.layout().setAlignment(self._slider, alignment)
+        self._process_name_label.setVisible(not vertical)
+        self.apply_scale(self._scale)
+
+    def is_vertical(self) -> bool:
+        return self._vertical
+
     def apply_scale(self, scale: float, accent_color: str = "#3a96dd") -> None:
+        self._scale = scale
         icon_px = round(BASE_ICON_PX * scale)
         self._mute_button.setIconSize(QSize(icon_px, icon_px))
         self._hide_button.setIconSize(QSize(icon_px, icon_px))
         self._slider.setStyleSheet(slider_style(scale, accent_color))
-        self._slider.setMinimumHeight(round(BASE_SLIDER_HEIGHT_PX * scale))
+        if self._vertical:
+            self._slider.setMinimumWidth(round(BASE_VERTICAL_SLIDER_WIDTH_PX * scale))
+            self._slider.setMinimumHeight(round(BASE_VERTICAL_SLIDER_HEIGHT_PX * scale))
+            self._vertical_width = round(BASE_VERTICAL_ENTRY_WIDTH_PX * scale)
+            self.setFixedWidth(self._vertical_width)
+        else:
+            self._slider.setMinimumWidth(0)
+            self._slider.setMinimumHeight(round(BASE_SLIDER_HEIGHT_PX * scale))
+            self.setMinimumWidth(0)
+            self.setMaximumWidth(MAX_WIDGET_SIZE)
 
         font_px = round(BASE_FONT_PX * scale)
-
-        font = self._volume_spinbox.font()
-        font.setPixelSize(font_px)
-        self._volume_spinbox.setFont(font)
-        self._volume_spinbox.setFixedWidth(self._volume_spinbox.minimumSizeHint().width())
+        self._apply_value_size(font_px)
 
         name_font = self._process_name_label.font()
         name_font.setPixelSize(font_px)
@@ -141,6 +211,24 @@ class EntryWidget(QFrame):
         margin = round(BASE_MARGIN_PX * scale)
         layout.setContentsMargins(margin, margin, margin, margin)
         layout.setSpacing(round(BASE_SPACING_PX * scale))
+
+    def _apply_value_size(self, font_px: int) -> None:
+        font = self._volume_spinbox.font()
+        font.setPixelSize(font_px if not self._vertical else round(BASE_VERTICAL_VALUE_FONT_PX * self._scale))
+        self._volume_spinbox.setFont(font)
+
+        if not self._vertical:
+            self._volume_spinbox.setFixedWidth(self._volume_spinbox.minimumSizeHint().width())
+            return
+
+        self._mute_button.ensurePolished()
+        self._volume_spinbox.setFixedWidth(self._mute_button.sizeHint().width())
+
+    def sizeHint(self) -> QSize:
+        hint = super().sizeHint()
+        if self._vertical:
+            return QSize(self._vertical_width, hint.height())
+        return hint
 
     def set_entry(self, entry: MixerEntry, focused: bool) -> None:
         if entry.muted != self._last_muted:
