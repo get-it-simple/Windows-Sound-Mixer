@@ -24,7 +24,9 @@ BASE_FONT_PX = 13
 BASE_ICON_PX = 16
 BASE_MARGIN_PX = 8
 BASE_SPACING_PX = 8
+BASE_ENTRY_RADIUS_PX = 10
 MUTED_OPACITY = 0.45
+MUTED_ICON_SCALE = 0.75
 
 
 class MiniEntryWidget(QFrame):
@@ -35,9 +37,11 @@ class MiniEntryWidget(QFrame):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("miniEntryWidget")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
         self.key = ""
         self._entry: MixerEntry | None = None
         self._scale = 1.0
+        self._volume_below_icon = False
 
         self._volume_label = QLabel(self)
         self._volume_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -49,22 +53,47 @@ class MiniEntryWidget(QFrame):
         self._icon_effect = QGraphicsOpacityEffect(self._icon_label)
         self._icon_label.setGraphicsEffect(self._icon_effect)
 
+        self._icon_container = QWidget(self)
+        self._icon_label.setParent(self._icon_container)
+        self._muted_icon_label = QLabel(self._icon_container)
+        self._muted_icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._muted_icon_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._muted_icon_label.hide()
+
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._volume_label, 0, Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self._icon_label, 0, Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self._icon_container, 0, Qt.AlignmentFlag.AlignCenter)
 
         self.apply_scale(1.0)
+
+    def set_volume_below_icon(self, below: bool) -> None:
+        below = bool(below)
+        if below == self._volume_below_icon:
+            return
+        layout = self.layout()
+        layout.removeWidget(self._volume_label)
+        layout.insertWidget(1 if below else 0, self._volume_label, 0, Qt.AlignmentFlag.AlignCenter)
+        self._volume_below_icon = below
 
     def apply_scale(self, scale: float) -> None:
         self._scale = scale
         icon_px = round(BASE_APP_ICON_PX * scale)
         margin = round(BASE_MARGIN_PX * scale)
         spacing = round(BASE_SPACING_PX * scale)
+        radius = round(BASE_ENTRY_RADIUS_PX * scale)
+        self.setStyleSheet(
+            f"QFrame#miniEntryWidget {{ background: rgba(0, 0, 0, 51); border: none; border-radius: {radius}px; }}"
+        )
         font = self._volume_label.font()
         font.setPixelSize(round(BASE_FONT_PX * scale))
         self._volume_label.setFont(font)
-        self._icon_label.setFixedSize(icon_px, icon_px)
+        self._icon_container.setFixedSize(icon_px, icon_px)
+        self._icon_label.setGeometry(0, 0, icon_px, icon_px)
+        self._muted_icon_label.setGeometry(0, 0, icon_px, icon_px)
+        muted_icon_px = round(icon_px * MUTED_ICON_SCALE)
+        self._muted_icon_label.setPixmap(load_icon("muted").pixmap(muted_icon_px, muted_icon_px))
+        self._muted_icon_label.raise_()
         layout = self.layout()
         layout.setContentsMargins(margin, margin, margin, margin)
         layout.setSpacing(spacing)
@@ -78,9 +107,11 @@ class MiniEntryWidget(QFrame):
         self.key = entry.key
         self._volume_label.setText(f"{round(entry.volume * 100)}%")
         self._icon_effect.setOpacity(MUTED_OPACITY if entry.muted else 1.0)
+        self._muted_icon_label.setVisible(entry.muted)
         self.setToolTip(entry.display_name)
         self._volume_label.setToolTip(entry.display_name)
         self._icon_label.setToolTip(entry.display_name)
+        self._muted_icon_label.setToolTip(entry.display_name)
         self._update_icon()
 
     def _update_icon(self) -> None:
@@ -146,6 +177,7 @@ class MiniWidget(QWidget):
         self._settings = settings
         self._enabled = False
         self._entries: dict[str, MiniEntryWidget] = {}
+        self._pin_below_content: bool | None = None
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool
@@ -159,9 +191,9 @@ class MiniWidget(QWidget):
             "QLabel { color: #f2f2f5; background: transparent; }"
         )
 
-        outer_layout = QVBoxLayout(self)
-        outer_layout.setContentsMargins(0, 0, 0, 0)
-        outer_layout.setSpacing(0)
+        self._outer_layout = QVBoxLayout(self)
+        self._outer_layout.setContentsMargins(0, 0, 0, 0)
+        self._outer_layout.setSpacing(0)
 
         self._pin_row = QWidget(self)
         pin_layout = QHBoxLayout(self._pin_row)
@@ -175,12 +207,12 @@ class MiniWidget(QWidget):
         self._pin_button.hide()
         pin_layout.addWidget(self._pin_button)
         pin_layout.addStretch(1)
-        outer_layout.addWidget(self._pin_row)
+        self._outer_layout.addWidget(self._pin_row)
 
         self._content = QWidget(self)
         self._grid = QGridLayout(self._content)
         self._grid.setContentsMargins(0, 0, 0, 0)
-        outer_layout.addWidget(self._content)
+        self._outer_layout.addWidget(self._content)
 
         self._refresh_timer = QTimer(self)
         self._refresh_timer.timeout.connect(self._refresh)
@@ -249,7 +281,8 @@ class MiniWidget(QWidget):
                 widget.focus_requested.connect(lambda w=widget: self._model.focus_key(w.key))
                 widget.scrolled.connect(lambda direction, w=widget: self._on_scrolled(w.key, direction))
                 widget.mute_toggled.connect(lambda w=widget: self._on_mute_toggled(w.key))
-                widget.apply_scale(self._settings.get_ui_scale())
+                widget.apply_scale(self._settings.get_mini_widget_scale())
+                widget.set_volume_below_icon(bool(self._pin_below_content))
                 self._entries[entry.key] = widget
             widget.set_entry(entry)
             ordered_widgets.append(widget)
@@ -267,7 +300,7 @@ class MiniWidget(QWidget):
         while self._grid.count():
             self._grid.takeAt(0)
 
-        spacing = round(BASE_SPACING_PX * self._settings.get_ui_scale())
+        spacing = round(BASE_SPACING_PX * self._settings.get_mini_widget_scale())
         self._grid.setHorizontalSpacing(spacing)
         self._grid.setVerticalSpacing(spacing)
         cell_width = max(widget.width() for widget in widgets)
@@ -285,6 +318,7 @@ class MiniWidget(QWidget):
         self._pin_row.setFixedWidth(content_hint.width())
         width = max(content_hint.width(), self._pin_row.sizeHint().width())
         self.setFixedSize(width, self._pin_row.height() + content_hint.height())
+        self._update_pin_position()
 
     def _on_scrolled(self, key: str, direction: int) -> None:
         self._model.adjust_volume_by_key(key, direction * self._settings.get_scroll_step())
@@ -297,7 +331,7 @@ class MiniWidget(QWidget):
         self.model_changed.emit()
 
     def apply_scale(self) -> None:
-        scale = self._settings.get_ui_scale()
+        scale = self._settings.get_mini_widget_scale()
         icon_px = round(BASE_ICON_PX * scale)
         self._pin_button.setIconSize(QSize(icon_px, icon_px))
         self._pin_row.setFixedHeight(icon_px + round(8 * scale))
@@ -330,6 +364,7 @@ class MiniWidget(QWidget):
             self._pin_button.hide()
 
     def moveEvent(self, event) -> None:
+        self._update_pin_position()
         self._schedule_position_save()
         super().moveEvent(event)
 
@@ -344,13 +379,8 @@ class MiniWidget(QWidget):
         if not screens:
             return
         rect = self.frameGeometry()
-        screen = QGuiApplication.screenAt(rect.center())
-        if screen is None:
-            screen = max(
-                screens,
-                key=lambda candidate: candidate.availableGeometry().intersected(rect).width()
-                * candidate.availableGeometry().intersected(rect).height(),
-            )
+        screen = self._screen_for_rect(rect, screens)
+        if QGuiApplication.screenAt(rect.center()) is None:
             overlap = screen.availableGeometry().intersected(rect)
             if overlap.width() < min(MIN_VISIBLE_PX, rect.width()) or overlap.height() < min(
                 MIN_VISIBLE_PX, rect.height()
@@ -361,3 +391,30 @@ class MiniWidget(QWidget):
         y = min(max(rect.y(), available.top()), max(available.top(), available.bottom() - rect.height() + 1))
         if x != rect.x() or y != rect.y():
             self.move(x, y)
+        self._update_pin_position()
+
+    def _update_pin_position(self) -> None:
+        screens = QGuiApplication.screens()
+        if not screens:
+            return
+        rect = self.frameGeometry()
+        screen = self._screen_for_rect(rect, screens)
+        pin_below_content = rect.center().y() <= screen.availableGeometry().center().y()
+        for widget in self._entries.values():
+            widget.set_volume_below_icon(pin_below_content)
+        if pin_below_content == self._pin_below_content:
+            return
+        self._outer_layout.removeWidget(self._pin_row)
+        self._outer_layout.insertWidget(1 if pin_below_content else 0, self._pin_row)
+        self._pin_below_content = pin_below_content
+
+    @staticmethod
+    def _screen_for_rect(rect, screens):
+        screen = QGuiApplication.screenAt(rect.center())
+        if screen is not None:
+            return screen
+        return max(
+            screens,
+            key=lambda candidate: candidate.availableGeometry().intersected(rect).width()
+            * candidate.availableGeometry().intersected(rect).height(),
+        )

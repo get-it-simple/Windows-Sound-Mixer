@@ -1,4 +1,4 @@
-CURRENT_VERSION = 8
+CURRENT_VERSION = 9
 
 MIN_UI_SCALE = 0.5
 MAX_UI_SCALE = 3.0
@@ -52,5 +52,6 @@ DEFAULT_SETTINGS = {
         "enabled": False,
         "x": 100,
         "y": 40,
+        "scale": 1.0,
     },
 }

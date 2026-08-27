@@ -100,6 +100,7 @@ class SoundMixerApp:
             autostart=self.autostart,
             hotkeys=self.hotkeys,
             overlay=self.overlay,
+            mini_widget=getattr(self, "mini_widget", None),
             subprocess_manager=self.subprocess_manager,
             parent=self.overlay,
         )
