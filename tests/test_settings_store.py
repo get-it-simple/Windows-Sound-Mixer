@@ -613,3 +613,27 @@ def test_mini_widget_state_and_position_round_trip(tmp_path):
     reloaded.load()
     assert reloaded.get_mini_widget_enabled() is True
     assert reloaded.get_mini_widget_position() == {"x": 321, "y": 123}
+
+
+def test_mini_widget_scale_default_and_round_trip(tmp_path):
+    path = tmp_path / "settings.json"
+    store = SettingsStore(path)
+    store.load()
+
+    assert store.get_mini_widget_scale() == DEFAULT_SETTINGS["mini_widget"]["scale"]
+    store.set_mini_widget_scale(1.6)
+
+    reloaded = SettingsStore(path)
+    reloaded.load()
+    assert reloaded.get_mini_widget_scale() == 1.6
+
+
+def test_mini_widget_scale_clamps_to_valid_range(tmp_path):
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+
+    store.set_mini_widget_scale(10.0)
+    assert store.get_mini_widget_scale() == 3.0
+
+    store.set_mini_widget_scale(0.0)
+    assert store.get_mini_widget_scale() == 0.5

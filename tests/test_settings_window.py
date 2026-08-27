@@ -12,6 +12,7 @@ def test_initial_field_values(qapp, settings):
     assert window._scroll_step_spinbox.value() == round(settings.get_scroll_step() * 100)
     assert window._default_app_volume_spinbox.value() == round(settings.get_default_app_volume() * 100)
     assert window._ui_scale_slider.value() == round(settings.get_ui_scale() * 100)
+    assert window._mini_widget_scale_slider.value() == round(settings.get_mini_widget_scale() * 100)
 
     hotkeys = settings.get_hotkeys()
     assert len(window._hotkey_rows) == len(hotkeys)
@@ -70,6 +71,33 @@ def test_ui_scale_slider_updates_settings_and_overlay_immediately(qapp, fake_bac
     spinbox = overlay._entry_widgets[0]._volume_spinbox
     assert spinbox.font().pixelSize() == round(BASE_FONT_PX * 1.5)
     assert spinbox.width() == spinbox.minimumSizeHint().width()
+
+
+def test_mini_widget_scale_slider_updates_only_mini_widget_immediately(qapp, fake_backend, settings):
+    from sound_mixer.mixer.model import MixerModel
+    from sound_mixer.overlay.entry_widget import BASE_FONT_PX as OVERLAY_BASE_FONT_PX
+    from sound_mixer.overlay.mini_widget import BASE_FONT_PX as MINI_BASE_FONT_PX, MiniWidget
+
+    model = MixerModel(fake_backend, settings)
+    overlay = OverlayWindow(model, settings)
+    mini = MiniWidget(model, settings)
+    mini.set_enabled(True)
+    window = SettingsWindow(settings, overlay=overlay, mini_widget=mini)
+
+    window._mini_widget_scale_slider.setValue(150)
+
+    assert settings.get_mini_widget_scale() == 1.5
+    assert window._mini_widget_scale_label.text() == "150%"
+    assert mini._entries["aurora.exe"]._volume_label.font().pixelSize() == round(MINI_BASE_FONT_PX * 1.5)
+    assert overlay._entry_widgets[0]._volume_spinbox.font().pixelSize() == OVERLAY_BASE_FONT_PX
+
+    window._ui_scale_slider.setValue(200)
+
+    assert settings.get_ui_scale() == 2.0
+    assert mini._entries["aurora.exe"]._volume_label.font().pixelSize() == round(MINI_BASE_FONT_PX * 1.5)
+    mini.stop()
+    mini.close()
+    overlay.close()
 
 
 def test_autostart_checkbox_uses_toggle_switch_style(qapp, settings):

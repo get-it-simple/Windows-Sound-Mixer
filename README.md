@@ -121,14 +121,14 @@ in a future version, it is migrated automatically on load.
 | `overlay`              | object          | Overlay window state: `"layout_mode"` (`"horizontal"` or `"vertical"`), `"visible_on_start"` (bool), and one `{ "x", "y", "width", "height" }` (pixels) block per layout mode under `"horizontal"` and `"vertical"`, so each mode keeps its own position and size. |
 | `tooltip_delay_ms`     | integer         | Delay, in milliseconds, before action button tooltips appear.                                                                                                   |
 | `volume_step`          | object          | `{ "arrow": float, "scroll": float }` - volume change per arrow-key press and per scroll wheel notch.                                                           |
-| `ui_scale`             | float (0.5-3.0) | Overlay and mini-widget interface scale factor (fonts, icons, sliders). 1.0 is 100%.                                                                            |
+| `ui_scale`             | float (0.5-3.0) | Overlay interface scale factor (fonts, icons, sliders). 1.0 is 100%.                                                                                            |
 | `default_app_volume`   | float (0.0-1.0) | Initial volume applied to apps the first time they appear, if not already in `app_volumes`.                                                                     |
 | `transparency_enabled` | bool            | Whether the overlay background uses the translucent acrylic effect. If disabled, the overlay has a solid background.                                            |
 | `ignored_apps`         | array of string | Lowercase executable paths (e.g. `"d:/games/mygame/game.exe"`) hidden from the main entry list. Legacy bare executable names (e.g. `"discord.exe"`) still hide every app with that file name. Ignored entries can be revealed via the expand button. |
 | `language`             | string          | UI language code (`"en"`, `"uk"`) or `"system"` to follow the Windows locale. Defaults to `"system"`. Changes take effect immediately when saved from Settings. |
 | `subprocess_management` | object          | `{ "interval_seconds": int, "apps": [{ "path": string, "enabled": bool }] }` - shared polling interval and the list of host executables (e.g. sandbox/launcher apps) whose child processes need active background scanning because they don't trigger the normal session-created event. The scan itself is also gated by a session-only on/off switch in the overlay (not persisted - always starts off). |
 | `whitelist`             | object          | `{ "enabled": bool, "apps": [{ "path": string, "enabled": bool }] }` - optional display filter for both the main overlay and mini widget. Full normalized paths distinguish same-named apps; bare session names fall back to matching an enabled path's file name. |
-| `mini_widget`           | object          | `{ "enabled": bool, "x": int, "y": int }` - persisted visibility and screen position of the independent transparent mini volume widget. |
+| `mini_widget`           | object          | `{ "enabled": bool, "x": int, "y": int, "scale": float }` - persisted visibility, screen position, and independent 0.5-3.0 interface scale of the mini volume widget. |
 
 ### Hotkey actions
 

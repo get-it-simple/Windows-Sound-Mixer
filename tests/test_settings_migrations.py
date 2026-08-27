@@ -217,7 +217,7 @@ def test_migrates_v7_to_v8_adds_whitelist_mini_widget_and_hotkey():
 
     assert migrated["version"] == CURRENT_VERSION
     assert migrated["whitelist"] == {"enabled": False, "apps": []}
-    assert migrated["mini_widget"] == {"enabled": False, "x": 100, "y": 40}
+    assert migrated["mini_widget"] == {"enabled": False, "x": 100, "y": 40, "scale": 1.0}
     assert migrated["hotkeys"][0] == {
         "action": "toggle_overlay",
         "combo": "ctrl+shift+m",
@@ -230,3 +230,16 @@ def test_migrates_partial_v7_hotkeys_to_complete_defaults():
     migrated = migrate({"version": 7})
 
     assert migrated["hotkeys"] == DEFAULT_SETTINGS["hotkeys"]
+
+
+def test_migrates_v8_to_v9_preserves_mini_widget_size_from_ui_scale():
+    v8 = {
+        "version": 8,
+        "ui_scale": 1.7,
+        "mini_widget": {"enabled": True, "x": 20, "y": 30},
+    }
+
+    migrated = migrate(v8)
+
+    assert migrated["version"] == CURRENT_VERSION
+    assert migrated["mini_widget"] == {"enabled": True, "x": 20, "y": 30, "scale": 1.7}

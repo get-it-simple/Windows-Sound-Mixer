@@ -79,6 +79,11 @@ class SettingsStore:
     def _clamp(self) -> None:
         self.data["master_volume"] = clamp_volume(self.data["master_volume"])
         self.data["default_app_volume"] = clamp_volume(self.data["default_app_volume"])
+        self.data["ui_scale"] = max(MIN_UI_SCALE, min(MAX_UI_SCALE, self.data["ui_scale"]))
+        self.data["mini_widget"]["scale"] = max(
+            MIN_UI_SCALE,
+            min(MAX_UI_SCALE, self.data["mini_widget"]["scale"]),
+        )
         for app in self.data["app_volumes"].values():
             app["volume"] = clamp_volume(app.get("volume", 1.0))
 
@@ -282,6 +287,13 @@ class SettingsStore:
 
     def set_mini_widget_enabled(self, enabled: bool) -> None:
         self.data["mini_widget"]["enabled"] = bool(enabled)
+        self.save()
+
+    def get_mini_widget_scale(self) -> float:
+        return self.data["mini_widget"]["scale"]
+
+    def set_mini_widget_scale(self, scale: float) -> None:
+        self.data["mini_widget"]["scale"] = max(MIN_UI_SCALE, min(MAX_UI_SCALE, scale))
         self.save()
 
     def get_mini_widget_position(self) -> dict:

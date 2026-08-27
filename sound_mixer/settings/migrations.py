@@ -88,6 +88,15 @@ def _migrate_7_to_8(data: dict) -> dict:
     return data
 
 
+def _migrate_8_to_9(data: dict) -> dict:
+    data = dict(data)
+    mini_widget = dict(data.get("mini_widget") or {})
+    mini_widget.setdefault("scale", data.get("ui_scale", DEFAULT_SETTINGS["ui_scale"]))
+    data["mini_widget"] = mini_widget
+    data["version"] = 9
+    return data
+
+
 MIGRATIONS = {
     0: _migrate_0_to_1,
     1: _migrate_1_to_2,
@@ -97,6 +106,7 @@ MIGRATIONS = {
     5: _migrate_5_to_6,
     6: _migrate_6_to_7,
     7: _migrate_7_to_8,
+    8: _migrate_8_to_9,
 }
 
 
