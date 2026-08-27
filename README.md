@@ -5,6 +5,8 @@ program with an audio session (or the system master volume) from a small
 always-on-top overlay, the system tray, or global hotkeys.
 
 ![Sound Mixer overlay demo](assets/image.jpg)
+![Sound Mixer overlay demo](assets/image-2.jpg)
+![Sound Mixer overlay demo](assets/image-3.jpg)
 
 <details>
 <summary>Run, Build, Test details</summary>
