@@ -7,7 +7,9 @@ from sound_mixer.mixer.model import MixerModel
 from sound_mixer.overlay.icons import load_icon
 from sound_mixer.overlay.mini_widget import (
     BASE_APP_ICON_PX,
+    BASE_ENTRY_RADIUS_PX,
     BASE_FONT_PX,
+    BASE_SPACING_PX,
     MUTED_ICON_SCALE,
     MUTED_OPACITY,
     MiniWidget,
@@ -52,9 +54,14 @@ def mini(qapp, fake_backend, settings):
 def test_mini_widget_is_transparent_and_excludes_master(mini):
     assert mini.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
     assert "background: transparent" in mini.styleSheet()
-    assert "background: rgba(0, 0, 0, 51)" in mini._content.styleSheet()
+    assert "rgba(0, 0, 0, 51)" not in mini._content.styleSheet()
     assert "rgba(0, 0, 0, 51)" not in mini._pin_row.styleSheet()
     assert list(mini._entries) == ["aurora.exe", "lumen.exe"]
+
+    for entry in mini._entries.values():
+        assert "background: rgba(0, 0, 0, 51)" in entry.styleSheet()
+        assert f"border-radius: {BASE_ENTRY_RADIUS_PX}px" in entry.styleSheet()
+    assert mini._grid.horizontalSpacing() == BASE_SPACING_PX
 
 
 def test_mini_entry_centers_percentage_and_icon(mini):

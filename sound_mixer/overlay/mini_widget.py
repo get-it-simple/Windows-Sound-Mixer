@@ -24,6 +24,7 @@ BASE_FONT_PX = 13
 BASE_ICON_PX = 16
 BASE_MARGIN_PX = 8
 BASE_SPACING_PX = 8
+BASE_ENTRY_RADIUS_PX = 10
 MUTED_OPACITY = 0.45
 MUTED_ICON_SCALE = 0.75
 
@@ -36,6 +37,7 @@ class MiniEntryWidget(QFrame):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("miniEntryWidget")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
         self.key = ""
         self._entry: MixerEntry | None = None
         self._scale = 1.0
@@ -79,6 +81,10 @@ class MiniEntryWidget(QFrame):
         icon_px = round(BASE_APP_ICON_PX * scale)
         margin = round(BASE_MARGIN_PX * scale)
         spacing = round(BASE_SPACING_PX * scale)
+        radius = round(BASE_ENTRY_RADIUS_PX * scale)
+        self.setStyleSheet(
+            f"QFrame#miniEntryWidget {{ background: rgba(0, 0, 0, 51); border: none; border-radius: {radius}px; }}"
+        )
         font = self._volume_label.font()
         font.setPixelSize(round(BASE_FONT_PX * scale))
         self._volume_label.setFont(font)
@@ -204,9 +210,6 @@ class MiniWidget(QWidget):
         self._outer_layout.addWidget(self._pin_row)
 
         self._content = QWidget(self)
-        self._content.setObjectName("miniWidgetContent")
-        self._content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
-        self._content.setStyleSheet("QWidget#miniWidgetContent { background: rgba(0, 0, 0, 51); }")
         self._grid = QGridLayout(self._content)
         self._grid.setContentsMargins(0, 0, 0, 0)
         self._outer_layout.addWidget(self._content)
