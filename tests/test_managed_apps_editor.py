@@ -61,7 +61,7 @@ def test_app_drop_zone_drop_event_emits_path(qapp):
     zone.app_dropped.connect(emitted.append)
 
     mime = QMimeData()
-    mime.setUrls([QUrl.fromLocalFile("C:/Games/sandbox.exe")])
+    mime.setUrls([QUrl.fromLocalFile(sys.executable)])
     event = QDropEvent(
         QPointF(0, 0),
         Qt.DropAction.CopyAction,
@@ -72,14 +72,33 @@ def test_app_drop_zone_drop_event_emits_path(qapp):
 
     zone.dropEvent(event)
 
-    assert emitted == ["C:/Games/sandbox.exe"]
+    assert emitted == [sys.executable.replace("\\", "/")]
 
 
-def test_app_list_editor_adds_dedupes_removes_and_exports_rows(qapp):
-    editor = AppListEditor([{"path": "C:/Apps/Aurora.exe", "enabled": False}])
+def test_app_list_editor_adds_dedupes_removes_and_exports_rows(qapp, tmp_path):
+    aurora = tmp_path / "Aurora.exe"
+    lumen = tmp_path / "Lumen.exe"
+    aurora.write_bytes(b"MZ")
+    lumen.write_bytes(b"MZ")
+    editor = AppListEditor([{"path": str(aurora), "enabled": False}])
 
-    editor.add_path("c:/apps/aurora.exe")
-    editor.add_path("C:/Apps/Lumen.exe")
+    editor.add_path(str(aurora).replace("\\", "/"))
+    editor.add_path(str(lumen))
     editor.remove_row(editor.rows[0])
 
-    assert editor.apps() == [{"path": "C:/Apps/Lumen.exe", "enabled": True}]
+    assert editor.apps() == [{"path": str(lumen.resolve()), "enabled": True}]
+
+
+def test_app_list_editor_rejects_invalid_path_without_reading_metadata(qapp, monkeypatch):
+    def fail_if_called(_):
+        raise AssertionError("metadata lookup must not run")
+
+    monkeypatch.setattr(
+        "sound_mixer.settings_window.managed_apps_editor.get_exe_friendly_name",
+        fail_if_called,
+    )
+    editor = AppListEditor([])
+
+    editor.add_path(r"\\server\share\Remote.exe")
+
+    assert editor.rows == []

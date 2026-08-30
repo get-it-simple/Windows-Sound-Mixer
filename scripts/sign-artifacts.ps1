@@ -25,7 +25,8 @@ if (-not $signTool) {
     throw "signtool.exe was not found in the Windows SDK."
 }
 
-$certificatePath = Join-Path $env:RUNNER_TEMP "sound-mixer-signing.pfx"
+$temporaryRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
+$certificatePath = Join-Path $temporaryRoot "sound-mixer-signing-$([guid]::NewGuid()).pfx"
 try {
     [System.IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($certificate))
     foreach ($path in $Paths) {

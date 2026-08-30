@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeyEvent
@@ -146,7 +148,7 @@ def test_vertical_minimum_height_fits_the_whole_title_column(qapp, fake_backend,
 def test_minimum_height_fits_the_visible_subprocess_toggle(qapp, fake_backend, settings):
     overlay = make_managed_overlay(qapp, fake_backend, settings)
 
-    settings.set_managed_apps([{"path": "C:/Games/sandbox.exe", "enabled": True}])
+    settings.set_managed_apps([{"path": sys.executable, "enabled": True}])
     overlay.sync_subprocess_management_toggle()
 
     assert overlay._subprocess_management_toggle.isVisible()
@@ -154,7 +156,7 @@ def test_minimum_height_fits_the_visible_subprocess_toggle(qapp, fake_backend, s
 
 
 def test_vertical_title_column_centers_the_subprocess_toggle(qapp, fake_backend, settings):
-    settings.set_managed_apps([{"path": "C:/Games/sandbox.exe", "enabled": True}])
+    settings.set_managed_apps([{"path": sys.executable, "enabled": True}])
 
     overlay = make_managed_overlay(qapp, fake_backend, settings)
 

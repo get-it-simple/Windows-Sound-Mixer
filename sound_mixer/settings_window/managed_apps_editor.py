@@ -5,6 +5,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QCheckBox, QFrame, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from sound_mixer.audio.win_names import get_exe_friendly_name
+from sound_mixer.executable_path import InvalidExecutablePathError, resolve_local_executable
 from sound_mixer.i18n import t
 from sound_mixer.overlay.icons import DelayedTooltipButton, bordered_input_style, load_icon, toggle_switch_style
 
@@ -105,12 +106,16 @@ class AppListEditor(QWidget):
         layout.addWidget(rows_container)
 
         for app in apps:
-            self.add_row(app["path"], app.get("enabled", True))
+            self.add_path(app["path"], app.get("enabled", True))
 
-    def add_path(self, path: str) -> None:
+    def add_path(self, path: str, enabled: bool = True) -> None:
+        try:
+            path = resolve_local_executable(path)
+        except InvalidExecutablePathError:
+            return
         if any(row.path.lower() == path.lower() for row in self.rows):
             return
-        self.add_row(path, True)
+        self.add_row(path, enabled)
 
     def add_row(self, path: str, enabled: bool) -> ManagedAppRow:
         row = ManagedAppRow(path, enabled, self)

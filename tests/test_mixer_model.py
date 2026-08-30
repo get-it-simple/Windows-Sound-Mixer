@@ -455,7 +455,10 @@ def test_ignoring_one_install_keeps_the_other_visible(tmp_path):
 def test_whitelist_keeps_master_and_only_enabled_allowed_apps(tmp_path):
     store = SettingsStore(tmp_path / "settings.json")
     store.load()
-    store.set_whitelist_apps([{"path": "aurora.exe", "enabled": True}, {"path": "lumen.exe", "enabled": False}])
+    store.data["whitelist"]["apps"] = [
+        {"path": "aurora.exe", "enabled": True},
+        {"path": "lumen.exe", "enabled": False},
+    ]
     store.set_whitelist_enabled(True)
 
     model = MixerModel(make_backend(), store)
@@ -467,7 +470,7 @@ def test_whitelist_keeps_master_and_only_enabled_allowed_apps(tmp_path):
 def test_whitelist_uses_full_path_before_basename_fallback(tmp_path):
     store = SettingsStore(tmp_path / "settings.json")
     store.load()
-    store.set_whitelist_apps([{"path": "G:/Games/VOIDRUNNER/Game.exe", "enabled": True}])
+    store.data["whitelist"]["apps"] = [{"path": "G:/Games/VOIDRUNNER/Game.exe", "enabled": True}]
     store.set_whitelist_enabled(True)
     voidrunner, webruntime_game = _game_sessions()
 
@@ -479,7 +482,7 @@ def test_whitelist_uses_full_path_before_basename_fallback(tmp_path):
 def test_ignored_allowed_app_stays_out_of_active_entries(tmp_path):
     store = SettingsStore(tmp_path / "settings.json")
     store.load()
-    store.set_whitelist_apps([{"path": "aurora.exe", "enabled": True}])
+    store.data["whitelist"]["apps"] = [{"path": "aurora.exe", "enabled": True}]
     store.set_whitelist_enabled(True)
     store.add_ignored_app("aurora.exe")
 

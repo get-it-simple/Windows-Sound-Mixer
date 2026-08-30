@@ -10,14 +10,20 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
-$target = Join-Path $root "build\installer-smoke-$Scope"
+$target = if ($Scope -eq "machine") { Join-Path $env:ProgramFiles "SoundMixer" } else { Join-Path $root "build\installer-smoke-user" }
 $registryRoot = if ($Scope -eq "machine") { "HKLM:" } else { "HKCU:" }
 $registryPath = "$registryRoot\Software\Microsoft\Windows\CurrentVersion\Uninstall\GetItSimple.SoundMixer"
-$installArgs = @("/S", "/D=$target")
-$progressInstallArgs = @("/SILENTWITHPROGRESS", "/D=$target")
+$installArgs = if ($Scope -eq "machine") { @("/S") } else { @("/S", "/D=$target") }
+$progressInstallArgs = if ($Scope -eq "machine") { @("/SILENTWITHPROGRESS") } else { @("/SILENTWITHPROGRESS", "/D=$target") }
 $uninstallArgs = @("/S")
 $dataDirectory = Join-Path $env:LOCALAPPDATA "GetItSimple\SoundMixer"
 $settingsPath = Join-Path $dataDirectory "settings.json"
+$logsDirectory = Join-Path $dataDirectory "logs"
+$runRegistryPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+$runValueName = "SoundMixer"
+$unrelatedRunValueName = "SoundMixerSmokeUnrelated"
+$previousRunValue = (Get-ItemProperty -LiteralPath $runRegistryPath -Name $runValueName -ErrorAction SilentlyContinue).$runValueName
+$previousUnrelatedRunValue = (Get-ItemProperty -LiteralPath $runRegistryPath -Name $unrelatedRunValueName -ErrorAction SilentlyContinue).$unrelatedRunValueName
 $temporaryRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
 $backupRoot = Join-Path $temporaryRoot "sound-mixer-smoke-$Scope-$([guid]::NewGuid())"
 $shortcutRoot = if ($Scope -eq "machine") {
@@ -76,6 +82,9 @@ if (Test-Path -LiteralPath $registryPath) {
 if (Test-Path -LiteralPath $shortcutRoot) {
     throw "Refusing to replace an existing Start Menu folder during a smoke test: $shortcutRoot"
 }
+if (Test-Path -LiteralPath $target) {
+    throw "Refusing to replace an existing install directory during a smoke test: $target"
+}
 
 New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
 if (Test-Path -LiteralPath $dataDirectory) {
@@ -92,6 +101,15 @@ try {
     if ($entry.InstallLocation -ne $target) {
         throw "Unexpected install path: $($entry.InstallLocation)"
     }
+    $expectedRegistryValues = @(
+        "DisplayIcon", "DisplayName", "DisplayVersion", "EstimatedSize", "HelpLink", "InstallDate",
+        "InstallLocation", "NoModify", "NoRepair", "Publisher", "QuietUninstallString", "UninstallString",
+        "URLInfoAbout", "URLUpdateInfo"
+    )
+    $actualRegistryValues = @($entry.PSObject.Properties.Name | Where-Object { $_ -notlike "PS*" } | Sort-Object)
+    if (Compare-Object $expectedRegistryValues $actualRegistryValues) {
+        throw "Unexpected uninstall registry value set: $($actualRegistryValues -join ', ')"
+    }
 
     $app = Join-Path $target "SoundMixer.exe"
     $uninstaller = Join-Path $target "Uninstall.exe"
@@ -100,10 +118,42 @@ try {
             throw "Installed file not found: $path"
         }
     }
+    $expectedFiles = @(".sound-mixer-installed", "LICENSE", "SoundMixer.exe", "Uninstall.exe")
+    $actualFiles = @(Get-ChildItem -LiteralPath $target -File | Select-Object -ExpandProperty Name | Sort-Object)
+    if (Compare-Object $expectedFiles $actualFiles) {
+        throw "Unexpected installed file set: $($actualFiles -join ', ')"
+    }
+    $marker = Get-Content -LiteralPath (Join-Path $target ".sound-mixer-installed") -Raw
+    $signedBuild = -not [string]::IsNullOrWhiteSpace($env:WINDOWS_SIGNING_CERTIFICATE_BASE64)
+    $expectedSignedMarker = if ($signedBuild) { "signed=1" } else { "signed=0" }
+    if ($marker -notmatch "version=$([regex]::Escape($Version))" -or $marker -notmatch "scope=$Scope" -or $marker -notmatch $expectedSignedMarker) {
+        throw "Installation marker metadata is incorrect"
+    }
     foreach ($shortcut in @("Sound Mixer.lnk", "Uninstall Sound Mixer.lnk")) {
         if (-not (Test-Path -LiteralPath (Join-Path $shortcutRoot $shortcut) -PathType Leaf)) {
             throw "Start Menu shortcut not found: $shortcut"
         }
+    }
+    $actualShortcuts = @(Get-ChildItem -LiteralPath $shortcutRoot -File | Select-Object -ExpandProperty Name | Sort-Object)
+    if (Compare-Object @("Sound Mixer.lnk", "Uninstall Sound Mixer.lnk") $actualShortcuts) {
+        throw "Unexpected Start Menu shortcut set: $($actualShortcuts -join ', ')"
+    }
+    foreach ($signedPath in @($Installer, $app, $uninstaller)) {
+        $status = (Get-AuthenticodeSignature -LiteralPath $signedPath).Status
+        if ($signedBuild -and $status -ne "Valid") { throw "Expected valid Authenticode signature: $signedPath ($status)" }
+        if (-not $signedBuild -and $status -ne "NotSigned") { throw "Expected unsigned artifact: $signedPath ($status)" }
+    }
+    if ($Scope -eq "machine") {
+        $usersSid = [System.Security.Principal.SecurityIdentifier]::new("S-1-5-32-545")
+        $writeRights = [System.Security.AccessControl.FileSystemRights]::Write -bor
+            [System.Security.AccessControl.FileSystemRights]::Modify -bor
+            [System.Security.AccessControl.FileSystemRights]::FullControl
+        $unsafeRule = (Get-Acl -LiteralPath $target).Access | Where-Object {
+            $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]) -eq $usersSid -and
+            $_.AccessControlType -eq [System.Security.AccessControl.AccessControlType]::Allow -and
+            ($_.FileSystemRights -band $writeRights)
+        }
+        if ($unsafeRule) { throw "Users have write access to the machine installation directory" }
     }
 
     $versionInfo = (Get-Item -LiteralPath $app).VersionInfo
@@ -125,11 +175,19 @@ try {
         throw "Settings were not preserved during upgrade"
     }
 
+    New-ItemProperty -LiteralPath $runRegistryPath -Name $runValueName -Value '"C:\invalid\SoundMixer.exe"' -PropertyType String -Force | Out-Null
+    New-ItemProperty -LiteralPath $runRegistryPath -Name $unrelatedRunValueName -Value 'preserve' -PropertyType String -Force | Out-Null
     Invoke-Checked $uninstaller $uninstallArgs
     Wait-AppState $app $false "uninstall shutdown"
     Wait-UninstallCleanup $app
     if (-not (Test-Path -LiteralPath $settingsPath -PathType Leaf)) {
         throw "Silent uninstall removed settings without /PURGE"
+    }
+    if ((Get-ItemProperty -LiteralPath $runRegistryPath -Name $runValueName -ErrorAction SilentlyContinue).$runValueName) {
+        throw "Uninstall did not remove the current user's SoundMixer Run value"
+    }
+    if ((Get-ItemProperty -LiteralPath $runRegistryPath -Name $unrelatedRunValueName).$unrelatedRunValueName -ne "preserve") {
+        throw "Uninstall changed an unrelated Run value"
     }
 
     Invoke-Checked $Installer $progressInstallArgs
@@ -137,6 +195,9 @@ try {
         throw "Silent-with-progress installation unexpectedly launched the application"
     }
     $uninstaller = Join-Path $target "Uninstall.exe"
+    New-Item -ItemType Directory -Path $logsDirectory -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $logsDirectory "sound-mixer.log") -Value "purge"
+    New-ItemProperty -LiteralPath $runRegistryPath -Name $runValueName -Value '"C:\invalid\SoundMixer.exe"' -PropertyType String -Force | Out-Null
     Invoke-Checked $uninstaller @("/S", "/PURGE")
     Wait-UninstallCleanup $app
     $purgeDeadline = (Get-Date).AddSeconds(10)
@@ -144,6 +205,10 @@ try {
         Start-Sleep -Milliseconds 200
     }
     if (Test-Path -LiteralPath $settingsPath) { throw "/PURGE did not remove current-user settings" }
+    if (Test-Path -LiteralPath $logsDirectory) { throw "/PURGE did not remove current-user logs" }
+    if ((Get-ItemProperty -LiteralPath $runRegistryPath -Name $runValueName -ErrorAction SilentlyContinue).$runValueName) {
+        throw "/PURGE uninstall did not remove the SoundMixer Run value"
+    }
 }
 finally {
     $app = Join-Path $target "SoundMixer.exe"
@@ -156,6 +221,14 @@ finally {
     }
     if (Test-Path -LiteralPath $dataDirectory) {
         Remove-Item -LiteralPath $dataDirectory -Recurse -Force
+    }
+    Remove-ItemProperty -LiteralPath $runRegistryPath -Name $runValueName -ErrorAction SilentlyContinue
+    Remove-ItemProperty -LiteralPath $runRegistryPath -Name $unrelatedRunValueName -ErrorAction SilentlyContinue
+    if ($null -ne $previousRunValue) {
+        New-ItemProperty -LiteralPath $runRegistryPath -Name $runValueName -Value $previousRunValue -PropertyType String -Force | Out-Null
+    }
+    if ($null -ne $previousUnrelatedRunValue) {
+        New-ItemProperty -LiteralPath $runRegistryPath -Name $unrelatedRunValueName -Value $previousUnrelatedRunValue -PropertyType String -Force | Out-Null
     }
     $backup = Join-Path $backupRoot "SoundMixer"
     if (Test-Path -LiteralPath $backup) {

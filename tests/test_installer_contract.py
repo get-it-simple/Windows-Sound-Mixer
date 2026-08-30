@@ -7,6 +7,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INSTALLER_SOURCE = ROOT / "installer" / "SoundMixer.nsi"
+ELEVATION_SOURCE = ROOT / "installer" / "elevation.nsh"
+VALIDATION_SOURCE = ROOT / "installer" / "uninstall_validation.nsh"
+PROCESS_CONTROL_SOURCE = ROOT / "installer" / "process_control.nsh"
+BUILD_INSTALLERS_SOURCE = ROOT / "scripts" / "build-installers.ps1"
 WINGET_SOURCE = ROOT / "scripts" / "generate-winget-manifests.ps1"
 
 
@@ -103,3 +107,83 @@ def test_machine_migration_cleans_up_the_in_place_user_uninstaller():
     assert 'Delete "$UserInstallDir\\Uninstall.exe"' in body
     assert 'RMDir "$UserInstallDir"' in body
     assert body.index('Delete "$UserInstallDir\\Uninstall.exe"') > body.index("ExecWait")
+
+
+def test_elevation_uses_shell_execute_ex_without_powershell():
+    installer = INSTALLER_SOURCE.read_text(encoding="utf-8")
+    elevation = ELEVATION_SOURCE.read_text(encoding="utf-8")
+
+    assert "powershell" not in installer.lower()
+    assert "SetEnvironmentVariable" not in installer
+    assert "ShellExecuteExW" in elevation
+    assert 'w "runas"' in elevation
+    assert "SEE_MASK" not in elevation or "0x140" in elevation
+    assert "WaitForSingleObject" in elevation
+    assert "GetExitCodeProcess" in elevation
+
+
+def test_shutdown_never_forcibly_terminates_the_application():
+    installer = INSTALLER_SOURCE.read_text(encoding="utf-8")
+    process_control = PROCESS_CONTROL_SOURCE.read_text(encoding="utf-8")
+
+    assert "TerminateProcess" not in installer
+    assert "TerminateProcess" not in process_control
+    assert "shutdown_failed:" in installer
+
+
+def test_machine_install_path_is_fixed_to_program_files():
+    source = INSTALLER_SOURCE.read_text(encoding="utf-8")
+
+    assert 'InstallDir "$PROGRAMFILES64\\SoundMixer"' in source
+    assert re.search(r"!ifndef MACHINE_INSTALL\s+InstallDirRegKey", source)
+    assert re.search(
+        r"!ifndef MACHINE_INSTALL\s+"
+        r"!define MUI_PAGE_CUSTOMFUNCTION_SHOW ApplySystemTheme\s+"
+        r"!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipForProgressMode\s+"
+        r"!insertmacro MUI_PAGE_DIRECTORY",
+        source,
+    )
+    assert '${GetOptions} $CMDLINE "/D="' in source
+    assert "$(InvalidInstallPath)" in source
+
+
+def test_previous_uninstaller_is_derived_and_verified_before_execution():
+    installer = INSTALLER_SOURCE.read_text(encoding="utf-8")
+    validation = VALIDATION_SOURCE.read_text(encoding="utf-8")
+    body = _function_body(installer, "RemovePreviousVersion")
+
+    assert 'StrCpy $ExistingUninstaller "$ExistingDir\\Uninstall.exe"' in validation
+    assert '.sound-mixer-installed' in validation
+    assert "GetFinalPathNameByHandleW" in validation
+    assert "WinVerifyTrust" in validation
+    assert "Call ValidateExistingUninstaller" in body
+    assert "ExecWait '$ExistingUninstaller" not in body
+    assert 'ExecWait \'"$ExistingUninstaller"' in body
+
+
+def test_signing_pipeline_supports_embedded_uninstaller():
+    installer = INSTALLER_SOURCE.read_text(encoding="utf-8")
+    build_script = BUILD_INSTALLERS_SOURCE.read_text(encoding="utf-8")
+
+    assert "!uninstfinalize" in installer
+    assert "version=${APP_VERSION}" in installer
+    assert "signed=${SIGNED_BUILD}" in installer
+    assert "/DSIGNED_BUILD=1" in build_script
+    assert "/DUNINSTALL_SIGN_COMMAND=" in build_script
+
+
+def test_uninstall_removes_only_sound_mixer_run_value_without_purge():
+    source = INSTALLER_SOURCE.read_text(encoding="utf-8")
+    body = source.split('Section "Uninstall"', 1)[1].split("SectionEnd", 1)[0]
+
+    assert body.count('DeleteRegValue HKCU "${RUN_KEY}" "${RUN_VALUE}"') == 2
+    assert body.index('DeleteRegValue HKCU "${RUN_KEY}" "${RUN_VALUE}"') < body.index("Call un.RunElevated")
+    assert 'DeleteRegKey HKCU "${RUN_KEY}"' not in body
+    assert 'StrCmp $UpgradeMode 1 +2' in body
+
+
+def test_purge_removes_rotating_logs():
+    body = _function_body(INSTALLER_SOURCE.read_text(encoding="utf-8"), "un.PurgeCurrentUserData")
+
+    for name in ("sound-mixer.log", "sound-mixer.log.1", "sound-mixer.log.2"):
+        assert name in body

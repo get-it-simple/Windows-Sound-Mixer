@@ -42,8 +42,9 @@ python build.py
 The user installer writes to `%LOCALAPPDATA%\Programs\SoundMixer` without UAC.
 The machine installer writes to `%ProgramFiles%\SoundMixer` through an
 unelevated bootstrap and a controlled elevated file/registry phase. Both
-support normal interactive installation, `/S`, `/SILENTWITHPROGRESS`, and the
-standard NSIS `/D=<absolute-path>` override.
+support normal interactive installation, `/S`, and `/SILENTWITHPROGRESS`. The
+user installer also supports the standard NSIS `/D=<absolute-path>` override;
+the machine installer rejects every directory other than `%ProgramFiles%\SoundMixer`.
 
 The WinGet manifest uses the machine installer, whose bootstrap requests
 elevation only for the protected file and registry phase. The user installer
@@ -63,6 +64,8 @@ Release only for a pre-existing `X.Y.Z` tag that exactly matches
 repository secrets: `WINDOWS_SIGNING_CERTIFICATE_BASE64`,
 `WINDOWS_SIGNING_CERTIFICATE_PASSWORD`, and `WINDOWS_TIMESTAMP_URL`. With none
 configured, the same release is produced unsigned and verified by SHA-256.
+When signing is configured, `SoundMixer.exe` is signed before packaging, NSIS
+signs the embedded uninstaller, and the completed installers are signed last.
 
 ## Running the tests
 
@@ -104,13 +107,27 @@ non-Windows platforms.
 
 ## Settings file (`settings.json`)
 
-For source and portable runs, `settings.json` is created next to the source
-tree or executable. An installed copy stores it in
-`%LOCALAPPDATA%\GetItSimple\SoundMixer\settings.json`, regardless of installer
-scope. A legacy file beside an installed executable is migrated atomically
-only when the target file does not already exist. The file is plain JSON and
-is safe to edit by hand while the app is not running. If the format changes
-in a future version, it is migrated automatically on load.
+Source runs keep `settings.json` next to the source tree. A packaged executable
+uses `%LOCALAPPDATA%\GetItSimple\SoundMixer\settings.json` unless it is started
+with `--portable`. Portable mode keeps settings next to the executable when
+that directory passes a real write check and otherwise falls back to
+LocalAppData. A legacy file beside an executable is migrated atomically only
+when the target file does not already exist. Migration and runtime warnings are
+written to the rotating
+`%LOCALAPPDATA%\GetItSimple\SoundMixer\logs\sound-mixer.log` file (1 MiB, two
+backups). The file is plain JSON and is safe to edit by hand while the app is
+not running. If the format changes in a future version, it is migrated
+automatically on load.
+
+Managed-app and whitelist entries must be absolute paths to existing local
+`.exe` files. UNC paths, Windows device paths, mapped network drives,
+directories, missing files, and other extensions are ignored before executable
+metadata is read.
+
+Uninstall always removes the current user's `SoundMixer` login Run value,
+independently of the setting-data purge option. A machine uninstaller can only
+remove that value for the user who launched it. Selecting the purge option also
+removes settings and rotating logs for that user.
 
 | Field                  | Type            | Description                                                                                                                                                     |
 | ---------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |

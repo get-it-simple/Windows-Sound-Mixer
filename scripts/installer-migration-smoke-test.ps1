@@ -10,7 +10,7 @@ param(
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $userTarget = Join-Path $root "build\installer-migration-user"
-$machineTarget = Join-Path $root "build\installer-migration-machine"
+$machineTarget = Join-Path $env:ProgramFiles "SoundMixer"
 $userRegistry = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\GetItSimple.SoundMixer"
 $machineRegistry = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\GetItSimple.SoundMixer"
 $userShortcuts = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Sound Mixer"
@@ -55,7 +55,7 @@ try {
     New-Item -ItemType Directory -Path $dataDirectory -Force | Out-Null
     [System.IO.File]::WriteAllText($settingsPath, '{"version":5,"migration_marker":"preserve"}', [System.Text.UTF8Encoding]::new($false))
 
-    Invoke-Checked $MachineInstaller @("/S", "/D=$machineTarget")
+    Invoke-Checked $MachineInstaller @("/S")
     Wait-Until { -not (Test-Path -LiteralPath $userRegistry) } "user ARP removal"
     Wait-Until { -not (Test-Path -LiteralPath $userTarget) } "user files removal"
 

@@ -125,20 +125,14 @@ class SoundMixerApp:
 
     def _sync_autostart(self) -> None:
         try:
-            if self.settings.get_autostart_enabled():
-                self.autostart.enable()
-            else:
-                self.autostart.disable()
+            self.autostart.set_enabled(self.settings.get_autostart_enabled())
         except AutostartUnavailableError:
             pass
 
     def _set_autostart_enabled(self, enabled: bool) -> None:
         self.settings.set_autostart_enabled(enabled)
         try:
-            if enabled:
-                self.autostart.enable()
-            else:
-                self.autostart.disable()
+            self.autostart.set_enabled(enabled)
         except AutostartUnavailableError:
             pass
 
