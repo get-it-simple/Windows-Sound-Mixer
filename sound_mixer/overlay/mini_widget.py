@@ -15,7 +15,6 @@ from sound_mixer.mixer.model import MixerEntry, MixerModel
 from sound_mixer.overlay.icons import DelayedTooltipButton, load_app_icon, load_icon
 from sound_mixer.settings.store import SettingsStore
 
-REFRESH_INTERVAL_MS = 1000
 POSITION_SAVE_DELAY_MS = 300
 PIN_HIDE_DELAY_MS = 600
 MIN_VISIBLE_PX = 48
@@ -214,8 +213,6 @@ class MiniWidget(QWidget):
         self._grid.setContentsMargins(0, 0, 0, 0)
         self._outer_layout.addWidget(self._content)
 
-        self._refresh_timer = QTimer(self)
-        self._refresh_timer.timeout.connect(self._refresh)
         self._position_save_timer = QTimer(self)
         self._position_save_timer.setSingleShot(True)
         self._position_save_timer.timeout.connect(self._save_position)
@@ -236,10 +233,8 @@ class MiniWidget(QWidget):
         if persist and self._settings.get_mini_widget_enabled() != enabled:
             self._settings.set_mini_widget_enabled(enabled)
         if enabled:
-            self._refresh_timer.start(REFRESH_INTERVAL_MS)
-            self._refresh()
+            self.refresh_view()
         else:
-            self._refresh_timer.stop()
             self.hide()
 
     def sync_from_settings(self) -> None:
@@ -247,18 +242,9 @@ class MiniWidget(QWidget):
         self.set_enabled(self._settings.get_mini_widget_enabled(), persist=False)
 
     def stop(self) -> None:
-        self._refresh_timer.stop()
         self._position_save_timer.stop()
         self._pin_hide_timer.stop()
         self._save_position()
-
-    def _refresh(self) -> None:
-        try:
-            self._model.refresh()
-        except Exception:
-            return
-        self.refresh_view()
-        self.model_changed.emit()
 
     def refresh_view(self) -> None:
         if not self._enabled:

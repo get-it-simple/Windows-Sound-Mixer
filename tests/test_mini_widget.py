@@ -249,18 +249,51 @@ def test_mini_widget_recovers_from_offscreen_position(qapp, mini):
     assert available.contains(mini.frameGeometry().topLeft())
 
 
-def test_enabled_empty_widget_hides_and_reappears_when_session_arrives(qapp, settings):
+def test_mini_widget_does_not_refresh_audio_sessions(qapp, settings):
+    class TrackingAudioBackend(FakeAudioBackend):
+        def __init__(self):
+            super().__init__()
+            self.refresh_count = 0
+
+        def refresh(self):
+            self.refresh_count += 1
+
+    backend = TrackingAudioBackend()
+    model = MixerModel(backend, settings)
+    widget = MiniWidget(model, settings)
+
+    initial_refresh_count = backend.refresh_count
+    widget.set_enabled(True)
+    qapp.processEvents()
+
+    assert backend.refresh_count == initial_refresh_count
+    assert widget.is_enabled() is True
+    assert not widget.isVisible()
+
+    backend.add_session(FakeAudioSession(pid=1, process_name="aurora.exe", display_name="Aurora"))
+    model.refresh()
+    widget.refresh_view()
+    qapp.processEvents()
+
+    assert backend.refresh_count == initial_refresh_count + 1
+    assert widget.isVisible()
+    widget.stop()
+    widget.close()
+
+
+def test_enabled_empty_widget_hides_and_reappears_after_model_update(qapp, settings):
     backend = FakeAudioBackend()
-    widget = MiniWidget(MixerModel(backend, settings), settings)
+    model = MixerModel(backend, settings)
+    widget = MiniWidget(model, settings)
 
     widget.set_enabled(True)
     qapp.processEvents()
     assert widget.is_enabled() is True
     assert not widget.isVisible()
-    assert widget._refresh_timer.isActive()
 
     backend.add_session(FakeAudioSession(pid=1, process_name="aurora.exe", display_name="Aurora"))
-    widget._refresh()
+    model.refresh()
+    widget.refresh_view()
     qapp.processEvents()
 
     assert widget.isVisible()
