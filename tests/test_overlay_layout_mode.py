@@ -1,7 +1,7 @@
 import sys
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QDeadlineTimer, QEventLoop, Qt
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QBoxLayout, QFrame
 
@@ -361,6 +361,9 @@ def test_vertical_scrollbar_appears_only_after_the_visible_entry_limit(qapp, fak
 
     assert len(overlay._entry_widgets) == MAX_VISIBLE_ENTRIES + 1
     assert overlay._scroll_area.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOn
+    deadline = QDeadlineTimer(1000)
+    while not scrollbar.isVisible() and not deadline.hasExpired():
+        qapp.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 20)
     assert scrollbar.isVisible()
     margins = overlay._container_layout.contentsMargins()
     entry_minimum = max(widget.minimumSizeHint().height() for widget in overlay._entry_widgets)
