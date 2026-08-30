@@ -1,3 +1,6 @@
+import sys
+from pathlib import Path
+
 from sound_mixer.overlay.window import OverlayWindow
 from sound_mixer.settings_window.window import SettingsWindow
 
@@ -245,14 +248,15 @@ def test_language_combo_reflects_saved_setting(qapp, settings):
 
 
 def test_subprocess_management_tab_builds_row_per_persisted_app(qapp, settings):
-    settings.set_managed_apps([{"path": "C:/Games/sandbox.exe", "enabled": False}])
+    executable = str(Path(sys.executable).resolve())
+    settings.set_managed_apps([{"path": executable, "enabled": False}])
     window = SettingsWindow(settings)
 
     assert len(window._managed_app_rows) == 1
     row = window._managed_app_rows[0]
-    assert row.path == "C:/Games/sandbox.exe"
+    assert row.path == executable
     assert row.is_enabled() is False
-    assert row._name_label.toolTip() == "C:/Games/sandbox.exe"
+    assert row._name_label.toolTip() == executable
 
 
 def test_subprocess_management_interval_spinbox_reflects_settings(qapp, settings):
@@ -277,15 +281,15 @@ def test_dropping_app_adds_row_with_resolved_name(qapp, settings):
 def test_dropping_same_app_path_twice_does_not_duplicate(qapp, settings):
     window = SettingsWindow(settings)
 
-    window._on_managed_app_dropped("C:/Games/Sandbox.exe")
-    window._on_managed_app_dropped("c:/games/sandbox.exe")
+    window._on_managed_app_dropped(sys.executable)
+    window._on_managed_app_dropped(sys.executable.replace("\\", "/"))
 
     assert len(window._managed_app_rows) == 1
 
 
 def test_removing_managed_app_row(qapp, settings):
     window = SettingsWindow(settings)
-    window._on_managed_app_dropped("C:/Games/Sandbox.exe")
+    window._on_managed_app_dropped(sys.executable)
     row = window._managed_app_rows[0]
 
     row.remove_requested.emit()
@@ -296,12 +300,12 @@ def test_removing_managed_app_row(qapp, settings):
 def test_accept_saves_subprocess_management_settings(qapp, settings):
     window = SettingsWindow(settings)
     window._subprocess_interval_spinbox.setValue(20)
-    window._on_managed_app_dropped("C:/Games/Sandbox.exe")
+    window._on_managed_app_dropped(sys.executable)
 
     window.accept()
 
     assert settings.get_subprocess_management_interval_seconds() == 20
-    assert settings.get_managed_apps() == [{"path": "C:/Games/Sandbox.exe", "enabled": True}]
+    assert settings.get_managed_apps() == [{"path": str(Path(sys.executable).resolve()), "enabled": True}]
 
 
 def test_accept_syncs_subprocess_manager(qapp, settings):
@@ -323,7 +327,7 @@ def test_accept_syncs_subprocess_manager(qapp, settings):
 def test_cancel_does_not_persist_subprocess_management_changes(qapp, settings):
     window = SettingsWindow(settings)
     window._subprocess_interval_spinbox.setValue(45)
-    window._on_managed_app_dropped("C:/Games/Sandbox.exe")
+    window._on_managed_app_dropped(sys.executable)
 
     window.reject()
 
@@ -332,23 +336,28 @@ def test_cancel_does_not_persist_subprocess_management_changes(qapp, settings):
 
 
 def test_whitelist_tab_loads_and_saves_independent_app_list(qapp, settings):
-    settings.set_managed_apps([{"path": "C:/Apps/Launcher.exe", "enabled": True}])
-    settings.set_whitelist_apps([{"path": "C:/Apps/Aurora.exe", "enabled": False}])
+    launcher = settings.path.parent / "Launcher.exe"
+    aurora = settings.path.parent / "Aurora.exe"
+    lumen = settings.path.parent / "Lumen.exe"
+    for executable in (launcher, aurora, lumen):
+        executable.write_bytes(b"MZ")
+    settings.set_managed_apps([{"path": str(launcher), "enabled": True}])
+    settings.set_whitelist_apps([{"path": str(aurora), "enabled": False}])
     window = SettingsWindow(settings)
 
     assert len(window._managed_app_rows) == 1
     assert len(window._whitelist_app_rows) == 1
-    assert window._whitelist_app_rows[0].path == "C:/Apps/Aurora.exe"
+    assert window._whitelist_app_rows[0].path == str(aurora.resolve())
     window._whitelist_checkbox.setChecked(True)
-    window._whitelist_editor.add_path("C:/Apps/Lumen.exe")
+    window._whitelist_editor.add_path(str(lumen))
     window.accept()
 
     assert settings.get_whitelist_enabled() is True
     assert settings.get_whitelist_apps() == [
-        {"path": "C:/Apps/Aurora.exe", "enabled": False},
-        {"path": "C:/Apps/Lumen.exe", "enabled": True},
+        {"path": str(aurora.resolve()), "enabled": False},
+        {"path": str(lumen.resolve()), "enabled": True},
     ]
-    assert settings.get_managed_apps() == [{"path": "C:/Apps/Launcher.exe", "enabled": True}]
+    assert settings.get_managed_apps() == [{"path": str(launcher.resolve()), "enabled": True}]
 
 
 def test_accept_saves_language(qapp, settings):

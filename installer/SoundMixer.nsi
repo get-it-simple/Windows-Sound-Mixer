@@ -14,6 +14,9 @@ ManifestDPIAwareness PerMonitorV2
 !ifndef OUTPUT_FILE
   !define OUTPUT_FILE "SoundMixer-${APP_VERSION}-${INSTALL_SCOPE}-setup.exe"
 !endif
+!ifndef SIGNED_BUILD
+  !define SIGNED_BUILD 0
+!endif
 
 !define PRODUCT_ID "GetItSimple.SoundMixer"
 !define PRODUCT_NAME "Sound Mixer"
@@ -21,6 +24,8 @@ ManifestDPIAwareness PerMonitorV2
 !define PRODUCT_PUBLISHER "Get it Simple"
 !define PRODUCT_URL "https://github.com/get-it-simple/Windows-Sound-Mixer"
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_ID}"
+!define RUN_KEY "Software\Microsoft\Windows\CurrentVersion\Run"
+!define RUN_VALUE "SoundMixer"
 !define DATA_DIR "$LOCALAPPDATA\GetItSimple\SoundMixer"
 
 !if "${INSTALL_SCOPE}" == "machine"
@@ -39,8 +44,13 @@ ManifestDPIAwareness PerMonitorV2
 RequestExecutionLevel user
 Name "${PRODUCT_NAME}"
 OutFile "${OUTPUT_FILE}"
+!ifdef UNINSTALL_SIGN_COMMAND
+  !uninstfinalize '${UNINSTALL_SIGN_COMMAND}' = 0
+!endif
 BrandingText "${PRODUCT_PUBLISHER}"
-InstallDirRegKey ${REG_ROOT} "${UNINSTALL_KEY}" "InstallLocation"
+!ifndef MACHINE_INSTALL
+  InstallDirRegKey ${REG_ROOT} "${UNINSTALL_KEY}" "InstallLocation"
+!endif
 SetCompressor /SOLID zlib
 CRCCheck force
 XPStyle on
@@ -71,9 +81,11 @@ VIAddVersionKey /LANG=1033 "LegalCopyright" "Copyright (c) 2026 ${PRODUCT_PUBLIS
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipForProgressMode
 !insertmacro MUI_PAGE_WELCOME
 Page custom LicensePageCreate LicensePageLeave
+!ifndef MACHINE_INSTALL
 !define MUI_PAGE_CUSTOMFUNCTION_SHOW ApplySystemTheme
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipForProgressMode
 !insertmacro MUI_PAGE_DIRECTORY
+!endif
 !define MUI_PAGE_CUSTOMFUNCTION_SHOW ApplySystemTheme
 !insertmacro MUI_PAGE_INSTFILES
 !define MUI_PAGE_CUSTOMFUNCTION_SHOW FinishPageShow
@@ -115,8 +127,8 @@ LangString InstallFailed ${LANG_ENGLISH} "Sound Mixer could not be installed."
 LangString InstallFailed ${LANG_UKRAINIAN} "Не вдалося встановити Sound Mixer."
 LangString PurgeTitle ${LANG_ENGLISH} "Application data"
 LangString PurgeTitle ${LANG_UKRAINIAN} "Дані застосунку"
-LangString PurgeText ${LANG_ENGLISH} "Delete settings for the current Windows user"
-LangString PurgeText ${LANG_UKRAINIAN} "Видалити налаштування поточного користувача Windows"
+LangString PurgeText ${LANG_ENGLISH} "Delete settings and diagnostic logs for the current Windows user"
+LangString PurgeText ${LANG_UKRAINIAN} "Видалити налаштування та діагностичні журнали поточного користувача Windows"
 LangString UninstallTitle ${LANG_ENGLISH} "Uninstall Sound Mixer"
 LangString UninstallTitle ${LANG_UKRAINIAN} "Видалення Sound Mixer"
 LangString UninstallSubtitle ${LANG_ENGLISH} "Remove Sound Mixer from your computer."
@@ -127,6 +139,10 @@ LangString UninstallButton ${LANG_ENGLISH} "Uninstall"
 LangString UninstallButton ${LANG_UKRAINIAN} "Видалити"
 LangString UninstallFailed ${LANG_ENGLISH} "Sound Mixer could not be uninstalled."
 LangString UninstallFailed ${LANG_UKRAINIAN} "Не вдалося видалити Sound Mixer."
+LangString InvalidInstallPath ${LANG_ENGLISH} "Machine-wide Sound Mixer must be installed in $PROGRAMFILES64\SoundMixer."
+LangString InvalidInstallPath ${LANG_UKRAINIAN} "Системний Sound Mixer можна встановити лише в $PROGRAMFILES64\SoundMixer."
+LangString InvalidPreviousInstall ${LANG_ENGLISH} "The existing Sound Mixer installation could not be verified and was not executed. Remove it manually before continuing."
+LangString InvalidPreviousInstall ${LANG_UKRAINIAN} "Не вдалося перевірити наявну інсталяцію Sound Mixer, тому її не було запущено. Видаліть її вручну перед продовженням."
 
 Var WasRunning
 Var WasRunningBeforeInstall
@@ -141,9 +157,19 @@ Var ProcessStatus
 Var ProcessTarget
 Var LicenseEdit
 Var LicenseNext
+Var UpgradeMode
+Var ExistingUninstallString
+Var CanonicalExistingDir
+Var ValidationStatus
+Var ExistingMarkerSigned
+Var SignatureStatus
+Var ValidationRequireMachinePath
 !ifdef MACHINE_INSTALL
+Var ElevateArguments
+Var ElevationExitCode
 Var UserInstallDir
 Var UserUninstaller
+Var UserUninstallString
 !endif
 
 Function CheckWindows
@@ -237,13 +263,8 @@ wait_for_exit:
   StrCmp $ProcessStatus 0 done
   StrCmp $ProcessStatus 3 other_session
   IntOp $9 $9 - 1
-  IntCmp $9 0 force_stop wait_for_exit wait_for_exit
-force_stop:
-  Call TerminateExactProcess
-  Sleep 200
-  Call InspectExactProcess
-  StrCmp $ProcessStatus 0 done
-  StrCmp $ProcessStatus 3 other_session
+  IntCmp $9 0 shutdown_failed wait_for_exit wait_for_exit
+shutdown_failed:
   MessageBox MB_OK|MB_ICONSTOP "$(StopFailed)" /SD IDOK
   SetErrorLevel 2
   Quit
@@ -256,17 +277,9 @@ FunctionEnd
 
 !ifdef MACHINE_INSTALL
 Function RunElevatedInstaller
-  ; The bootstrap owns all UI. The elevated child only changes machine files
-  ; and registry, so the finish page can launch the app unelevated.
-  StrCpy $0 "/S /ELEVATED /D=$INSTDIR"
-  System::Call 'kernel32::SetEnvironmentVariableW(w "SM_INSTALLER", w "$EXEPATH") i.r1'
-  System::Call 'kernel32::SetEnvironmentVariableW(w "SM_ARGUMENTS", w "$0") i.r1'
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command "$$p=Start-Process -FilePath $$env:SM_INSTALLER -ArgumentList $$env:SM_ARGUMENTS -Verb RunAs -Wait -PassThru; exit $$p.ExitCode"'
-  Pop $1
-  Pop $2
-  StrCmp $1 "error" 0 +2
-  StrCpy $1 4
-  StrCpy $0 $1
+  StrCpy $ElevateArguments "/S /ELEVATED /D=$PROGRAMFILES64\SoundMixer"
+  Call ElevateAndWait
+  StrCpy $0 $ElevationExitCode
   StrCmp $0 0 0 done
   Call RemovePreviousUserVersion
 done:
@@ -284,9 +297,21 @@ Function .onInit
   StrCpy $WasRunningBeforeInstall 0
   StrCpy $ElevatedPhase 0
   StrCpy $SilentProgress 0
+  StrCpy $UpgradeMode 0
   !ifdef MACHINE_INSTALL
+    StrCpy $INSTDIR "$PROGRAMFILES64\SoundMixer"
     StrCpy $UserInstallDir ""
     StrCpy $UserUninstaller ""
+    StrCpy $UserUninstallString ""
+    ClearErrors
+    ${GetOptions} $CMDLINE "/D=" $0
+    IfErrors machine_path_done
+    System::Call 'kernel32::lstrcmpiW(w r0, w "$PROGRAMFILES64\SoundMixer") i.r1'
+    StrCmp $1 0 machine_path_done
+    MessageBox MB_OK|MB_ICONSTOP "$(InvalidInstallPath)" /SD IDOK
+    SetErrorLevel 6
+    Quit
+machine_path_done:
   !endif
   ClearErrors
   ${GetOptions} $CMDLINE "/SILENTWITHPROGRESS" $0
@@ -325,27 +350,48 @@ FunctionEnd
 Function MigrateLegacySettings
   IfFileExists "${DATA_DIR}\settings.json" done
   IfFileExists "$ExistingDir\settings.json" 0 done
+  ClearErrors
   CreateDirectory "${DATA_DIR}"
+  IfErrors migration_failed
   Delete "${DATA_DIR}\settings.json.migrating"
+  ClearErrors
   CopyFiles /SILENT "$ExistingDir\settings.json" "${DATA_DIR}\settings.json.migrating"
+  IfErrors migration_failed
+  IfFileExists "${DATA_DIR}\settings.json.migrating" 0 migration_failed
   IfFileExists "${DATA_DIR}\settings.json" cleanup
+  ClearErrors
   Rename "${DATA_DIR}\settings.json.migrating" "${DATA_DIR}\settings.json"
+  IfErrors migration_failed
+  Goto cleanup
+migration_failed:
+  DetailPrint "Settings migration failed: $ExistingDir\settings.json -> ${DATA_DIR}\settings.json"
 cleanup:
   Delete "${DATA_DIR}\settings.json.migrating"
 done:
 FunctionEnd
 
 Function RemovePreviousVersion
-  ReadRegStr $ExistingUninstaller ${REG_ROOT} "${UNINSTALL_KEY}" "UninstallString"
   ReadRegStr $ExistingDir ${REG_ROOT} "${UNINSTALL_KEY}" "InstallLocation"
-  StrCmp $ExistingUninstaller "" done
+  ReadRegStr $ExistingUninstallString ${REG_ROOT} "${UNINSTALL_KEY}" "UninstallString"
+  StrCmp $ExistingDir "" done
+  !ifdef MACHINE_INSTALL
+    StrCpy $ValidationRequireMachinePath 1
+  !else
+    StrCpy $ValidationRequireMachinePath 0
+  !endif
+  Call ValidateExistingUninstaller
+  StrCmp $ValidationStatus 0 validated
+  MessageBox MB_OK|MB_ICONSTOP "$(InvalidPreviousInstall)" /SD IDOK
+  SetErrorLevel 3
+  Abort
+validated:
   !ifndef MACHINE_INSTALL
   Call MigrateLegacySettings
   !endif
   !ifdef MACHINE_INSTALL
-    ExecWait '$ExistingUninstaller /S /UPGRADE /ELEVATED _?=$ExistingDir' $0
+    ExecWait '"$ExistingUninstaller" /S /UPGRADE /ELEVATED _?=$ExistingDir' $0
   !else
-  ExecWait '$ExistingUninstaller /S /UPGRADE _?=$ExistingDir' $0
+  ExecWait '"$ExistingUninstaller" /S /UPGRADE _?=$ExistingDir' $0
   !endif
   StrCmp $0 0 done
   MessageBox MB_OK|MB_ICONSTOP "$(OldUninstallFailed)" /SD IDOK
@@ -356,8 +402,18 @@ FunctionEnd
 
 !ifdef MACHINE_INSTALL
 Function RemovePreviousUserVersion
-  StrCmp $UserUninstaller "" done
-  ExecWait '$UserUninstaller /S /UPGRADE _?=$UserInstallDir' $0
+  StrCmp $UserInstallDir "" done
+  StrCpy $ExistingDir $UserInstallDir
+  StrCpy $ExistingUninstallString $UserUninstallString
+  StrCpy $ValidationRequireMachinePath 0
+  Call ValidateExistingUninstaller
+  StrCmp $ValidationStatus 0 validated
+  MessageBox MB_OK|MB_ICONSTOP "$(InvalidPreviousInstall)" /SD IDOK
+  SetErrorLevel 3
+  Quit
+validated:
+  StrCpy $UserUninstaller $ExistingUninstaller
+  ExecWait '"$UserUninstaller" /S /UPGRADE _?=$UserInstallDir' $0
   StrCmp $0 0 cleanup
   MessageBox MB_OK|MB_ICONSTOP "$(OldUninstallFailed)" /SD IDOK
   SetErrorLevel 3
@@ -401,15 +457,31 @@ Section "Install"
     SetShellVarContext current
     ReadRegStr $ExistingDir HKLM "${UNINSTALL_KEY}" "InstallLocation"
     StrCmp $ExistingDir "" check_user_install
+    ReadRegStr $ExistingUninstallString HKLM "${UNINSTALL_KEY}" "UninstallString"
+    StrCpy $ValidationRequireMachinePath 1
+    Call ValidateExistingUninstaller
+    StrCmp $ValidationStatus 0 machine_existing_valid
+    MessageBox MB_OK|MB_ICONSTOP "$(InvalidPreviousInstall)" /SD IDOK
+    SetErrorLevel 3
+    Abort
+machine_existing_valid:
     Call DetectAndStopApplication
     Call RememberRunningState
     Call MigrateLegacySettings
 
 check_user_install:
     ReadRegStr $UserInstallDir HKCU "${UNINSTALL_KEY}" "InstallLocation"
-    ReadRegStr $UserUninstaller HKCU "${UNINSTALL_KEY}" "UninstallString"
+    ReadRegStr $UserUninstallString HKCU "${UNINSTALL_KEY}" "UninstallString"
     StrCmp $UserInstallDir "" run_elevated_install
     StrCpy $ExistingDir $UserInstallDir
+    StrCpy $ExistingUninstallString $UserUninstallString
+    StrCpy $ValidationRequireMachinePath 0
+    Call ValidateExistingUninstaller
+    StrCmp $ValidationStatus 0 user_existing_valid
+    MessageBox MB_OK|MB_ICONSTOP "$(InvalidPreviousInstall)" /SD IDOK
+    SetErrorLevel 3
+    Abort
+user_existing_valid:
     Call DetectAndStopApplication
     Call RememberRunningState
     Call MigrateLegacySettings
@@ -430,6 +502,14 @@ machine_file_phase:
     SetShellVarContext current
     ReadRegStr $ExistingDir HKCU "${UNINSTALL_KEY}" "InstallLocation"
     StrCmp $ExistingDir "" user_install_files
+    ReadRegStr $ExistingUninstallString HKCU "${UNINSTALL_KEY}" "UninstallString"
+    StrCpy $ValidationRequireMachinePath 0
+    Call ValidateExistingUninstaller
+    StrCmp $ValidationStatus 0 user_install_valid
+    MessageBox MB_OK|MB_ICONSTOP "$(InvalidPreviousInstall)" /SD IDOK
+    SetErrorLevel 3
+    Abort
+user_install_valid:
     Call DetectAndStopApplication
     Call RememberRunningState
 
@@ -439,7 +519,7 @@ user_install_files:
   SetOutPath "$INSTDIR"
   File /oname=${PRODUCT_EXE} "${APP_EXE}"
   FileOpen $0 "$INSTDIR\.sound-mixer-installed" w
-  FileWrite $0 "installed"
+  FileWrite $0 "version=${APP_VERSION}$\r$\nscope=${INSTALL_SCOPE}$\r$\nsigned=${SIGNED_BUILD}$\r$\n"
   FileClose $0
   File /oname=LICENSE "..\LICENSE"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
@@ -488,13 +568,8 @@ wait_for_exit:
   StrCmp $ProcessStatus 0 done
   StrCmp $ProcessStatus 3 other_session
   IntOp $9 $9 - 1
-  IntCmp $9 0 force_stop wait_for_exit wait_for_exit
-force_stop:
-  Call un.TerminateExactProcess
-  Sleep 200
-  Call un.InspectExactProcess
-  StrCmp $ProcessStatus 0 done
-  StrCmp $ProcessStatus 3 other_session
+  IntCmp $9 0 shutdown_failed wait_for_exit wait_for_exit
+shutdown_failed:
   MessageBox MB_OK|MB_ICONSTOP "$(StopFailed)" /SD IDOK
   SetErrorLevel 2
   Quit
@@ -507,15 +582,11 @@ FunctionEnd
 
 !ifdef MACHINE_INSTALL
 Function un.RunElevated
-  StrCpy $0 "/S /ELEVATED"
-  System::Call 'kernel32::SetEnvironmentVariableW(w "SM_INSTALLER", w "$EXEPATH") i.r1'
-  System::Call 'kernel32::SetEnvironmentVariableW(w "SM_ARGUMENTS", w "$0") i.r1'
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command "$$p=Start-Process -FilePath $$env:SM_INSTALLER -ArgumentList $$env:SM_ARGUMENTS -Verb RunAs -Wait -PassThru; exit $$p.ExitCode"'
-  Pop $1
-  Pop $2
-  StrCmp $1 "error" 0 +2
-  StrCpy $1 4
-  StrCpy $0 $1
+  StrCpy $ElevateArguments "/S /ELEVATED"
+  StrCmp $PurgeData 1 0 +2
+  StrCpy $ElevateArguments "$ElevateArguments /PURGE"
+  Call un.ElevateAndWait
+  StrCpy $0 $ElevationExitCode
 FunctionEnd
 !endif
 
@@ -526,6 +597,7 @@ Function un.onInit
   StrCpy $LANGUAGE ${LANG_UKRAINIAN}
   SetRegView 64
   StrCpy $ElevatedPhase 0
+  StrCpy $UpgradeMode 0
   !ifdef MACHINE_INSTALL
     ReadRegStr $1 HKLM "${UNINSTALL_KEY}" "InstallLocation"
     StrCmp $1 "" +2
@@ -537,6 +609,11 @@ Function un.onInit
   IfErrors elevation
   StrCpy $PurgeData 1
 elevation:
+  ClearErrors
+  ${GetOptions} $CMDLINE "/UPGRADE" $0
+  IfErrors check_elevated
+  StrCpy $UpgradeMode 1
+check_elevated:
   !ifdef MACHINE_INSTALL
     ClearErrors
     ${GetOptions} $CMDLINE "/ELEVATED" $0
@@ -590,6 +667,10 @@ Function un.PurgeCurrentUserData
   Delete "${DATA_DIR}\settings.json"
   Delete "${DATA_DIR}\settings.json.bak"
   Delete "${DATA_DIR}\settings.json.tmp"
+  Delete "${DATA_DIR}\logs\sound-mixer.log"
+  Delete "${DATA_DIR}\logs\sound-mixer.log.1"
+  Delete "${DATA_DIR}\logs\sound-mixer.log.2"
+  RMDir "${DATA_DIR}\logs"
   RMDir "${DATA_DIR}"
   RMDir "$LOCALAPPDATA\GetItSimple"
 FunctionEnd
@@ -597,6 +678,8 @@ FunctionEnd
 Section "Uninstall"
   !ifdef MACHINE_INSTALL
     StrCmp $ElevatedPhase 1 machine_files
+    StrCmp $UpgradeMode 1 +2
+    DeleteRegValue HKCU "${RUN_KEY}" "${RUN_VALUE}"
     Call un.StopApplication
     StrCmp $PurgeData 1 0 +2
     Call un.PurgeCurrentUserData
@@ -609,6 +692,8 @@ machine_files:
     SetShellVarContext all
     Goto remove_files
   !else
+    StrCmp $UpgradeMode 1 +2
+    DeleteRegValue HKCU "${RUN_KEY}" "${RUN_VALUE}"
     Call un.StopApplication
     SetShellVarContext current
   !endif
@@ -632,3 +717,5 @@ done:
 SectionEnd
 
 !include "process_control.nsh"
+!include "elevation.nsh"
+!include "uninstall_validation.nsh"

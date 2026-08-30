@@ -391,36 +391,44 @@ def test_managed_apps_default_empty(tmp_path):
 
 def test_set_managed_apps_persists_and_round_trips(tmp_path):
     path = tmp_path / "settings.json"
+    executable = tmp_path / "Sandbox.exe"
+    executable.write_bytes(b"MZ")
+    canonical = str(executable.resolve())
     store = SettingsStore(path)
     store.load()
 
-    store.set_managed_apps([{"path": "C:/Games/Sandbox.exe", "enabled": True}])
+    store.set_managed_apps([{"path": str(executable), "enabled": True}])
 
-    assert store.get_managed_apps() == [{"path": "C:/Games/Sandbox.exe", "enabled": True}]
+    assert store.get_managed_apps() == [{"path": canonical, "enabled": True}]
 
     reloaded = SettingsStore(path)
     reloaded.load()
-    assert reloaded.get_managed_apps() == [{"path": "C:/Games/Sandbox.exe", "enabled": True}]
+    assert reloaded.get_managed_apps() == [{"path": canonical, "enabled": True}]
 
 
 def test_set_managed_apps_dedupes_case_insensitively(tmp_path):
+    executable = tmp_path / "Sandbox.exe"
+    executable.write_bytes(b"MZ")
+    canonical = str(executable.resolve())
     store = SettingsStore(tmp_path / "settings.json")
     store.load()
 
     store.set_managed_apps(
         [
-            {"path": "C:/Games/Sandbox.exe", "enabled": True},
-            {"path": "c:/games/sandbox.exe", "enabled": False},
+            {"path": str(executable), "enabled": True},
+            {"path": str(executable).replace("\\", "/"), "enabled": False},
         ]
     )
 
-    assert store.get_managed_apps() == [{"path": "C:/Games/Sandbox.exe", "enabled": True}]
+    assert store.get_managed_apps() == [{"path": canonical, "enabled": True}]
 
 
 def test_get_managed_apps_returns_a_copy(tmp_path):
+    executable = tmp_path / "game.exe"
+    executable.write_bytes(b"MZ")
     store = SettingsStore(tmp_path / "settings.json")
     store.load()
-    store.set_managed_apps([{"path": "game.exe", "enabled": True}])
+    store.set_managed_apps([{"path": str(executable), "enabled": True}])
 
     apps = store.get_managed_apps()
     apps[0]["enabled"] = False
@@ -574,30 +582,66 @@ def test_whitelist_defaults_disabled_and_allows_every_app(tmp_path):
 
 
 def test_whitelist_matches_normalized_path_and_bare_name_fallback(tmp_path):
+    executable = tmp_path / "Aurora.exe"
+    executable.write_bytes(b"MZ")
     store = SettingsStore(tmp_path / "settings.json")
     store.load()
-    store.set_whitelist_apps([{"path": r"C:\Apps\Aurora.exe", "enabled": True}])
+    store.set_whitelist_apps([{"path": str(executable), "enabled": True}])
     store.set_whitelist_enabled(True)
 
-    assert store.is_app_whitelisted("c:/apps/aurora.exe") is True
+    assert store.is_app_whitelisted(str(executable).lower()) is True
     assert store.is_app_whitelisted("AURORA.EXE") is True
     assert store.is_app_whitelisted("C:/Other/Aurora.exe") is False
     assert store.is_app_whitelisted("lumen.exe") is False
 
 
 def test_whitelist_ignores_disabled_apps_and_dedupes_separators(tmp_path):
+    executable = tmp_path / "Aurora.exe"
+    executable.write_bytes(b"MZ")
+    canonical = str(executable.resolve())
     store = SettingsStore(tmp_path / "settings.json")
     store.load()
     store.set_whitelist_apps(
         [
-            {"path": r"C:\Apps\Aurora.exe", "enabled": False},
-            {"path": "c:/apps/aurora.exe", "enabled": True},
+            {"path": str(executable), "enabled": False},
+            {"path": str(executable).replace("\\", "/"), "enabled": True},
         ]
     )
     store.set_whitelist_enabled(True)
 
-    assert store.get_whitelist_apps() == [{"path": r"C:\Apps\Aurora.exe", "enabled": False}]
+    assert store.get_whitelist_apps() == [{"path": canonical, "enabled": False}]
     assert store.is_app_whitelisted("aurora.exe") is False
+
+
+def test_load_filters_invalid_managed_and_whitelist_paths_before_use(tmp_path):
+    executable = tmp_path / "Valid.exe"
+    executable.write_bytes(b"MZ")
+    path = tmp_path / "settings.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": DEFAULT_SETTINGS["version"],
+                "subprocess_management": {
+                    "interval_seconds": 5,
+                    "apps": [
+                        {"path": str(executable), "enabled": True},
+                        {"path": r"\\server\share\Remote.exe", "enabled": True},
+                    ],
+                },
+                "whitelist": {
+                    "enabled": True,
+                    "apps": [{"path": "relative.exe", "enabled": True}],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    store = SettingsStore(path)
+    store.load()
+
+    assert store.get_managed_apps() == [{"path": str(executable.resolve()), "enabled": True}]
+    assert store.get_whitelist_apps() == []
 
 
 def test_mini_widget_state_and_position_round_trip(tmp_path):

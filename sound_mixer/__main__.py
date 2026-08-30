@@ -17,6 +17,10 @@ def main() -> int:
         qt_app.processEvents()
         return 0 if result in {CommandResult.ACCEPTED, CommandResult.NOT_RUNNING} else 2
 
+    from sound_mixer.logging_setup import configure_logging
+
+    configure_logging()
+
     from sound_mixer.app import SoundMixerApp
 
     app = SoundMixerApp()

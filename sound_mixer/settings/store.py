@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from sound_mixer.app_key import legacy_app_key, normalize_app_key
+from sound_mixer.executable_path import InvalidExecutablePathError, resolve_local_executable
 from sound_mixer.settings.migrations import migrate
 from sound_mixer.settings.schema import (
     DEFAULT_SETTINGS,
@@ -58,6 +59,10 @@ class SettingsStore:
 
         data = migrate(data)
         self.data = _merge_defaults(data, DEFAULT_SETTINGS)
+        self.data["subprocess_management"]["apps"] = self._dedupe_apps(
+            self.data["subprocess_management"].get("apps", [])
+        )
+        self.data["whitelist"]["apps"] = self._dedupe_apps(self.data["whitelist"].get("apps", []))
         self._clamp()
         return self.data
 
@@ -308,8 +313,15 @@ class SettingsStore:
     def _dedupe_apps(apps: list[dict]) -> list[dict]:
         seen: set[str] = set()
         deduped = []
+        if not isinstance(apps, list):
+            logger.warning("Ignored invalid executable list: %r", apps)
+            return deduped
         for app in apps:
-            path = app["path"]
+            try:
+                path = resolve_local_executable(app.get("path", ""))
+            except (AttributeError, InvalidExecutablePathError):
+                logger.warning("Ignored invalid managed executable path: %r", app)
+                continue
             key = normalize_app_key(path)
             if key in seen:
                 continue

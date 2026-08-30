@@ -21,13 +21,14 @@ class AutostartManager:
         self._registry = registry
 
     def _command(self) -> str:
+        portable = " --portable" if "--portable" in sys.argv else ""
         if getattr(sys, "frozen", False):
-            return f'"{sys.executable}"'
+            return f'"{sys.executable}"{portable}'
 
         pythonw = Path(sys.executable).with_name("pythonw.exe")
         if not pythonw.exists():
             pythonw = Path(sys.executable)
-        return f'"{pythonw}" -m sound_mixer'
+        return f'"{pythonw}" -m sound_mixer{portable}'
 
     def _require_windows(self) -> None:
         if self._registry is None:
@@ -41,13 +42,18 @@ class AutostartManager:
                 value, _ = registry.QueryValueEx(key, self._app_name)
         except FileNotFoundError:
             return False
+        except OSError as exc:
+            raise AutostartUnavailableError("Unable to read the autostart registry value") from exc
         return value == self._command()
 
     def enable(self) -> None:
         self._require_windows()
         registry = self._registry
-        with registry.OpenKey(registry.HKEY_CURRENT_USER, self._key_path, 0, registry.KEY_SET_VALUE) as key:
-            registry.SetValueEx(key, self._app_name, 0, registry.REG_SZ, self._command())
+        try:
+            with registry.OpenKey(registry.HKEY_CURRENT_USER, self._key_path, 0, registry.KEY_SET_VALUE) as key:
+                registry.SetValueEx(key, self._app_name, 0, registry.REG_SZ, self._command())
+        except OSError as exc:
+            raise AutostartUnavailableError("Unable to enable autostart") from exc
 
     def disable(self) -> None:
         self._require_windows()
@@ -57,3 +63,14 @@ class AutostartManager:
                 registry.DeleteValue(key, self._app_name)
         except FileNotFoundError:
             pass
+        except OSError as exc:
+            raise AutostartUnavailableError("Unable to disable autostart") from exc
+
+    def set_enabled(self, enabled: bool) -> None:
+        enabled = bool(enabled)
+        if self.is_enabled() == enabled:
+            return
+        if enabled:
+            self.enable()
+        else:
+            self.disable()

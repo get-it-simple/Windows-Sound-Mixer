@@ -589,10 +589,7 @@ class SettingsWindow(QDialog):
 
         if self._autostart is not None:
             try:
-                if autostart_enabled:
-                    self._autostart.enable()
-                else:
-                    self._autostart.disable()
+                self._autostart.set_enabled(autostart_enabled)
             except AutostartUnavailableError:
                 pass
 

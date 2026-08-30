@@ -1,6 +1,8 @@
 import importlib.metadata
+import importlib.util
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -105,6 +107,15 @@ def _write_version_resource(version: str) -> Path:
 
 def _run_pyinstaller() -> None:
     version_resource = _write_version_resource(_read_app_version())
+    pyside_spec = importlib.util.find_spec("PySide6")
+    if pyside_spec is None or pyside_spec.origin is None:
+        raise RuntimeError("PySide6 is required to locate the Visual C++ runtime")
+    vcruntime = Path(pyside_spec.origin).parent / "VCRUNTIME140.dll"
+    if not vcruntime.is_file():
+        raise RuntimeError(f"Visual C++ runtime not found: {vcruntime}")
+    staged_vcruntime = ROOT / "build" / "vcruntime" / vcruntime.name
+    staged_vcruntime.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(vcruntime, staged_vcruntime)
     args = [
         sys.executable,
         "-m",
@@ -127,6 +138,8 @@ def _run_pyinstaller() -> None:
         str(version_resource),
         "--add-data",
         f"{ROOT / 'resources'}{os.pathsep}resources",
+        "--add-binary",
+        f"{staged_vcruntime}{os.pathsep}.",
         str(ROOT / "sound_mixer" / "__main__.py"),
     ]
     subprocess.run(args, check=True, cwd=ROOT)
