@@ -3,6 +3,7 @@ import hashlib
 import os
 import sys
 import tempfile
+import time
 from enum import Enum
 from typing import Callable, Optional
 
@@ -41,10 +42,19 @@ def server_name() -> str:
 
 
 def send_command(command: str, timeout_ms: int = 3000, name: Optional[str] = None) -> CommandResult:
-    socket = QLocalSocket()
-    socket.connectToServer(name or server_name())
-    if not socket.waitForConnected(timeout_ms):
-        return CommandResult.NOT_RUNNING
+    target = name or server_name()
+    deadline = time.monotonic() + timeout_ms / 1000
+    while True:
+        socket = QLocalSocket()
+        socket.connectToServer(target)
+        remaining_ms = max(1, int((deadline - time.monotonic()) * 1000))
+        if socket.waitForConnected(min(remaining_ms, 100)):
+            break
+        socket.abort()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return CommandResult.NOT_RUNNING
+        time.sleep(min(0.05, remaining))
 
     socket.write((command + "\n").encode("utf-8"))
     if socket.bytesToWrite() and not socket.waitForBytesWritten(timeout_ms):

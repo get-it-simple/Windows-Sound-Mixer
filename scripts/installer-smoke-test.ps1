@@ -50,7 +50,7 @@ function Wait-AppState([string]$Path, [bool]$Running, [string]$Stage, [int]$Time
     throw "Sound Mixer did not reach running=$Running during $Stage for $Path"
 }
 
-function Invoke-Checked([string]$Path, [string[]]$Arguments) {
+function Invoke-Checked([string]$Path, [string[]]$Arguments, [string]$Stage) {
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
     $startInfo.FileName = [System.IO.Path]::GetFullPath($Path)
     $startInfo.UseShellExecute = $false
@@ -60,7 +60,7 @@ function Invoke-Checked([string]$Path, [string[]]$Arguments) {
     $process = [System.Diagnostics.Process]::Start($startInfo)
     $process.WaitForExit()
     if ($process.ExitCode -ne 0) {
-        throw "$Path exited with $($process.ExitCode)"
+        throw "$Stage failed: $Path $($Arguments -join ' ') exited with $($process.ExitCode)"
     }
 }
 
@@ -93,7 +93,7 @@ if (Test-Path -LiteralPath $dataDirectory) {
 }
 
 try {
-    Invoke-Checked $Installer $installArgs
+    Invoke-Checked $Installer $installArgs "initial installation"
 
     $entry = Get-ItemProperty -LiteralPath $registryPath
     if ($entry.DisplayName -ne "Sound Mixer" -or $entry.DisplayVersion -ne $Version -or $entry.Publisher -ne "Get it Simple") {
@@ -170,7 +170,7 @@ try {
     Start-Process -FilePath $app | Out-Null
     Wait-AppState $app $true "initial launch"
 
-    Invoke-Checked $Installer $installArgs
+    Invoke-Checked $Installer $installArgs "upgrade installation"
     Wait-AppState $app $false "upgrade leaves the application stopped"
     if ((Get-Content -LiteralPath $settingsPath -Raw) -notmatch 'smoke_marker') {
         throw "Settings were not preserved during upgrade"
@@ -179,7 +179,7 @@ try {
     New-Item -Path $runRegistryPath -Force | Out-Null
     New-ItemProperty -LiteralPath $runRegistryPath -Name $runValueName -Value '"C:\invalid\SoundMixer.exe"' -PropertyType String -Force | Out-Null
     New-ItemProperty -LiteralPath $runRegistryPath -Name $unrelatedRunValueName -Value 'preserve' -PropertyType String -Force | Out-Null
-    Invoke-Checked $uninstaller $uninstallArgs
+    Invoke-Checked $uninstaller $uninstallArgs "silent uninstall"
     Wait-AppState $app $false "uninstall shutdown"
     Wait-UninstallCleanup $app
     if (-not (Test-Path -LiteralPath $settingsPath -PathType Leaf)) {
@@ -192,7 +192,7 @@ try {
         throw "Uninstall changed an unrelated Run value"
     }
 
-    Invoke-Checked $Installer $progressInstallArgs
+    Invoke-Checked $Installer $progressInstallArgs "silent-with-progress installation"
     if (Test-AppRunning $app) {
         throw "Silent-with-progress installation unexpectedly launched the application"
     }
@@ -200,7 +200,7 @@ try {
     New-Item -ItemType Directory -Path $logsDirectory -Force | Out-Null
     Set-Content -LiteralPath (Join-Path $logsDirectory "sound-mixer.log") -Value "purge"
     New-ItemProperty -LiteralPath $runRegistryPath -Name $runValueName -Value '"C:\invalid\SoundMixer.exe"' -PropertyType String -Force | Out-Null
-    Invoke-Checked $uninstaller @("/S", "/PURGE")
+    Invoke-Checked $uninstaller @("/S", "/PURGE") "purge uninstall"
     Wait-UninstallCleanup $app
     $purgeDeadline = (Get-Date).AddSeconds(10)
     while ((Test-Path -LiteralPath $settingsPath) -and (Get-Date) -lt $purgeDeadline) {

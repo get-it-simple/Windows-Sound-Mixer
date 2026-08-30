@@ -59,6 +59,34 @@ def test_command_reports_when_instance_is_not_running():
     assert send_command("shutdown", 50, name) is CommandResult.NOT_RUNNING
 
 
+def test_command_retries_while_instance_is_starting(qapp, tmp_path):
+    name = f"SoundMixer.Test.{uuid.uuid4()}"
+    started = tmp_path / "command-started"
+    shutdowns = []
+    code = (
+        "import pathlib, sys; "
+        "from sound_mixer.instance_control import CommandResult, send_command; "
+        "pathlib.Path(sys.argv[2]).write_text('started'); "
+        "result=send_command('shutdown', 2000, sys.argv[1]); "
+        "sys.exit(0 if result is CommandResult.ACCEPTED else 1)"
+    )
+    process = subprocess.Popen([sys.executable, "-c", code, name, str(started)])
+    deadline = time.monotonic() + 2
+    while not started.is_file() and process.poll() is None and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert started.is_file()
+    time.sleep(0.1)
+
+    controller = InstanceController(lambda: shutdowns.append(True), name=name)
+    assert controller.start() is True
+    try:
+        assert wait_for_process(qapp, process) == 0
+        qapp.processEvents()
+        assert shutdowns == [True]
+    finally:
+        controller.close()
+
+
 def test_command_times_out_when_instance_does_not_acknowledge():
     name = f"SoundMixer.Test.{uuid.uuid4()}"
     server = QLocalServer()
