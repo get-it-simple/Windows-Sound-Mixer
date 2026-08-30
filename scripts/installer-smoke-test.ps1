@@ -22,6 +22,7 @@ $logsDirectory = Join-Path $dataDirectory "logs"
 $runRegistryPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
 $runValueName = "SoundMixer"
 $unrelatedRunValueName = "SoundMixerSmokeUnrelated"
+$runRegistryPathExisted = Test-Path -LiteralPath $runRegistryPath
 $previousRunValue = (Get-ItemProperty -LiteralPath $runRegistryPath -Name $runValueName -ErrorAction SilentlyContinue).$runValueName
 $previousUnrelatedRunValue = (Get-ItemProperty -LiteralPath $runRegistryPath -Name $unrelatedRunValueName -ErrorAction SilentlyContinue).$unrelatedRunValueName
 $temporaryRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
@@ -175,6 +176,7 @@ try {
         throw "Settings were not preserved during upgrade"
     }
 
+    New-Item -Path $runRegistryPath -Force | Out-Null
     New-ItemProperty -LiteralPath $runRegistryPath -Name $runValueName -Value '"C:\invalid\SoundMixer.exe"' -PropertyType String -Force | Out-Null
     New-ItemProperty -LiteralPath $runRegistryPath -Name $unrelatedRunValueName -Value 'preserve' -PropertyType String -Force | Out-Null
     Invoke-Checked $uninstaller $uninstallArgs
@@ -224,11 +226,20 @@ finally {
     }
     Remove-ItemProperty -LiteralPath $runRegistryPath -Name $runValueName -ErrorAction SilentlyContinue
     Remove-ItemProperty -LiteralPath $runRegistryPath -Name $unrelatedRunValueName -ErrorAction SilentlyContinue
+    if (($null -ne $previousRunValue -or $null -ne $previousUnrelatedRunValue) -and -not (Test-Path -LiteralPath $runRegistryPath)) {
+        New-Item -Path $runRegistryPath -Force | Out-Null
+    }
     if ($null -ne $previousRunValue) {
         New-ItemProperty -LiteralPath $runRegistryPath -Name $runValueName -Value $previousRunValue -PropertyType String -Force | Out-Null
     }
     if ($null -ne $previousUnrelatedRunValue) {
         New-ItemProperty -LiteralPath $runRegistryPath -Name $unrelatedRunValueName -Value $previousUnrelatedRunValue -PropertyType String -Force | Out-Null
+    }
+    if (-not $runRegistryPathExisted -and (Test-Path -LiteralPath $runRegistryPath)) {
+        $runRegistryKey = Get-Item -LiteralPath $runRegistryPath
+        if ($runRegistryKey.GetValueNames().Count -eq 0 -and $runRegistryKey.GetSubKeyNames().Count -eq 0) {
+            Remove-Item -LiteralPath $runRegistryPath -Force
+        }
     }
     $backup = Join-Path $backupRoot "SoundMixer"
     if (Test-Path -LiteralPath $backup) {
