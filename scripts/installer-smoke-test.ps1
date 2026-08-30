@@ -146,11 +146,14 @@ try {
     }
     if ($Scope -eq "machine") {
         $usersSid = [System.Security.Principal.SecurityIdentifier]::new("S-1-5-32-545")
-        $writeRights = [System.Security.AccessControl.FileSystemRights]::Write -bor
-            [System.Security.AccessControl.FileSystemRights]::Modify -bor
-            [System.Security.AccessControl.FileSystemRights]::FullControl
+        $writeRights = [System.Security.AccessControl.FileSystemRights]::Write
         $unsafeRule = (Get-Acl -LiteralPath $target).Access | Where-Object {
-            $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]) -eq $usersSid -and
+            $identitySid = try {
+                $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier])
+            } catch [System.Security.Principal.IdentityNotMappedException] {
+                $null
+            }
+            $identitySid -eq $usersSid -and
             $_.AccessControlType -eq [System.Security.AccessControl.AccessControlType]::Allow -and
             ($_.FileSystemRights -band $writeRights)
         }

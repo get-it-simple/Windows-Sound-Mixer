@@ -11,6 +11,7 @@ ELEVATION_SOURCE = ROOT / "installer" / "elevation.nsh"
 VALIDATION_SOURCE = ROOT / "installer" / "uninstall_validation.nsh"
 PROCESS_CONTROL_SOURCE = ROOT / "installer" / "process_control.nsh"
 BUILD_INSTALLERS_SOURCE = ROOT / "scripts" / "build-installers.ps1"
+INSTALLER_SMOKE_SOURCE = ROOT / "scripts" / "installer-smoke-test.ps1"
 WINGET_SOURCE = ROOT / "scripts" / "generate-winget-manifests.ps1"
 
 
@@ -129,6 +130,17 @@ def test_shutdown_never_forcibly_terminates_the_application():
     assert "TerminateProcess" not in installer
     assert "TerminateProcess" not in process_control
     assert "shutdown_failed:" in installer
+
+
+def test_machine_acl_check_skips_unresolvable_identities_and_tests_only_write_rights():
+    source = INSTALLER_SMOKE_SOURCE.read_text(encoding="utf-8")
+
+    assert "catch [System.Security.Principal.IdentityNotMappedException]" in source
+    assert (
+        "$writeRights = [System.Security.AccessControl.FileSystemRights]::Write"
+        in source
+    )
+    assert "$identitySid -eq $usersSid" in source
 
 
 def test_machine_install_path_is_fixed_to_program_files():
