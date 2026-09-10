@@ -10,7 +10,28 @@ class InvalidExecutablePathError(ValueError):
     pass
 
 
+def resolve_application_path(path: str) -> str:
+    from PySide6.QtCore import QFileInfo
+
+    seen = set()
+    while True:
+        path = _resolve_local_file(path, {".exe", ".lnk"})
+        if Path(path).suffix.casefold() == ".exe":
+            return path
+        key = path.casefold()
+        if key in seen or len(seen) >= 16:
+            raise InvalidExecutablePathError("Shortcut chain is circular or too long")
+        seen.add(key)
+        path = QFileInfo(str(Path(path).with_suffix(".lnk"))).symLinkTarget()
+        if not path:
+            raise InvalidExecutablePathError("Shortcut does not reference a local application")
+
+
 def resolve_local_executable(path: str) -> str:
+    return _resolve_local_file(path, {".exe"})
+
+
+def _resolve_local_file(path: str, suffixes: set[str]) -> str:
     if not isinstance(path, str) or not path:
         raise InvalidExecutablePathError("Executable path is empty")
 
@@ -32,8 +53,8 @@ def resolve_local_executable(path: str) -> str:
     except OSError as exc:
         raise InvalidExecutablePathError("Executable path does not exist") from exc
 
-    if not resolved.is_file() or resolved.suffix.casefold() != ".exe":
-        raise InvalidExecutablePathError("Path must reference an existing .exe file")
+    if not resolved.is_file() or resolved.suffix.casefold() not in suffixes:
+        raise InvalidExecutablePathError("Path must reference a supported application file")
 
     if sys.platform == "win32":
         root = resolved.anchor

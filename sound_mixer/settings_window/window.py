@@ -363,6 +363,12 @@ class SettingsWindow(QDialog):
         self._mini_widget_checkbox.setChecked(self._settings.get_mini_widget_enabled())
         layout.addWidget(self._field(t("show_mini_widget"), self._mini_widget_checkbox, tab))
 
+        self._mini_widget_taskbar_checkbox = QCheckBox(tab)
+        self._mini_widget_taskbar_checkbox.setObjectName("miniWidgetTaskbarToggle")
+        self._mini_widget_taskbar_checkbox.setStyleSheet(toggle_switch_style("miniWidgetTaskbarToggle"))
+        self._mini_widget_taskbar_checkbox.setChecked(self._settings.get_mini_widget_show_above_taskbar())
+        layout.addWidget(self._field(t("mini_widget_show_above_taskbar"), self._mini_widget_taskbar_checkbox, tab))
+
         self._mini_widget_master_checkbox = QCheckBox(tab)
         self._mini_widget_master_checkbox.setObjectName("miniWidgetMasterToggle")
         self._mini_widget_master_checkbox.setStyleSheet(toggle_switch_style("miniWidgetMasterToggle"))
@@ -595,6 +601,7 @@ class SettingsWindow(QDialog):
         self._settings.set_transparency_enabled(self._transparency_checkbox.isChecked())
         self._settings.set_mini_widget_enabled(self._mini_widget_checkbox.isChecked())
         self._settings.set_mini_widget_show_master(self._mini_widget_master_checkbox.isChecked())
+        self._settings.set_mini_widget_show_above_taskbar(self._mini_widget_taskbar_checkbox.isChecked())
         self._settings.set_mini_widget_background_transparency(self._mini_widget_transparency_spinbox.value() / 100)
         self._settings.set_tooltip_delay_ms(self._tooltip_delay_spinbox.value())
         self._settings.set_arrow_step(self._arrow_step_spinbox.value() / 100)

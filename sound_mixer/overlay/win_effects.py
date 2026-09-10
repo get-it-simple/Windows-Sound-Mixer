@@ -1,4 +1,5 @@
 import ctypes
+from ctypes import wintypes
 import sys
 
 from PySide6.QtWidgets import QWidget
@@ -12,6 +13,11 @@ DWMSBT_NONE = 1
 DWMSBT_TRANSIENTWINDOW = 3
 
 WM_DWMCOLORIZATIONCOLORCHANGED = 0x320
+
+HWND_TOPMOST = -1
+SWP_NOSIZE = 0x0001
+SWP_NOMOVE = 0x0002
+SWP_NOACTIVATE = 0x0010
 
 DEFAULT_ACCENT_COLOR = "#3a96dd"
 
@@ -53,5 +59,21 @@ def apply_acrylic_effect(window: QWidget, enabled: bool = True) -> None:
         ):
             c_value = ctypes.c_int(value)
             dwmapi.DwmSetWindowAttribute(hwnd, attribute, ctypes.byref(c_value), ctypes.sizeof(c_value))
+    except OSError:
+        pass
+
+
+def raise_without_activating(window: QWidget) -> None:
+    if sys.platform != "win32":
+        return
+
+    try:
+        set_window_pos = ctypes.windll.user32.SetWindowPos
+        set_window_pos.argtypes = [
+            wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
+            ctypes.c_int, ctypes.c_int, wintypes.UINT,
+        ]
+        set_window_pos.restype = wintypes.BOOL
+        set_window_pos(int(window.winId()), HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE)
     except OSError:
         pass

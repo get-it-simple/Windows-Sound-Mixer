@@ -1,11 +1,11 @@
 import os
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtWidgets import QCheckBox, QFrame, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from sound_mixer.audio.win_names import get_exe_friendly_name
-from sound_mixer.executable_path import InvalidExecutablePathError, resolve_local_executable
+from sound_mixer.executable_path import InvalidExecutablePathError, resolve_application_path
 from sound_mixer.i18n import t
 from sound_mixer.overlay.icons import DelayedTooltipButton, bordered_input_style, load_icon, toggle_switch_style
 
@@ -51,9 +51,48 @@ class AppDropZone(QFrame):
         event.acceptProposedAction()
 
 
+class AppDragHandle(DelayedTooltipButton):
+    dragged = Signal(QPoint)
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._dragging = False
+        self.setIcon(load_icon("drag"))
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setStyleSheet(
+            "QToolButton { background: #626071; border: none; border-radius: 4px; padding: 4px; }"
+            "QToolButton:hover, QToolButton:pressed { background: #716f82; }"
+        )
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._dragging = True
+            self.setDown(True)
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        if self._dragging and event.buttons() & Qt.MouseButton.LeftButton:
+            self.dragged.emit(event.globalPosition().toPoint())
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and self._dragging:
+            self._dragging = False
+            self.setDown(False)
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+
 class ManagedAppRow(QFrame):
     remove_requested = Signal()
-    move_requested = Signal(int)
 
     def __init__(self, path: str, enabled: bool = True, parent: Optional[QWidget] = None, *, reorderable: bool = False) -> None:
         super().__init__(parent)
@@ -78,20 +117,9 @@ class ManagedAppRow(QFrame):
         layout.setSpacing(8)
         layout.addWidget(self._enabled_checkbox)
         layout.addWidget(self._name_label, 1)
-        self._move_up_button = DelayedTooltipButton(self)
-        self._move_up_button.setIcon(load_icon("arrow_up"))
-        self._move_up_button.clicked.connect(lambda: self.move_requested.emit(-1))
-        self._move_down_button = DelayedTooltipButton(self)
-        self._move_down_button.setIcon(load_icon("arrow_up", rotation=180))
-        self._move_down_button.clicked.connect(lambda: self.move_requested.emit(1))
-        for button in (self._move_up_button, self._move_down_button):
-            button.setStyleSheet(
-                "QToolButton { background: #626071; border: none; border-radius: 4px; padding: 4px; }"
-                "QToolButton:hover { background: #716f82; }"
-                "QToolButton:disabled { background: #b7b7bd; }"
-            )
-            button.setVisible(reorderable)
-            layout.addWidget(button)
+        self._drag_handle = AppDragHandle(self)
+        self._drag_handle.setVisible(reorderable)
+        layout.addWidget(self._drag_handle)
         layout.addWidget(self._remove_button)
         self.retranslate()
 
@@ -99,10 +127,8 @@ class ManagedAppRow(QFrame):
         return self._enabled_checkbox.isChecked()
 
     def retranslate(self) -> None:
-        self._move_up_button.setToolTip(t("move_app_up_tooltip"))
-        self._move_down_button.setToolTip(t("move_app_down_tooltip"))
-        self._move_up_button.setAccessibleName(t("move_app_up_tooltip"))
-        self._move_down_button.setAccessibleName(t("move_app_down_tooltip"))
+        self._drag_handle.setToolTip(t("drag_app_tooltip"))
+        self._drag_handle.setAccessibleName(t("drag_app_tooltip"))
         self._remove_button.setToolTip(t("remove_managed_app_tooltip"))
 
 
@@ -119,6 +145,11 @@ class AppListEditor(QWidget):
         self.drop_zone = AppDropZone(self)
         self.drop_zone.app_dropped.connect(self.add_path)
         layout.addWidget(self.drop_zone)
+        self._error_label = QLabel(t("invalid_application_drop"), self)
+        self._error_label.setWordWrap(True)
+        self._error_label.setStyleSheet("color: #e05555;")
+        self._error_label.hide()
+        layout.addWidget(self._error_label)
 
         rows_container = QWidget(self)
         self.rows_layout = QVBoxLayout(rows_container)
@@ -131,27 +162,27 @@ class AppListEditor(QWidget):
 
     def add_path(self, path: str, enabled: bool = True) -> None:
         try:
-            path = resolve_local_executable(path)
+            path = resolve_application_path(path)
         except InvalidExecutablePathError:
+            self._error_label.show()
             return
+        self._error_label.hide()
         if any(row.path.lower() == path.lower() for row in self.rows):
             return
         self.add_row(path, enabled)
 
     def add_row(self, path: str, enabled: bool) -> ManagedAppRow:
         row = ManagedAppRow(path, enabled, self, reorderable=self._reorderable)
-        row.move_requested.connect(lambda delta, r=row: self.move_row(r, delta))
+        row._drag_handle.dragged.connect(lambda position, r=row: self._drag_row(r, position))
         row.remove_requested.connect(lambda r=row: self.remove_row(r))
         self.rows_layout.addWidget(row)
         self.rows.append(row)
-        self._update_move_buttons()
         return row
 
     def remove_row(self, row: ManagedAppRow) -> None:
         self.rows.remove(row)
         self.rows_layout.removeWidget(row)
         row.deleteLater()
-        self._update_move_buttons()
 
     def move_row(self, row: ManagedAppRow, delta: int) -> None:
         index = self.rows.index(row)
@@ -161,17 +192,26 @@ class AppListEditor(QWidget):
         self.rows.insert(target, self.rows.pop(index))
         self.rows_layout.removeWidget(row)
         self.rows_layout.insertWidget(target, row)
-        self._update_move_buttons()
 
-    def _update_move_buttons(self) -> None:
-        for index, row in enumerate(self.rows):
-            row._move_up_button.setEnabled(index > 0)
-            row._move_down_button.setEnabled(index < len(self.rows) - 1)
+    def _drag_row(self, row: ManagedAppRow, global_position: QPoint) -> None:
+        container = self.rows_layout.parentWidget()
+        position = container.mapFromGlobal(global_position)
+        if not container.rect().contains(position):
+            return
+        target = min(
+            range(len(self.rows)),
+            key=lambda index: abs(self.rows[index].geometry().center().y() - position.y()),
+        )
+        index = self.rows.index(row)
+        if target != index:
+            self.move_row(row, target - index)
+            self.rows_layout.activate()
 
     def apps(self) -> list[dict]:
         return [{"path": row.path, "enabled": row.is_enabled()} for row in self.rows]
 
     def retranslate(self) -> None:
         self.drop_zone.retranslate()
+        self._error_label.setText(t("invalid_application_drop"))
         for row in self.rows:
             row.retranslate()

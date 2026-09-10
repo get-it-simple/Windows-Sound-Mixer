@@ -305,6 +305,13 @@ class SettingsStore:
         self.data["mini_widget"]["show_master"] = bool(show)
         self.save()
 
+    def get_mini_widget_show_above_taskbar(self) -> bool:
+        return bool(self.data["mini_widget"]["show_above_taskbar"])
+
+    def set_mini_widget_show_above_taskbar(self, show: bool) -> None:
+        self.data["mini_widget"]["show_above_taskbar"] = bool(show)
+        self.save()
+
     def get_mini_widget_enabled(self) -> bool:
         return bool(self.data["mini_widget"]["enabled"])
 

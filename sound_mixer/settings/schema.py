@@ -1,4 +1,4 @@
-CURRENT_VERSION = 10
+CURRENT_VERSION = 11
 
 MIN_UI_SCALE = 0.5
 MAX_UI_SCALE = 3.0
@@ -52,6 +52,7 @@ DEFAULT_SETTINGS = {
         "enabled": False,
         "background_transparency": 0.8,
         "show_master": False,
+        "show_above_taskbar": False,
         "x": 100,
         "y": 40,
         "scale": 1.0,

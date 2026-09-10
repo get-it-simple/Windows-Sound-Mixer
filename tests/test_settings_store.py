@@ -705,3 +705,13 @@ def test_mini_widget_background_transparency_clamps_on_save_and_load(settings):
     settings.save()
     settings.load()
     assert settings.get_mini_widget_background_transparency() == 0
+
+
+def test_mini_widget_taskbar_option_defaults_disabled_and_persists(settings):
+    assert settings.get_mini_widget_show_above_taskbar() is False
+    settings.set_mini_widget_show_above_taskbar(True)
+    settings.load()
+    assert settings.get_mini_widget_show_above_taskbar() is True
+    settings.set_mini_widget_show_above_taskbar(False)
+    settings.load()
+    assert settings.get_mini_widget_show_above_taskbar() is False

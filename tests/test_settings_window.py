@@ -444,7 +444,7 @@ def test_mini_widget_appearance_and_whitelist_order_save_on_accept(qapp, setting
     assert window._mini_widget_transparency_spinbox.value() == 80
     window._mini_widget_master_checkbox.setChecked(True)
     window._mini_widget_transparency_spinbox.setValue(25)
-    window._whitelist_app_rows[1]._move_up_button.click()
+    window._whitelist_editor.move_row(window._whitelist_app_rows[1], -1)
     window.accept()
     settings.load()
 
@@ -460,3 +460,32 @@ def test_cancel_discards_mini_widget_appearance_changes(qapp, settings):
     window.reject()
     assert settings.get_mini_widget_show_master() is False
     assert settings.get_mini_widget_background_transparency() == 0.8
+
+
+def test_cancel_discards_whitelist_reordering(qapp, settings):
+    apps = []
+    for name in ("First", "Second"):
+        path = settings.path.parent / f"{name}.exe"
+        path.write_bytes(b"MZ")
+        apps.append({"path": str(path), "enabled": True})
+    settings.set_whitelist_apps(apps)
+    window = SettingsWindow(settings)
+    window._whitelist_editor.move_row(window._whitelist_app_rows[1], -1)
+    window.reject()
+    settings.load()
+    assert settings.get_whitelist_apps() == apps
+
+
+def test_taskbar_option_loads_saves_and_cancels(qapp, settings):
+    window = SettingsWindow(settings)
+    assert not window._mini_widget_taskbar_checkbox.isChecked()
+    window._mini_widget_taskbar_checkbox.setChecked(True)
+    window.accept()
+    settings.load()
+    assert settings.get_mini_widget_show_above_taskbar() is True
+
+    window = SettingsWindow(settings)
+    assert window._mini_widget_taskbar_checkbox.isChecked()
+    window._mini_widget_taskbar_checkbox.setChecked(False)
+    window.reject()
+    assert settings.get_mini_widget_show_above_taskbar() is True
