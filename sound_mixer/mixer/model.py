@@ -88,6 +88,7 @@ class MixerModel:
         if self.entries and 0 <= self.focused_index < len(self.entries):
             focused_key = self.entries[self.focused_index].key
 
+        app_entries.sort(key=lambda entry: self._settings.get_whitelist_app_order(entry.key))
         self.entries = [master_entry, *app_entries]
         self.ignored_entries = ignored_entries
 

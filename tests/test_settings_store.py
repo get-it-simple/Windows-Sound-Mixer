@@ -681,3 +681,37 @@ def test_mini_widget_scale_clamps_to_valid_range(tmp_path):
 
     store.set_mini_widget_scale(0.0)
     assert store.get_mini_widget_scale() == 0.5
+
+
+def test_mini_widget_appearance_defaults_and_round_trip(settings):
+    assert settings.get_mini_widget_show_master() is False
+    assert settings.get_mini_widget_background_transparency() == 0.8
+    settings.set_mini_widget_show_master(True)
+    settings.set_mini_widget_background_transparency(0.35)
+
+    reloaded = SettingsStore(settings.path)
+    reloaded.load()
+
+    assert reloaded.get_mini_widget_show_master() is True
+    assert reloaded.get_mini_widget_background_transparency() == 0.35
+
+
+def test_mini_widget_background_transparency_clamps_on_save_and_load(settings):
+    settings.set_mini_widget_background_transparency(-1)
+    assert settings.get_mini_widget_background_transparency() == 0
+    settings.set_mini_widget_background_transparency(2)
+    assert settings.get_mini_widget_background_transparency() == 1
+    settings.data["mini_widget"]["background_transparency"] = -3
+    settings.save()
+    settings.load()
+    assert settings.get_mini_widget_background_transparency() == 0
+
+
+def test_mini_widget_taskbar_option_defaults_disabled_and_persists(settings):
+    assert settings.get_mini_widget_show_above_taskbar() is False
+    settings.set_mini_widget_show_above_taskbar(True)
+    settings.load()
+    assert settings.get_mini_widget_show_above_taskbar() is True
+    settings.set_mini_widget_show_above_taskbar(False)
+    settings.load()
+    assert settings.get_mini_widget_show_above_taskbar() is False

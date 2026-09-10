@@ -1,5 +1,10 @@
 import sys
 
+import pytest
+from PySide6.QtCore import QFile, QPoint, QPointF, Qt
+from PySide6.QtGui import QMouseEvent
+from PySide6.QtTest import QTest
+
 from sound_mixer.settings_window.managed_apps_editor import (
     AppDropZone,
     AppListEditor,
@@ -102,3 +107,102 @@ def test_app_list_editor_rejects_invalid_path_without_reading_metadata(qapp, mon
     editor.add_path(r"\\server\share\Remote.exe")
 
     assert editor.rows == []
+
+
+def drag_move(qapp, handle, position, buttons=Qt.MouseButton.LeftButton):
+    event = QMouseEvent(
+        QMouseEvent.Type.MouseMove,
+        QPointF(handle.mapFromGlobal(position)),
+        QPointF(position),
+        Qt.MouseButton.NoButton,
+        buttons,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    qapp.sendEvent(handle, event)
+    qapp.processEvents()
+
+
+def test_drag_handle_moves_rows_and_preserves_enabled_state(qapp, tmp_path):
+    apps = []
+    for name in ("First", "Second", "Third"):
+        path = tmp_path / f"{name}.exe"
+        path.write_bytes(b"MZ")
+        apps.append({"path": str(path), "enabled": name != "Second"})
+    editor = AppListEditor(apps, reorderable=True)
+    editor.show()
+    qapp.processEvents()
+    rows = editor.rows
+    first, second, third = rows
+    handle = second._drag_handle
+    QTest.mousePress(handle, Qt.MouseButton.LeftButton)
+    assert handle.cursor().shape() == Qt.CursorShape.ClosedHandCursor
+
+    drag_move(qapp, handle, first.mapToGlobal(first.rect().center()))
+
+    assert editor.rows is rows
+    assert editor.apps() == [apps[1], apps[0], apps[2]]
+    assert editor.rows_layout.itemAt(0).widget() is second
+    drag_move(qapp, handle, third.mapToGlobal(third.rect().center()))
+    assert editor.apps() == [apps[0], apps[2], apps[1]]
+    assert editor.rows_layout.itemAt(2).widget() is second
+    QTest.mouseRelease(handle, Qt.MouseButton.LeftButton)
+    assert handle.cursor().shape() == Qt.CursorShape.OpenHandCursor
+    drag_move(qapp, handle, first.mapToGlobal(first.rect().center()))
+    assert editor.apps() == [apps[0], apps[2], apps[1]]
+    editor.close()
+
+
+def test_drag_stays_in_its_section_and_requires_left_mouse_button(qapp):
+    editor = AppListEditor([], reorderable=True)
+    first = editor.add_row("First.exe", True)
+    second = editor.add_row("Second.exe", True)
+    editor.show()
+    qapp.processEvents()
+    handle = second._drag_handle
+    QTest.mousePress(handle, Qt.MouseButton.RightButton)
+    drag_move(qapp, handle, first.mapToGlobal(first.rect().center()), Qt.MouseButton.RightButton)
+    QTest.mouseRelease(handle, Qt.MouseButton.RightButton)
+    assert editor.rows == [first, second]
+
+    QTest.mousePress(handle, Qt.MouseButton.LeftButton)
+    drag_move(qapp, handle, editor.drop_zone.mapToGlobal(editor.drop_zone.rect().center()))
+    assert editor.rows == [first, second]
+    drag_move(qapp, handle, first.mapToGlobal(QPoint(-20, first.rect().center().y())))
+    assert editor.rows == [first, second]
+    drag_move(qapp, handle, first.mapToGlobal(first.rect().center()))
+    assert editor.rows == [second, first]
+    QTest.mouseRelease(handle, Qt.MouseButton.LeftButton)
+    editor.close()
+
+
+def test_non_reorderable_editor_hides_drag_handle(qapp):
+    editor = AppListEditor([])
+    row = editor.add_row("App.exe", True)
+    assert row._drag_handle.isHidden()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows shortcuts")
+def test_dropped_shortcut_resolves_target_and_deduplicates(qapp, tmp_path):
+    target = tmp_path / "Target.exe"
+    target.write_bytes(b"MZ")
+    shortcut = tmp_path / "Application shortcut.lnk"
+    assert QFile(str(target)).link(str(shortcut))
+    editor = AppListEditor([])
+
+    editor.drop_zone.app_dropped.emit(str(shortcut))
+    editor.drop_zone.app_dropped.emit(str(target))
+
+    assert editor.apps() == [{"path": str(target.resolve()), "enabled": True}]
+    assert editor.rows[0]._name_label.text() == "Target.exe"
+    assert editor._error_label.isHidden()
+
+
+def test_invalid_drop_shows_error_and_valid_drop_clears_it(qapp, tmp_path):
+    editor = AppListEditor([])
+    editor.add_path(str(tmp_path / "missing.lnk"))
+    assert not editor._error_label.isHidden()
+    assert editor.apps() == []
+    target = tmp_path / "Target.exe"
+    target.write_bytes(b"MZ")
+    editor.add_path(str(target))
+    assert editor._error_label.isHidden()

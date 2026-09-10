@@ -217,7 +217,7 @@ def test_migrates_v7_to_v8_adds_whitelist_mini_widget_and_hotkey():
 
     assert migrated["version"] == CURRENT_VERSION
     assert migrated["whitelist"] == {"enabled": False, "apps": []}
-    assert migrated["mini_widget"] == {"enabled": False, "x": 100, "y": 40, "scale": 1.0}
+    assert migrated["mini_widget"] == {"enabled": False, "x": 100, "y": 40, "scale": 1.0, "background_transparency": 0.8, "show_master": False, "show_above_taskbar": False}
     assert migrated["hotkeys"][0] == {
         "action": "toggle_overlay",
         "combo": "ctrl+shift+m",
@@ -242,4 +242,24 @@ def test_migrates_v8_to_v9_preserves_mini_widget_size_from_ui_scale():
     migrated = migrate(v8)
 
     assert migrated["version"] == CURRENT_VERSION
-    assert migrated["mini_widget"] == {"enabled": True, "x": 20, "y": 30, "scale": 1.7}
+    assert migrated["mini_widget"] == {"enabled": True, "x": 20, "y": 30, "scale": 1.7, "background_transparency": 0.8, "show_master": False, "show_above_taskbar": False}
+
+
+def test_migrates_v9_preserves_existing_mini_settings():
+    migrated = migrate({"version": 9, "mini_widget": {"enabled": True, "scale": 1.4, "x": 12, "y": 34}})
+
+    assert migrated["version"] == CURRENT_VERSION
+    assert migrated["mini_widget"] == {
+        "enabled": True, "scale": 1.4, "x": 12, "y": 34,
+        "background_transparency": 0.8, "show_master": False, "show_above_taskbar": False,
+    }
+
+
+def test_migrates_v10_with_taskbar_overlay_disabled_and_preserves_settings():
+    original = {"version": 10, "mini_widget": {"enabled": True, "x": 22, "y": 33, "scale": 1.4}}
+    migrated = migrate(original)
+    assert migrated["version"] == CURRENT_VERSION
+    assert migrated["mini_widget"] == {
+        "enabled": True, "x": 22, "y": 33, "scale": 1.4, "show_above_taskbar": False,
+    }
+    assert "show_above_taskbar" not in original["mini_widget"]

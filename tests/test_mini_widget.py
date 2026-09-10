@@ -324,3 +324,162 @@ def test_main_overlay_and_mini_widget_synchronize_interactions(qapp, fake_backen
     mini.stop()
     mini.close()
     overlay.close()
+
+
+@pytest.mark.parametrize("transparency, alpha", [(0, 255), (0.5, 128), (1, 0)])
+def test_background_transparency_keeps_content_visible(mini, settings, transparency, alpha):
+    settings.set_mini_widget_background_transparency(transparency)
+    mini.sync_from_settings()
+    mini.apply_scale()
+    entry = mini._entries["aurora.exe"]
+    assert f"background: rgba(0, 0, 0, {alpha})" in entry.styleSheet()
+    assert entry._icon_effect.opacity() == 1
+    assert entry._volume_label.isVisible()
+    assert mini.windowOpacity() == 1
+
+
+def test_optional_master_is_first_and_controls_system_volume(qapp, mini, settings, fake_backend):
+    settings.set_mini_widget_show_master(True)
+    mini.sync_from_settings()
+    master = mini._grid.itemAtPosition(0, 0).widget()
+    assert master.key == "master"
+    assert master._icon_label.pixmap().cacheKey() == load_icon("volume").pixmap(
+        BASE_APP_ICON_PX, BASE_APP_ICON_PX
+    ).cacheKey()
+
+    master.wheelEvent(wheel_event(-1))
+    master.mute_toggled.emit()
+    qapp.processEvents()
+    assert fake_backend.get_master_volume() == pytest.approx(0.48)
+    assert fake_backend.get_master_mute() is True
+    assert master._volume_label.text() == "48%"
+    assert master._muted_icon_label.isVisible()
+    assert mini._entries["aurora.exe"]._volume_label.text() == "100%"
+
+    settings.set_mini_widget_show_master(False)
+    mini.sync_from_settings()
+    assert mini._grid.itemAtPosition(0, 0).widget().key == "aurora.exe"
+    assert "master" not in mini._entries
+
+
+def test_master_can_be_shown_without_app_sessions(qapp, settings):
+    settings.set_mini_widget_show_master(True)
+    mini = MiniWidget(MixerModel(FakeAudioBackend(), settings), settings)
+    mini.set_enabled(True)
+    assert mini.isVisible()
+    assert list(mini._entries) == ["master"]
+    mini.stop()
+    mini.close()
+
+
+@pytest.mark.parametrize("filter_enabled", [False, True])
+def test_whitelist_reordering_updates_existing_widget_and_survives_scaling(mini, settings, filter_enabled):
+    apps = []
+    for name in ("lumen", "aurora"):
+        path = settings.path.parent / f"{name}.exe"
+        path.write_bytes(b"MZ")
+        apps.append({"path": str(path), "enabled": True})
+    settings.set_whitelist_apps(apps)
+    settings.set_whitelist_enabled(filter_enabled)
+    settings.set_mini_widget_show_master(True)
+    mini._model.focus_key("aurora.exe")
+    mini._model.refresh()
+    mini.sync_from_settings()
+    mini.apply_scale()
+
+    assert [mini._grid.itemAtPosition(0, i).widget().key for i in range(3)] == [
+        "master", "lumen.exe", "aurora.exe"
+    ]
+    assert mini._model.focused_entry.key == "aurora.exe"
+
+    settings.set_whitelist_apps(list(reversed(apps)))
+    settings.load()
+    mini._model.refresh()
+    mini.refresh_view()
+    assert [mini._grid.itemAtPosition(0, i).widget().key for i in range(3)] == [
+        "master", "aurora.exe", "lumen.exe"
+    ]
+
+
+@pytest.mark.parametrize("margins", [(0, 0, 0, 80), (0, 80, 0, 0), (80, 0, 0, 0), (0, 0, 80, 0)])
+def test_taskbar_option_uses_full_screen_and_restores_work_area(mini, settings, monkeypatch, margins):
+    from types import SimpleNamespace
+    from PySide6.QtCore import QRect
+
+    full = QRect(-1000, 0, 1000, 800)
+    left, top, right, bottom = margins
+    work = full.adjusted(left, top, -right, -bottom)
+    screen = SimpleNamespace(geometry=lambda: full, availableGeometry=lambda: work)
+    monkeypatch.setattr("sound_mixer.overlay.mini_widget.QGuiApplication", SimpleNamespace(
+        screens=lambda: [screen], screenAt=lambda point: screen if full.contains(point) else None,
+        primaryScreen=lambda: screen,
+    ))
+    monkeypatch.setattr("sound_mixer.overlay.mini_widget.raise_without_activating", lambda window: None)
+    settings.set_mini_widget_show_above_taskbar(True)
+    mini.sync_from_settings()
+    mini.move(
+        full.left() if left else full.right() - mini.width() + 1,
+        full.top() if top else full.bottom() - mini.height() + 1,
+    )
+    position = mini.pos()
+    mini.sync_from_settings()
+
+    assert mini.pos() == position
+    assert full.contains(mini.frameGeometry())
+    assert not work.contains(mini.frameGeometry())
+    mini._save_position()
+    settings.load()
+    mini.refresh_view()
+    assert mini.pos() == position
+
+    settings.set_mini_widget_show_above_taskbar(False)
+    mini.sync_from_settings()
+    assert work.contains(mini.frameGeometry())
+
+
+def test_taskbar_stacking_runs_only_when_enabled_and_visible(mini, settings, monkeypatch):
+    calls = []
+    monkeypatch.setattr("sound_mixer.overlay.mini_widget.raise_without_activating", calls.append)
+    mini.refresh_view()
+    assert calls == []
+    assert not mini._taskbar_timer.isActive()
+
+    settings.set_mini_widget_show_above_taskbar(True)
+    mini.sync_from_settings()
+    assert calls == [mini]
+    assert mini._taskbar_timer.isActive()
+    mini._taskbar_timer.timeout.emit()
+    assert calls == [mini, mini]
+
+    mini.set_enabled(False)
+    assert not mini._taskbar_timer.isActive()
+    mini._taskbar_timer.timeout.emit()
+    assert len(calls) == 2
+    mini.set_enabled(True)
+    assert mini._taskbar_timer.isActive()
+
+    settings.set_mini_widget_show_above_taskbar(False)
+    mini.sync_from_settings()
+    assert not mini._taskbar_timer.isActive()
+    count = len(calls)
+    mini._taskbar_timer.timeout.emit()
+    assert len(calls) == count
+    settings.set_mini_widget_show_above_taskbar(True)
+    mini.sync_from_settings()
+    mini.stop()
+    assert not mini._taskbar_timer.isActive()
+
+
+def test_empty_mini_widget_does_not_keep_taskbar_timer_running(qapp, settings):
+    backend = FakeAudioBackend()
+    settings.set_mini_widget_show_above_taskbar(True)
+    settings.set_mini_widget_show_master(True)
+    mini = MiniWidget(MixerModel(backend, settings), settings)
+    mini.set_enabled(True)
+    assert mini._taskbar_timer.isActive()
+    settings.set_mini_widget_show_master(False)
+    mini.sync_from_settings()
+    assert not mini.isVisible()
+    assert not mini._taskbar_timer.isActive()
+    mini.stop()
+    mini.close()

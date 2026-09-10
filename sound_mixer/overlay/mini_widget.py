@@ -14,9 +14,11 @@ from sound_mixer.i18n import t
 from sound_mixer.mixer.model import MixerEntry, MixerModel
 from sound_mixer.overlay.icons import DelayedTooltipButton, load_app_icon, load_icon
 from sound_mixer.settings.store import SettingsStore
+from sound_mixer.overlay.win_effects import raise_without_activating
 
 POSITION_SAVE_DELAY_MS = 300
 PIN_HIDE_DELAY_MS = 600
+TASKBAR_RAISE_INTERVAL_MS = 250
 MIN_VISIBLE_PX = 48
 BASE_APP_ICON_PX = 32
 BASE_FONT_PX = 13
@@ -40,6 +42,7 @@ class MiniEntryWidget(QFrame):
         self.key = ""
         self._entry: MixerEntry | None = None
         self._scale = 1.0
+        self._background_transparency = 0.8
         self._volume_below_icon = False
 
         self._volume_label = QLabel(self)
@@ -81,9 +84,7 @@ class MiniEntryWidget(QFrame):
         margin = round(BASE_MARGIN_PX * scale)
         spacing = round(BASE_SPACING_PX * scale)
         radius = round(BASE_ENTRY_RADIUS_PX * scale)
-        self.setStyleSheet(
-            f"QFrame#miniEntryWidget {{ background: rgba(0, 0, 0, 51); border: none; border-radius: {radius}px; }}"
-        )
+        self._apply_background(radius)
         font = self._volume_label.font()
         font.setPixelSize(round(BASE_FONT_PX * scale))
         self._volume_label.setFont(font)
@@ -101,6 +102,16 @@ class MiniEntryWidget(QFrame):
         self.setFixedSize(extent, text_height + icon_px + spacing + 2 * margin)
         self._update_icon()
 
+    def set_background_transparency(self, transparency: float) -> None:
+        self._background_transparency = transparency
+        self._apply_background(round(BASE_ENTRY_RADIUS_PX * self._scale))
+
+    def _apply_background(self, radius: int) -> None:
+        alpha = round(255 * (1 - self._background_transparency))
+        self.setStyleSheet(
+            f"QFrame#miniEntryWidget {{ background: rgba(0, 0, 0, {alpha}); border: none; border-radius: {radius}px; }}"
+        )
+
     def set_entry(self, entry: MixerEntry) -> None:
         self._entry = entry
         self.key = entry.key
@@ -117,7 +128,8 @@ class MiniEntryWidget(QFrame):
         if self._entry is None:
             return
         icon_px = round(BASE_APP_ICON_PX * self._scale)
-        self._icon_label.setPixmap(load_app_icon(self._entry.icon_path).pixmap(icon_px, icon_px))
+        icon = load_icon("volume") if self._entry.is_master else load_app_icon(self._entry.icon_path)
+        self._icon_label.setPixmap(icon.pixmap(icon_px, icon_px))
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         self.focus_requested.emit()
@@ -220,6 +232,10 @@ class MiniWidget(QWidget):
         self._pin_hide_timer.setSingleShot(True)
         self._pin_hide_timer.timeout.connect(self._hide_pin_if_idle)
 
+        self._taskbar_timer = QTimer(self)
+        self._taskbar_timer.setInterval(TASKBAR_RAISE_INTERVAL_MS)
+        self._taskbar_timer.timeout.connect(self._raise_above_taskbar)
+
         position = self._settings.get_mini_widget_position()
         self.move(position["x"], position["y"])
         self.apply_scale()
@@ -244,6 +260,7 @@ class MiniWidget(QWidget):
     def stop(self) -> None:
         self._position_save_timer.stop()
         self._pin_hide_timer.stop()
+        self._taskbar_timer.stop()
         self._save_position()
 
     def refresh_view(self) -> None:
@@ -251,7 +268,10 @@ class MiniWidget(QWidget):
             self.hide()
             return
 
-        entries = [entry for entry in self._model.entries if not entry.is_master]
+        entries = [
+            entry for entry in self._model.entries
+            if not entry.is_master or self._settings.get_mini_widget_show_master()
+        ]
         active_keys = {entry.key for entry in entries}
         for key in list(self._entries):
             if key not in active_keys:
@@ -271,16 +291,40 @@ class MiniWidget(QWidget):
                 widget.set_volume_below_icon(bool(self._pin_below_content))
                 self._entries[entry.key] = widget
             widget.set_entry(entry)
+            widget.set_background_transparency(self._settings.get_mini_widget_background_transparency())
             ordered_widgets.append(widget)
 
         if not ordered_widgets:
             self.hide()
             return
 
+        self._entries = {widget.key: widget for widget in ordered_widgets}
         self._layout_entries(ordered_widgets)
         self._ensure_on_screen()
         if not self.isVisible():
             self.show()
+        self._sync_taskbar_stacking()
+
+    def _sync_taskbar_stacking(self) -> None:
+        if self._settings.get_mini_widget_show_above_taskbar() and self._enabled and self.isVisible():
+            if not self._taskbar_timer.isActive():
+                self._taskbar_timer.start()
+            self._raise_above_taskbar()
+        else:
+            self._taskbar_timer.stop()
+
+    def _raise_above_taskbar(self) -> None:
+        if self._settings.get_mini_widget_show_above_taskbar() and self._enabled and self.isVisible():
+            raise_without_activating(self)
+
+    def hideEvent(self, event) -> None:
+        self._taskbar_timer.stop()
+        super().hideEvent(event)
+
+    def _screen_geometry(self, screen):
+        if self._settings.get_mini_widget_show_above_taskbar():
+            return screen.geometry()
+        return screen.availableGeometry()
 
     def _layout_entries(self, widgets: list[MiniEntryWidget]) -> None:
         while self._grid.count():
@@ -291,7 +335,7 @@ class MiniWidget(QWidget):
         self._grid.setVerticalSpacing(spacing)
         cell_width = max(widget.width() for widget in widgets)
         screen = QGuiApplication.screenAt(self.frameGeometry().center()) or QGuiApplication.primaryScreen()
-        available_width = screen.availableGeometry().width() if screen is not None else cell_width
+        available_width = self._screen_geometry(screen).width() if screen is not None else cell_width
         max_columns = max(1, (available_width + spacing) // (cell_width + spacing))
         columns = min(len(widgets), max_columns)
 
@@ -367,12 +411,12 @@ class MiniWidget(QWidget):
         rect = self.frameGeometry()
         screen = self._screen_for_rect(rect, screens)
         if QGuiApplication.screenAt(rect.center()) is None:
-            overlap = screen.availableGeometry().intersected(rect)
+            overlap = self._screen_geometry(screen).intersected(rect)
             if overlap.width() < min(MIN_VISIBLE_PX, rect.width()) or overlap.height() < min(
                 MIN_VISIBLE_PX, rect.height()
             ):
                 screen = QGuiApplication.primaryScreen()
-        available = screen.availableGeometry()
+        available = self._screen_geometry(screen)
         x = min(max(rect.x(), available.left()), max(available.left(), available.right() - rect.width() + 1))
         y = min(max(rect.y(), available.top()), max(available.top(), available.bottom() - rect.height() + 1))
         if x != rect.x() or y != rect.y():
@@ -385,7 +429,7 @@ class MiniWidget(QWidget):
             return
         rect = self.frameGeometry()
         screen = self._screen_for_rect(rect, screens)
-        pin_below_content = rect.center().y() <= screen.availableGeometry().center().y()
+        pin_below_content = rect.center().y() <= self._screen_geometry(screen).center().y()
         for widget in self._entries.values():
             widget.set_volume_below_icon(pin_below_content)
         if pin_below_content == self._pin_below_content:
@@ -394,13 +438,12 @@ class MiniWidget(QWidget):
         self._outer_layout.insertWidget(1 if pin_below_content else 0, self._pin_row)
         self._pin_below_content = pin_below_content
 
-    @staticmethod
-    def _screen_for_rect(rect, screens):
+    def _screen_for_rect(self, rect, screens):
         screen = QGuiApplication.screenAt(rect.center())
         if screen is not None:
             return screen
         return max(
             screens,
-            key=lambda candidate: candidate.availableGeometry().intersected(rect).width()
-            * candidate.availableGeometry().intersected(rect).height(),
+            key=lambda candidate: self._screen_geometry(candidate).intersected(rect).width()
+            * self._screen_geometry(candidate).intersected(rect).height(),
         )
