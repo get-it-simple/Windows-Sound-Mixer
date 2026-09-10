@@ -324,3 +324,78 @@ def test_main_overlay_and_mini_widget_synchronize_interactions(qapp, fake_backen
     mini.stop()
     mini.close()
     overlay.close()
+
+
+@pytest.mark.parametrize("transparency, alpha", [(0, 255), (0.5, 128), (1, 0)])
+def test_background_transparency_keeps_content_visible(mini, settings, transparency, alpha):
+    settings.set_mini_widget_background_transparency(transparency)
+    mini.sync_from_settings()
+    mini.apply_scale()
+    entry = mini._entries["aurora.exe"]
+    assert f"background: rgba(0, 0, 0, {alpha})" in entry.styleSheet()
+    assert entry._icon_effect.opacity() == 1
+    assert entry._volume_label.isVisible()
+    assert mini.windowOpacity() == 1
+
+
+def test_optional_master_is_first_and_controls_system_volume(qapp, mini, settings, fake_backend):
+    settings.set_mini_widget_show_master(True)
+    mini.sync_from_settings()
+    master = mini._grid.itemAtPosition(0, 0).widget()
+    assert master.key == "master"
+    assert master._icon_label.pixmap().cacheKey() == load_icon("volume").pixmap(
+        BASE_APP_ICON_PX, BASE_APP_ICON_PX
+    ).cacheKey()
+
+    master.wheelEvent(wheel_event(-1))
+    master.mute_toggled.emit()
+    qapp.processEvents()
+    assert fake_backend.get_master_volume() == pytest.approx(0.48)
+    assert fake_backend.get_master_mute() is True
+    assert master._volume_label.text() == "48%"
+    assert master._muted_icon_label.isVisible()
+    assert mini._entries["aurora.exe"]._volume_label.text() == "100%"
+
+    settings.set_mini_widget_show_master(False)
+    mini.sync_from_settings()
+    assert mini._grid.itemAtPosition(0, 0).widget().key == "aurora.exe"
+    assert "master" not in mini._entries
+
+
+def test_master_can_be_shown_without_app_sessions(qapp, settings):
+    settings.set_mini_widget_show_master(True)
+    mini = MiniWidget(MixerModel(FakeAudioBackend(), settings), settings)
+    mini.set_enabled(True)
+    assert mini.isVisible()
+    assert list(mini._entries) == ["master"]
+    mini.stop()
+    mini.close()
+
+
+@pytest.mark.parametrize("filter_enabled", [False, True])
+def test_whitelist_reordering_updates_existing_widget_and_survives_scaling(mini, settings, filter_enabled):
+    apps = []
+    for name in ("lumen", "aurora"):
+        path = settings.path.parent / f"{name}.exe"
+        path.write_bytes(b"MZ")
+        apps.append({"path": str(path), "enabled": True})
+    settings.set_whitelist_apps(apps)
+    settings.set_whitelist_enabled(filter_enabled)
+    settings.set_mini_widget_show_master(True)
+    mini._model.focus_key("aurora.exe")
+    mini._model.refresh()
+    mini.sync_from_settings()
+    mini.apply_scale()
+
+    assert [mini._grid.itemAtPosition(0, i).widget().key for i in range(3)] == [
+        "master", "lumen.exe", "aurora.exe"
+    ]
+    assert mini._model.focused_entry.key == "aurora.exe"
+
+    settings.set_whitelist_apps(list(reversed(apps)))
+    settings.load()
+    mini._model.refresh()
+    mini.refresh_view()
+    assert [mini._grid.itemAtPosition(0, i).widget().key for i in range(3)] == [
+        "master", "aurora.exe", "lumen.exe"
+    ]

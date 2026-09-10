@@ -85,6 +85,9 @@ class SettingsStore:
         self.data["master_volume"] = clamp_volume(self.data["master_volume"])
         self.data["default_app_volume"] = clamp_volume(self.data["default_app_volume"])
         self.data["ui_scale"] = max(MIN_UI_SCALE, min(MAX_UI_SCALE, self.data["ui_scale"]))
+        self.data["mini_widget"]["background_transparency"] = clamp_volume(
+            self.data["mini_widget"]["background_transparency"]
+        )
         self.data["mini_widget"]["scale"] = max(
             MIN_UI_SCALE,
             min(MAX_UI_SCALE, self.data["mini_widget"]["scale"]),
@@ -275,17 +278,32 @@ class SettingsStore:
     def is_app_whitelisted(self, exe: str) -> bool:
         if not self.get_whitelist_enabled():
             return True
+        return self.get_whitelist_app_order(exe) < len(self.data["whitelist"]["apps"])
+
+    def get_whitelist_app_order(self, exe: str) -> int:
         key = normalize_app_key(exe)
-        enabled_paths = [
-            normalize_app_key(app["path"])
-            for app in self.data["whitelist"]["apps"]
-            if app.get("enabled") and app.get("path")
-        ]
-        if key in enabled_paths:
-            return True
-        if "/" not in key:
-            return any(legacy_app_key(path) == key for path in enabled_paths)
-        return False
+        apps = self.data["whitelist"]["apps"]
+        for index, app in enumerate(apps):
+            if not app.get("enabled") or not app.get("path"):
+                continue
+            path = normalize_app_key(app["path"])
+            if key == path or ("/" not in key and legacy_app_key(path) == key):
+                return index
+        return len(apps)
+
+    def get_mini_widget_background_transparency(self) -> float:
+        return self.data["mini_widget"]["background_transparency"]
+
+    def set_mini_widget_background_transparency(self, transparency: float) -> None:
+        self.data["mini_widget"]["background_transparency"] = clamp_volume(transparency)
+        self.save()
+
+    def get_mini_widget_show_master(self) -> bool:
+        return bool(self.data["mini_widget"]["show_master"])
+
+    def set_mini_widget_show_master(self, show: bool) -> None:
+        self.data["mini_widget"]["show_master"] = bool(show)
+        self.save()
 
     def get_mini_widget_enabled(self) -> bool:
         return bool(self.data["mini_widget"]["enabled"])

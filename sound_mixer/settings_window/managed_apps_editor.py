@@ -53,8 +53,9 @@ class AppDropZone(QFrame):
 
 class ManagedAppRow(QFrame):
     remove_requested = Signal()
+    move_requested = Signal(int)
 
-    def __init__(self, path: str, enabled: bool = True, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, path: str, enabled: bool = True, parent: Optional[QWidget] = None, *, reorderable: bool = False) -> None:
         super().__init__(parent)
         self.path = path
 
@@ -77,19 +78,39 @@ class ManagedAppRow(QFrame):
         layout.setSpacing(8)
         layout.addWidget(self._enabled_checkbox)
         layout.addWidget(self._name_label, 1)
+        self._move_up_button = DelayedTooltipButton(self)
+        self._move_up_button.setIcon(load_icon("arrow_up"))
+        self._move_up_button.clicked.connect(lambda: self.move_requested.emit(-1))
+        self._move_down_button = DelayedTooltipButton(self)
+        self._move_down_button.setIcon(load_icon("arrow_up", rotation=180))
+        self._move_down_button.clicked.connect(lambda: self.move_requested.emit(1))
+        for button in (self._move_up_button, self._move_down_button):
+            button.setStyleSheet(
+                "QToolButton { background: #626071; border: none; border-radius: 4px; padding: 4px; }"
+                "QToolButton:hover { background: #716f82; }"
+                "QToolButton:disabled { background: #b7b7bd; }"
+            )
+            button.setVisible(reorderable)
+            layout.addWidget(button)
         layout.addWidget(self._remove_button)
+        self.retranslate()
 
     def is_enabled(self) -> bool:
         return self._enabled_checkbox.isChecked()
 
     def retranslate(self) -> None:
+        self._move_up_button.setToolTip(t("move_app_up_tooltip"))
+        self._move_down_button.setToolTip(t("move_app_down_tooltip"))
+        self._move_up_button.setAccessibleName(t("move_app_up_tooltip"))
+        self._move_down_button.setAccessibleName(t("move_app_down_tooltip"))
         self._remove_button.setToolTip(t("remove_managed_app_tooltip"))
 
 
 class AppListEditor(QWidget):
-    def __init__(self, apps: list[dict], parent: Optional[QWidget] = None) -> None:
+    def __init__(self, apps: list[dict], parent: Optional[QWidget] = None, *, reorderable: bool = False) -> None:
         super().__init__(parent)
         self.rows: list[ManagedAppRow] = []
+        self._reorderable = reorderable
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -118,16 +139,34 @@ class AppListEditor(QWidget):
         self.add_row(path, enabled)
 
     def add_row(self, path: str, enabled: bool) -> ManagedAppRow:
-        row = ManagedAppRow(path, enabled, self)
+        row = ManagedAppRow(path, enabled, self, reorderable=self._reorderable)
+        row.move_requested.connect(lambda delta, r=row: self.move_row(r, delta))
         row.remove_requested.connect(lambda r=row: self.remove_row(r))
         self.rows_layout.addWidget(row)
         self.rows.append(row)
+        self._update_move_buttons()
         return row
 
     def remove_row(self, row: ManagedAppRow) -> None:
         self.rows.remove(row)
         self.rows_layout.removeWidget(row)
         row.deleteLater()
+        self._update_move_buttons()
+
+    def move_row(self, row: ManagedAppRow, delta: int) -> None:
+        index = self.rows.index(row)
+        target = index + delta
+        if not 0 <= target < len(self.rows):
+            return
+        self.rows.insert(target, self.rows.pop(index))
+        self.rows_layout.removeWidget(row)
+        self.rows_layout.insertWidget(target, row)
+        self._update_move_buttons()
+
+    def _update_move_buttons(self) -> None:
+        for index, row in enumerate(self.rows):
+            row._move_up_button.setEnabled(index > 0)
+            row._move_down_button.setEnabled(index < len(self.rows) - 1)
 
     def apps(self) -> list[dict]:
         return [{"path": row.path, "enabled": row.is_enabled()} for row in self.rows]

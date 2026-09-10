@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QSlider,
+    QScrollArea,
     QSpinBox,
     QTabWidget,
     QVBoxLayout,
@@ -362,6 +363,20 @@ class SettingsWindow(QDialog):
         self._mini_widget_checkbox.setChecked(self._settings.get_mini_widget_enabled())
         layout.addWidget(self._field(t("show_mini_widget"), self._mini_widget_checkbox, tab))
 
+        self._mini_widget_master_checkbox = QCheckBox(tab)
+        self._mini_widget_master_checkbox.setObjectName("miniWidgetMasterToggle")
+        self._mini_widget_master_checkbox.setStyleSheet(toggle_switch_style("miniWidgetMasterToggle"))
+        self._mini_widget_master_checkbox.setChecked(self._settings.get_mini_widget_show_master())
+        layout.addWidget(self._field(t("mini_widget_show_master"), self._mini_widget_master_checkbox, tab))
+
+        self._mini_widget_transparency_spinbox = QSpinBox(tab)
+        self._mini_widget_transparency_spinbox.setRange(0, 100)
+        self._mini_widget_transparency_spinbox.setSuffix(" %")
+        self._mini_widget_transparency_spinbox.setValue(
+            round(self._settings.get_mini_widget_background_transparency() * 100)
+        )
+        layout.addWidget(self._field(t("mini_widget_background_transparency"), self._mini_widget_transparency_spinbox, tab))
+
         self._tooltip_delay_spinbox = QSpinBox(tab)
         self._tooltip_delay_spinbox.setRange(0, 10000)
         self._tooltip_delay_spinbox.setSingleStep(100)
@@ -446,7 +461,12 @@ class SettingsWindow(QDialog):
         layout.addWidget(self._guide_button)
         layout.addStretch(1)
 
-        return tab
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setWidget(tab)
+        scroll.setMinimumWidth(tab.sizeHint().width() + 24)
+        return scroll
 
     def _on_ui_scale_changed(self, value: int) -> None:
         self._ui_scale_label.setText(f"{value}%")
@@ -529,7 +549,7 @@ class SettingsWindow(QDialog):
         self._whitelist_checkbox.setChecked(self._settings.get_whitelist_enabled())
         layout.addWidget(self._field(t("whitelist_mode"), self._whitelist_checkbox, tab))
 
-        editor = AppListEditor(self._settings.get_whitelist_apps(), tab)
+        editor = AppListEditor(self._settings.get_whitelist_apps(), tab, reorderable=True)
         layout.addWidget(editor)
         layout.addStretch(1)
         self._whitelist_editor = editor
@@ -574,6 +594,8 @@ class SettingsWindow(QDialog):
         self._settings.set_visible_on_start(self._start_opened_checkbox.isChecked())
         self._settings.set_transparency_enabled(self._transparency_checkbox.isChecked())
         self._settings.set_mini_widget_enabled(self._mini_widget_checkbox.isChecked())
+        self._settings.set_mini_widget_show_master(self._mini_widget_master_checkbox.isChecked())
+        self._settings.set_mini_widget_background_transparency(self._mini_widget_transparency_spinbox.value() / 100)
         self._settings.set_tooltip_delay_ms(self._tooltip_delay_spinbox.value())
         self._settings.set_arrow_step(self._arrow_step_spinbox.value() / 100)
         self._settings.set_scroll_step(self._scroll_step_spinbox.value() / 100)

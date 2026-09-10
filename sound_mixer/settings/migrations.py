@@ -97,6 +97,16 @@ def _migrate_8_to_9(data: dict) -> dict:
     return data
 
 
+def _migrate_9_to_10(data: dict) -> dict:
+    data = dict(data)
+    mini_widget = dict(data.get("mini_widget") or {})
+    mini_widget.setdefault("background_transparency", 0.8)
+    mini_widget.setdefault("show_master", False)
+    data["mini_widget"] = mini_widget
+    data["version"] = 10
+    return data
+
+
 MIGRATIONS = {
     0: _migrate_0_to_1,
     1: _migrate_1_to_2,
@@ -107,6 +117,7 @@ MIGRATIONS = {
     6: _migrate_6_to_7,
     7: _migrate_7_to_8,
     8: _migrate_8_to_9,
+    9: _migrate_9_to_10,
 }
 
 

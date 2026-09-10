@@ -102,3 +102,27 @@ def test_app_list_editor_rejects_invalid_path_without_reading_metadata(qapp, mon
     editor.add_path(r"\\server\share\Remote.exe")
 
     assert editor.rows == []
+
+
+def test_reorder_buttons_move_rows_and_preserve_enabled_state(qapp, tmp_path):
+    apps = []
+    for name in ("First", "Second", "Third"):
+        path = tmp_path / f"{name}.exe"
+        path.write_bytes(b"MZ")
+        apps.append({"path": str(path), "enabled": name != "Second"})
+    editor = AppListEditor(apps, reorderable=True)
+    rows = editor.rows
+    second = rows[1]
+
+    second._move_up_button.click()
+
+    assert editor.rows is rows
+    assert editor.apps() == [apps[1], apps[0], apps[2]]
+    assert editor.rows_layout.itemAt(0).widget() is second
+    assert not second._move_up_button.isEnabled()
+    second._move_down_button.click()
+    second._move_down_button.click()
+    assert editor.apps() == [apps[0], apps[2], apps[1]]
+    assert not second._move_down_button.isEnabled()
+    editor.remove_row(second)
+    assert not editor.rows[-1]._move_down_button.isEnabled()
