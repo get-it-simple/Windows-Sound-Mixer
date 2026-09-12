@@ -335,6 +335,7 @@ def test_horizontal_mode_keeps_original_arrow_key_axes(qapp, fake_backend, setti
 
 def test_vertical_scrollbar_appears_only_after_the_visible_entry_limit(qapp, fake_backend, settings):
     overlay = make_overlay(qapp, fake_backend, settings)
+    overlay._finish_warm_up()
     overlay.set_layout_mode("vertical")
 
     for i in range(MAX_VISIBLE_ENTRIES - len(overlay._entry_widgets)):
