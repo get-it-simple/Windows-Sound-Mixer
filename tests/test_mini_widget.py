@@ -1,5 +1,5 @@
 import pytest
-from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QSize, Qt
+from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRect, QSize, Qt
 from PySide6.QtGui import QEnterEvent, QMouseEvent, QWheelEvent
 from PySide6.QtTest import QTest
 
@@ -11,9 +11,11 @@ from sound_mixer.overlay.mini_widget import (
     BASE_ENTRY_RADIUS_PX,
     BASE_FONT_PX,
     BASE_SPACING_PX,
+    DRAG_UPDATE_INTERVAL_MS,
     MUTED_ICON_SCALE,
     MUTED_OPACITY,
     SNAP_DISTANCE_PX,
+    SNAP_RELEASE_DISTANCE_PX,
     MiniWidget,
 )
 from sound_mixer.overlay.window import OverlayWindow
@@ -224,19 +226,17 @@ def test_mini_widget_applies_its_own_scale(mini, settings):
     assert entry._volume_label.font().pixelSize() == round(BASE_FONT_PX * 1.5)
 
 
-def test_pin_moves_below_content_in_upper_half_and_above_in_lower_half(qapp, mini):
+def test_pin_moves_below_content_at_top_edge_and_above_at_bottom_edge(qapp, mini):
     available = qapp.primaryScreen().availableGeometry()
 
-    mini.move(available.left() + 10, available.top() - mini.height())
-    mini._ensure_on_screen()
+    drag_to(mini, QPoint(available.center().x(), available.top() + 1))
     assert mini.y() == available.top()
     assert mini._outer_layout.indexOf(mini._pin_row) > mini._outer_layout.indexOf(mini._content)
     entry_layout = mini._entries["aurora.exe"].layout()
     assert entry_layout.itemAt(0).widget() is mini._entries["aurora.exe"]._icon_container
     assert entry_layout.itemAt(1).widget() is mini._entries["aurora.exe"]._volume_label
 
-    mini.move(available.left() + 10, available.bottom() - mini.height())
-    mini._update_pin_position()
+    drag_to(mini, QPoint(available.center().x(), available.bottom() - mini.height()))
     assert mini._outer_layout.indexOf(mini._pin_row) < mini._outer_layout.indexOf(mini._content)
     assert entry_layout.itemAt(0).widget() is mini._entries["aurora.exe"]._volume_label
     assert entry_layout.itemAt(1).widget() is mini._entries["aurora.exe"]._icon_container
@@ -483,6 +483,7 @@ def test_empty_mini_widget_does_not_keep_taskbar_timer_running(qapp, settings):
     mini.sync_from_settings()
     assert not mini.isVisible()
     assert not mini._taskbar_timer.isActive()
+    qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     mini.stop()
     mini.close()
 
@@ -516,6 +517,124 @@ def drag_to(widget, position):
         QEvent.Type.MouseButtonRelease, release.x(), release.y(),
         Qt.MouseButton.LeftButton, Qt.MouseButton.NoButton,
     ))
+
+
+class MoveRecorder(QObject):
+    def __init__(self, widget):
+        super().__init__(widget)
+        self.positions = []
+        widget.installEventFilter(self)
+
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.Move:
+            self.positions.append(event.pos())
+        return False
+
+
+def test_drag_coalesces_mouse_moves_and_applies_latest_position(qapp, mini, dock_screen):
+    mini.move(dock_screen.availableGeometry().center())
+    qapp.processEvents()
+    start = mini.pos()
+    press = start + QPoint(4, 4)
+    recorder = MoveRecorder(mini)
+    mini._pin_button.mousePressEvent(mouse_event(
+        QEvent.Type.MouseButtonPress, press.x(), press.y(),
+        Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+    ))
+    for distance in range(1, 21):
+        mini._pin_button.mouseMoveEvent(mouse_event(
+            QEvent.Type.MouseMove, press.x() + distance, press.y(),
+            Qt.MouseButton.NoButton, Qt.MouseButton.LeftButton,
+        ))
+    assert recorder.positions == [start + QPoint(1, 0)]
+    QTest.qWait(60)
+    assert recorder.positions == [start + QPoint(1, 0), start + QPoint(20, 0)]
+    mini._pin_button.mouseReleaseEvent(mouse_event(
+        QEvent.Type.MouseButtonRelease, press.x() + 25, press.y(),
+        Qt.MouseButton.LeftButton, Qt.MouseButton.NoButton,
+    ))
+    assert mini.pos() == start + QPoint(25, 0)
+    QTest.qWait(60)
+    assert recorder.positions[-1] == start + QPoint(25, 0)
+    assert len(recorder.positions) == 3
+
+
+def test_drag_along_docked_edge_never_moves_to_unsnapped_position(qapp, mini, dock_screen):
+    work = dock_screen.availableGeometry()
+    drag_to(mini, QPoint(work.left() + 5, 300))
+    qapp.processEvents()
+    recorder = MoveRecorder(mini)
+    mini.drag_to(QRect(QPoint(work.left() + 5, 320), mini.size()))
+    assert recorder.positions == [QPoint(work.left(), 320)]
+
+
+@pytest.mark.parametrize("edge", ["left", "right", "top", "bottom"])
+def test_docking_requires_close_edge_and_tolerates_small_mouse_jitter(qapp, mini, dock_screen, edge):
+    work = dock_screen.availableGeometry()
+    size = mini.size()
+
+    def position_at(gap):
+        position = work.center()
+        if edge == "left":
+            position.setX(work.left() + gap)
+        elif edge == "right":
+            position.setX(work.right() - size.width() + 1 - gap)
+        elif edge == "top":
+            position.setY(work.top() + gap)
+        else:
+            position.setY(work.bottom() - size.height() + 1 - gap)
+        return position
+
+    position = position_at(20)
+    mini.drag_to(QRect(position, size))
+    assert mini.pos() == position
+    assert mini._entries["aurora.exe"]._volume_label.isVisible()
+
+    for gap in (SNAP_DISTANCE_PX, SNAP_DISTANCE_PX + 2, SNAP_RELEASE_DISTANCE_PX, SNAP_DISTANCE_PX - 1):
+        mini.drag_to(QRect(position_at(gap), size))
+        qapp.processEvents()
+        assert getattr(mini.frameGeometry(), edge)() == getattr(work, edge)()
+        assert mini._entries["aurora.exe"]._slider.isVisible() == (edge in ("left", "right"))
+
+    position = position_at(SNAP_RELEASE_DISTANCE_PX + 1)
+    mini.drag_to(QRect(position, size))
+    assert mini.pos() == position
+    assert mini._entries["aurora.exe"]._volume_label.isVisible()
+
+
+def test_free_drag_keeps_pin_and_volume_layout_until_screen_edge(qapp, mini, dock_screen):
+    work = dock_screen.availableGeometry()
+    drag_to(mini, QPoint(work.center().x(), work.top()))
+    entry = mini._entries["aurora.exe"]
+    for y in (work.top() + 100, work.center().y() + 100):
+        drag_to(mini, QPoint(work.center().x(), y))
+        qapp.processEvents()
+        assert mini._pin_row.geometry().top() > mini._content.geometry().bottom()
+        assert entry._volume_label.geometry().top() > entry._icon_container.geometry().bottom()
+    drag_to(mini, QPoint(work.center().x(), work.bottom() - mini.height()))
+    qapp.processEvents()
+    assert mini._pin_row.geometry().bottom() < mini._content.geometry().top()
+    assert entry._volume_label.geometry().bottom() < entry._icon_container.geometry().top()
+
+
+@pytest.mark.parametrize("action", ["hide", "stop"])
+def test_pending_drag_is_cancelled_when_widget_is_hidden_or_stopped(qapp, mini, dock_screen, action):
+    mini.move(dock_screen.availableGeometry().center())
+    press = mini.pos() + QPoint(4, 4)
+    mini._pin_button.mousePressEvent(mouse_event(
+        QEvent.Type.MouseButtonPress, press.x(), press.y(),
+        Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+    ))
+    for distance in (10, 20):
+        mini._pin_button.mouseMoveEvent(mouse_event(
+            QEvent.Type.MouseMove, press.x() + distance, press.y(),
+            Qt.MouseButton.NoButton, Qt.MouseButton.LeftButton,
+        ))
+    position = mini.pos()
+    getattr(mini, action)()
+    QTest.qWait(60)
+    assert mini.pos() == position
+    assert not mini._pin_button.is_dragging()
 
 
 @pytest.mark.parametrize("edge", ["left", "right", "top", "bottom"])
@@ -553,7 +672,7 @@ def test_dock_layout_and_pin_update_before_mouse_release(qapp, mini, dock_screen
             QEvent.Type.MouseMove, point.x(), point.y(),
             Qt.MouseButton.NoButton, Qt.MouseButton.LeftButton,
         ))
-        qapp.processEvents()
+        QTest.qWait(DRAG_UPDATE_INTERVAL_MS + 15)
 
         assert mini._pin_button.is_dragging()
         assert getattr(mini.frameGeometry(), edge)() == getattr(work, edge)()
@@ -581,7 +700,7 @@ def test_dock_layout_and_pin_update_before_mouse_release(qapp, mini, dock_screen
         QEvent.Type.MouseMove, cursor.x(), cursor.y(),
         Qt.MouseButton.NoButton, Qt.MouseButton.LeftButton,
     ))
-    qapp.processEvents()
+    QTest.qWait(DRAG_UPDATE_INTERVAL_MS + 15)
     assert mini._pin_button.is_dragging()
     assert mini._entries["aurora.exe"]._volume_label.isVisible()
     assert mini._grid.itemAtPosition(0, 1).widget().key == "lumen.exe"
