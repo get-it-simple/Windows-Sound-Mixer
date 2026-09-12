@@ -1,5 +1,7 @@
 # Windows Sound Mixer
 
+[![WinGet version](https://img.shields.io/winget/v/GetItSimple.SoundMixer?label=WinGet)](https://github.com/microsoft/winget-pkgs/tree/master/manifests/g/GetItSimple/SoundMixer)
+
 A per-application volume mixer for Windows. Adjust the volume of any running
 program with an audio session (or the system master volume) from a small
 always-on-top overlay, the system tray, or global hotkeys.
@@ -10,6 +12,14 @@ always-on-top overlay, the system tray, or global hotkeys.
 
 <details>
 <summary>Run, Build, Test details</summary>
+
+## Install via WinGet
+
+Sound Mixer is available on WinGet as `GetItSimple.SoundMixer`:
+
+```powershell
+winget install --id GetItSimple.SoundMixer --exact --source winget
+```
 
 ## Running from source
 
