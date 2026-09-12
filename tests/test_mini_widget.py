@@ -519,6 +519,96 @@ def drag_to(widget, position):
 
 
 @pytest.mark.parametrize("edge", ["left", "right", "top", "bottom"])
+@pytest.mark.parametrize("initial_edge", ["", "left", "right"])
+def test_dock_layout_and_pin_update_before_mouse_release(qapp, mini, dock_screen, edge, initial_edge):
+    work = dock_screen.availableGeometry()
+    if initial_edge:
+        x = work.left() + 5 if initial_edge == "left" else work.right() - mini.width() - 4
+        drag_to(mini, QPoint(x, 300))
+    else:
+        mini.move(work.center())
+    mini._pin_button.show()
+    qapp.processEvents()
+    press = mini._pin_button.mapToGlobal(mini._pin_button.rect().center())
+    offset = press - mini.pos()
+    size = mini.size()
+    mini._pin_button.mousePressEvent(mouse_event(
+        QEvent.Type.MouseButtonPress, press.x(), press.y(),
+        Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+    ))
+    position = work.center()
+    gap = SNAP_DISTANCE_PX - 1
+    if edge == "left":
+        position.setX(work.left() + gap)
+    elif edge == "right":
+        position.setX(work.right() - size.width() + 1 - gap)
+    elif edge == "top":
+        position.setY(work.top() + gap)
+    else:
+        position.setY(work.bottom() - size.height() + 1 - gap)
+    cursor = position + offset
+    for delta in (QPoint(), QPoint(1, 1), QPoint()):
+        point = cursor + delta
+        mini._pin_button.mouseMoveEvent(mouse_event(
+            QEvent.Type.MouseMove, point.x(), point.y(),
+            Qt.MouseButton.NoButton, Qt.MouseButton.LeftButton,
+        ))
+        qapp.processEvents()
+
+        assert mini._pin_button.is_dragging()
+        assert getattr(mini.frameGeometry(), edge)() == getattr(work, edge)()
+        assert mini._entries["aurora.exe"]._slider.isVisible() == (edge in ("left", "right"))
+        pin = QRect(mini._pin_button.mapTo(mini, QPoint()), mini._pin_button.size())
+        content = mini._content.geometry()
+        if edge == "left":
+            assert pin.left() > content.right()
+        elif edge == "right":
+            assert pin.right() < content.left()
+        elif edge == "top":
+            assert pin.top() > content.bottom()
+        else:
+            assert pin.bottom() < content.top()
+        assert mini.rect().contains(pin)
+        assert work.contains(mini.frameGeometry())
+
+    cursor = work.center() + offset
+    mini._pin_button.mouseMoveEvent(mouse_event(
+        QEvent.Type.MouseMove, cursor.x(), cursor.y(),
+        Qt.MouseButton.NoButton, Qt.MouseButton.LeftButton,
+    ))
+    qapp.processEvents()
+    assert mini._pin_button.is_dragging()
+    assert mini._entries["aurora.exe"]._volume_label.isVisible()
+    assert mini._grid.itemAtPosition(0, 1).widget().key == "lumen.exe"
+    mini._pin_button.mouseReleaseEvent(mouse_event(
+        QEvent.Type.MouseButtonRelease, cursor.x(), cursor.y(),
+        Qt.MouseButton.LeftButton, Qt.MouseButton.NoButton,
+    ))
+
+
+@pytest.mark.parametrize("edge", ["left", "right"])
+@pytest.mark.parametrize("scale", [0.5, 1.0, 3.0])
+def test_side_pin_faces_screen_interior_after_docking_and_scaling(qapp, mini, settings, dock_screen, edge, scale):
+    work = dock_screen.availableGeometry()
+    x = work.left() + 5 if edge == "left" else work.right() - mini.width() - 4
+    drag_to(mini, QPoint(x, 300))
+    settings.set_mini_widget_scale(scale)
+    mini.apply_scale()
+    mini._pin_button.show()
+    qapp.processEvents()
+
+    pin = QRect(mini._pin_button.mapTo(mini, QPoint()), mini._pin_button.size())
+    content = mini._content.geometry()
+    if edge == "left":
+        assert pin.left() > content.right()
+    else:
+        assert pin.right() < content.left()
+    assert abs(pin.center().y() - content.center().y()) <= 1
+    assert mini.rect().contains(pin)
+    assert work.contains(mini.frameGeometry())
+
+
+@pytest.mark.parametrize("edge", ["left", "right", "top", "bottom"])
 def test_drag_snaps_to_each_edge_and_restores_after_restart(qapp, mini, settings, dock_screen, edge):
     work = dock_screen.availableGeometry()
     x, y = work.center().x(), work.center().y()
