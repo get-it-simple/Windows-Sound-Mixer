@@ -59,6 +59,17 @@ def test_start_opened_reopens_overlay_after_the_warm_up(qapp, fake_backend, sett
     assert overlay.isVisible()
 
 
+@windows_only
+def test_finished_warm_up_does_not_close_reopened_overlay(qapp, fake_backend, settings):
+    overlay = make_overlay(qapp, fake_backend, settings)
+    overlay._finish_warm_up()
+    overlay.show_on_start()
+
+    overlay._finish_warm_up()
+
+    assert overlay.isVisible()
+
+
 def test_show_on_start_shows_immediately_without_warm_up(qapp, fake_backend, settings):
     overlay = make_overlay(qapp, fake_backend, settings)
     overlay._warming_up = False

@@ -322,6 +322,8 @@ class OverlayWindow(QWidget):
         QTimer.singleShot(WARM_UP_HIDE_DELAY_MS, self._finish_warm_up)
 
     def _finish_warm_up(self) -> None:
+        if not self._warming_up:
+            return
         self._warming_up = False
         self.close()
         if self._show_after_warm_up:
