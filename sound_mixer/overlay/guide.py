@@ -12,12 +12,12 @@ from sound_mixer.i18n import t
 from sound_mixer.overlay.icons import load_icon
 
 
-def _get_sections(vertical: bool = False) -> list[tuple[str, list[tuple[str, str]]]]:
+def _get_sections(vertical: bool = False, mini_widget_enabled: bool = False) -> list[tuple[str, list[tuple[str, str]]]]:
     focus_desc = t("guide_arrows_focus_desc")
     volume_desc = t("guide_arrows_volume_desc")
     up_down_desc = volume_desc if vertical else focus_desc
     left_right_desc = focus_desc if vertical else volume_desc
-    return [
+    sections = [
         (
             t("guide_section_mouse"),
             [
@@ -45,6 +45,19 @@ def _get_sections(vertical: bool = False) -> list[tuple[str, list[tuple[str, str
             ],
         ),
     ]
+    if mini_widget_enabled:
+        sections.insert(2, (
+            t("guide_section_mini_widget"),
+            [
+                (t("guide_mini_scroll"), t("guide_mini_scroll_desc")),
+                (t("guide_mini_click"), t("guide_mini_click_desc")),
+                (t("guide_mini_hover"), t("guide_mini_hover_desc")),
+                (t("guide_mini_drag"), t("guide_mini_drag_desc")),
+                (t("guide_mini_dock"), t("guide_mini_dock_desc")),
+                (t("guide_mini_undock"), t("guide_mini_undock_desc")),
+            ],
+        ))
+    return sections
 
 
 _DIALOG_STYLE = """
@@ -215,9 +228,10 @@ class _FullSizeScrollArea(QScrollArea):
 
 
 class GuideDialog(QDialog):
-    def __init__(self, vertical: bool = False, parent=None) -> None:
+    def __init__(self, vertical: bool = False, parent=None, *, mini_widget_enabled: bool = False) -> None:
         super().__init__(parent)
         self._vertical = vertical
+        self._mini_widget_enabled = mini_widget_enabled
         self.setWindowTitle(t("controls_guide_title"))
         self.setWindowIcon(load_icon("logo"))
         self.setMinimumWidth(640)
@@ -254,7 +268,7 @@ class GuideDialog(QDialog):
         content_layout.setContentsMargins(16, 16, 16, 16)
         content_layout.setSpacing(20)
 
-        for title, rows in _get_sections(self._vertical):
+        for title, rows in _get_sections(self._vertical, self._mini_widget_enabled):
             content_layout.addWidget(self._build_section(title, rows, content))
 
         content_layout.addStretch(1)

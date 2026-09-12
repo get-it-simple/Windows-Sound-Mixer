@@ -922,7 +922,11 @@ class OverlayWindow(QWidget):
     def _show_guide(self) -> None:
         from sound_mixer.overlay.guide import GuideDialog
 
-        GuideDialog(vertical=self._vertical, parent=self).exec()
+        GuideDialog(
+            vertical=self._vertical,
+            parent=self,
+            mini_widget_enabled=self._settings.get_mini_widget_enabled(),
+        ).exec()
 
     def sync_subprocess_management_toggle(self) -> None:
         if self._subprocess_manager is None:

@@ -591,7 +591,11 @@ class SettingsWindow(QDialog):
     def _show_guide(self) -> None:
         from sound_mixer.overlay.guide import GuideDialog
 
-        GuideDialog(vertical=self._layout_mode_combo.currentData() == LAYOUT_VERTICAL, parent=self).exec()
+        GuideDialog(
+            vertical=self._layout_mode_combo.currentData() == LAYOUT_VERTICAL,
+            parent=self,
+            mini_widget_enabled=self._settings.get_mini_widget_enabled(),
+        ).exec()
 
     def accept(self) -> None:
         try:
