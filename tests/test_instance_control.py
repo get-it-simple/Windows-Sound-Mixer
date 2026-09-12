@@ -3,6 +3,8 @@ import sys
 import time
 import uuid
 
+import pytest
+
 from PySide6.QtNetwork import QLocalServer
 
 from sound_mixer.instance_control import CommandResult, InstanceController, send_command
@@ -96,3 +98,34 @@ def test_command_times_out_when_instance_does_not_acknowledge():
     finally:
         server.close()
         QLocalServer.removeServer(name)
+
+
+def test_update_shutdown_waits_for_slow_application_start(qapp, tmp_path, monkeypatch):
+    monkeypatch.setenv("USERDOMAIN", f"SoundMixer.Test.{uuid.uuid4()}")
+    started = tmp_path / "shutdown-started"
+    code = (
+        "import pathlib, sys; "
+        "from sound_mixer.__main__ import main; "
+        "pathlib.Path(sys.argv[1]).write_text('started'); "
+        "sys.argv = ['sound_mixer', '--shutdown-for-update']; "
+        "sys.exit(main())"
+    )
+    process = subprocess.Popen([sys.executable, "-c", code, str(started)])
+    shutdowns = []
+    controller = InstanceController(lambda: shutdowns.append(True))
+    try:
+        deadline = time.monotonic() + 10
+        while not started.is_file() and process.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert started.is_file()
+        with pytest.raises(subprocess.TimeoutExpired):
+            process.wait(timeout=6)
+
+        assert controller.start() is True
+        assert wait_for_process(qapp, process) == 0
+        assert shutdowns == [True]
+    finally:
+        controller.close()
+        if process.poll() is None:
+            process.terminate()
+        process.wait(timeout=5)

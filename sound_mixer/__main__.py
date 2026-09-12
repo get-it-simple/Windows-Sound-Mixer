@@ -13,7 +13,7 @@ def main() -> int:
 
     if "--shutdown-for-update" in sys.argv:
         qt_app = QCoreApplication.instance() or QCoreApplication(sys.argv)
-        result = send_command("shutdown", timeout_ms=5000)
+        result = send_command("shutdown", timeout_ms=30000)
         qt_app.processEvents()
         return 0 if result in {CommandResult.ACCEPTED, CommandResult.NOT_RUNNING} else 2
 
