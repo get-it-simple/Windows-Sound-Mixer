@@ -715,3 +715,25 @@ def test_mini_widget_taskbar_option_defaults_disabled_and_persists(settings):
     settings.set_mini_widget_show_above_taskbar(False)
     settings.load()
     assert settings.get_mini_widget_show_above_taskbar() is False
+
+
+@pytest.mark.parametrize("edge", ["", "left", "right", "top", "bottom"])
+def test_mini_widget_docking_round_trip(settings, edge):
+    assert settings.get_mini_widget_dock_edge() == ""
+    settings.set_mini_widget_position(-1000, 250, edge)
+    settings.load()
+    assert settings.get_mini_widget_position() == {"x": -1000, "y": 250}
+    assert settings.get_mini_widget_dock_edge() == edge
+    settings.set_mini_widget_position(-1100, 300)
+    settings.load()
+    assert settings.get_mini_widget_dock_edge() == edge
+
+
+def test_invalid_mini_widget_docking_falls_back_to_free_position(settings):
+    settings.data["mini_widget"]["dock_edge"] = "diagonal"
+    settings.save()
+    settings.load()
+    assert settings.get_mini_widget_dock_edge() == ""
+    settings.set_mini_widget_position(100, 200, "invalid")
+    settings.load()
+    assert settings.get_mini_widget_dock_edge() == ""

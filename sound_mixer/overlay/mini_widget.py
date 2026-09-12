@@ -1,12 +1,12 @@
-from PySide6.QtCore import QPoint, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QPoint, QRect, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QGuiApplication, QMouseEvent
 from PySide6.QtWidgets import (
+    QBoxLayout,
     QFrame,
     QGraphicsOpacityEffect,
     QGridLayout,
-    QHBoxLayout,
     QLabel,
-    QVBoxLayout,
+    QSlider,
     QWidget,
 )
 
@@ -14,12 +14,16 @@ from sound_mixer.i18n import t
 from sound_mixer.mixer.model import MixerEntry, MixerModel
 from sound_mixer.overlay.icons import DelayedTooltipButton, load_app_icon, load_icon
 from sound_mixer.settings.store import SettingsStore
-from sound_mixer.overlay.win_effects import raise_without_activating
+from sound_mixer.overlay.win_effects import get_accent_color, raise_without_activating
 
 POSITION_SAVE_DELAY_MS = 300
 PIN_HIDE_DELAY_MS = 600
 TASKBAR_RAISE_INTERVAL_MS = 250
 MIN_VISIBLE_PX = 48
+DRAG_UPDATE_INTERVAL_MS = 33
+SNAP_DISTANCE_PX = 8
+SNAP_RELEASE_DISTANCE_PX = 16
+BASE_SLIDER_WIDTH_PX = 6
 BASE_APP_ICON_PX = 32
 BASE_FONT_PX = 13
 BASE_ICON_PX = 16
@@ -28,6 +32,29 @@ BASE_SPACING_PX = 8
 BASE_ENTRY_RADIUS_PX = 10
 MUTED_OPACITY = 0.45
 MUTED_ICON_SCALE = 0.75
+
+
+def mini_slider_style(scale: float, accent_color: str) -> str:
+    width = max(1, round(2 * scale))
+    return f"""
+QSlider::groove:vertical {{
+    width: {width}px;
+    background: #555555;
+    border-radius: {width // 2}px;
+}}
+QSlider::add-page:vertical {{
+    width: {width}px;
+    background: {accent_color};
+    border-radius: {width // 2}px;
+}}
+QSlider::handle:vertical {{
+    width: 0px;
+    height: 0px;
+    margin: 0;
+    background: transparent;
+    border: none;
+}}
+"""
 
 
 class MiniEntryWidget(QFrame):
@@ -44,10 +71,19 @@ class MiniEntryWidget(QFrame):
         self._scale = 1.0
         self._background_transparency = 0.8
         self._volume_below_icon = False
+        self._vertical = False
+        self._slider_before_icon = False
 
         self._volume_label = QLabel(self)
         self._volume_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._volume_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+
+        self._slider = QSlider(Qt.Orientation.Vertical, self)
+        self._slider.setRange(0, 100)
+        self._slider.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._slider.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._slider.setEnabled(False)
+        self._slider.hide()
 
         self._icon_label = QLabel(self)
         self._icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -62,10 +98,11 @@ class MiniEntryWidget(QFrame):
         self._muted_icon_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self._muted_icon_label.hide()
 
-        layout = QVBoxLayout(self)
+        layout = QBoxLayout(QBoxLayout.Direction.TopToBottom, self)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._volume_label, 0, Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._icon_container, 0, Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self._slider, 0, Qt.AlignmentFlag.AlignCenter)
 
         self.apply_scale(1.0)
 
@@ -73,10 +110,35 @@ class MiniEntryWidget(QFrame):
         below = bool(below)
         if below == self._volume_below_icon:
             return
-        layout = self.layout()
-        layout.removeWidget(self._volume_label)
-        layout.insertWidget(1 if below else 0, self._volume_label, 0, Qt.AlignmentFlag.AlignCenter)
         self._volume_below_icon = below
+        self._update_layout()
+
+    def set_vertical(self, vertical: bool, *, slider_before_icon: bool = False) -> None:
+        if vertical == self._vertical and slider_before_icon == self._slider_before_icon:
+            return
+        self._vertical = vertical
+        self._slider_before_icon = slider_before_icon
+        self._update_layout()
+        self.apply_scale(self._scale)
+
+    def _update_layout(self) -> None:
+        layout = self.layout()
+        while layout.count():
+            layout.takeAt(0)
+        if self._vertical:
+            layout.setDirection(QBoxLayout.Direction.LeftToRight)
+            widgets = (self._slider, self._icon_container) if self._slider_before_icon else (
+                self._icon_container, self._slider
+            )
+        else:
+            layout.setDirection(QBoxLayout.Direction.TopToBottom)
+            widgets = (self._icon_container, self._volume_label) if self._volume_below_icon else (
+                self._volume_label, self._icon_container
+            )
+        self._volume_label.setVisible(not self._vertical)
+        self._slider.setVisible(self._vertical)
+        for widget in widgets:
+            layout.addWidget(widget, 0, Qt.AlignmentFlag.AlignCenter)
 
     def apply_scale(self, scale: float) -> None:
         self._scale = scale
@@ -98,8 +160,13 @@ class MiniEntryWidget(QFrame):
         layout.setContentsMargins(margin, margin, margin, margin)
         layout.setSpacing(spacing)
         text_height = self._volume_label.fontMetrics().height()
-        extent = max(icon_px, self._volume_label.sizeHint().width()) + 2 * margin
-        self.setFixedSize(extent, text_height + icon_px + spacing + 2 * margin)
+        self._slider.setStyleSheet(mini_slider_style(scale, get_accent_color()))
+        self._slider.setFixedSize(round(BASE_SLIDER_WIDTH_PX * scale), icon_px)
+        if self._vertical:
+            self.setFixedSize(icon_px + spacing + self._slider.width() + 2 * margin, icon_px + 2 * margin)
+        else:
+            extent = max(icon_px, self._volume_label.fontMetrics().horizontalAdvance("100%")) + 2 * margin
+            self.setFixedSize(extent, text_height + icon_px + spacing + 2 * margin)
         self._update_icon()
 
     def set_background_transparency(self, transparency: float) -> None:
@@ -116,6 +183,7 @@ class MiniEntryWidget(QFrame):
         self._entry = entry
         self.key = entry.key
         self._volume_label.setText(f"{round(entry.volume * 100)}%")
+        self._slider.setValue(round(entry.volume * 100))
         self._icon_effect.setOpacity(MUTED_OPACITY if entry.muted else 1.0)
         self._muted_icon_label.setVisible(entry.muted)
         self.setToolTip(entry.display_name)
@@ -152,27 +220,57 @@ class PinDragButton(DelayedTooltipButton):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._drag_offset: QPoint | None = None
+        self._drag_size = QSize()
+        self._pending_drag: QRect | None = None
+        self._drag_moved = False
+        self._drag_timer = QTimer(self)
+        self._drag_timer.setSingleShot(True)
+        self._drag_timer.setTimerType(Qt.TimerType.PreciseTimer)
+        self._drag_timer.setInterval(DRAG_UPDATE_INTERVAL_MS)
+        self._drag_timer.timeout.connect(self._flush_drag)
+
+    def _flush_drag(self) -> None:
+        if self._pending_drag is None:
+            return
+        rect = self._pending_drag
+        self._pending_drag = None
+        self.window().drag_to(rect)
+        self._drag_timer.start()
+
+    def cancel_drag(self) -> None:
+        self._drag_timer.stop()
+        self._pending_drag = None
+        self._drag_offset = None
+        self._drag_moved = False
 
     def is_dragging(self) -> bool:
         return self._drag_offset is not None
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
+            self.cancel_drag()
             self._drag_offset = event.globalPosition().toPoint() - self.window().pos()
+            self._drag_size = self.window().size()
             event.accept()
             return
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         if self._drag_offset is not None and event.buttons() & Qt.MouseButton.LeftButton:
-            self.window().move(event.globalPosition().toPoint() - self._drag_offset)
+            self._drag_moved = True
+            self._pending_drag = QRect(event.globalPosition().toPoint() - self._drag_offset, self._drag_size)
+            if not self._drag_timer.isActive():
+                self._flush_drag()
             event.accept()
             return
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         if self._drag_offset is not None:
-            self._drag_offset = None
+            if self._drag_moved:
+                self._pending_drag = QRect(event.globalPosition().toPoint() - self._drag_offset, self._drag_size)
+                self._flush_drag()
+            self.cancel_drag()
             self.window().finish_drag()
             event.accept()
             return
@@ -187,11 +285,15 @@ class MiniWidget(QWidget):
         self._model = model
         self._settings = settings
         self._enabled = False
+        self._dock_edge = self._settings.get_mini_widget_dock_edge()
         self._entries: dict[str, MiniEntryWidget] = {}
         self._pin_below_content: bool | None = None
+        self._pin_layout_state = None
+        self._updating_drag = False
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool
+            | Qt.WindowType.WindowDoesNotAcceptFocus
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
@@ -202,12 +304,12 @@ class MiniWidget(QWidget):
             "QLabel { color: #f2f2f5; background: transparent; }"
         )
 
-        self._outer_layout = QVBoxLayout(self)
+        self._outer_layout = QBoxLayout(QBoxLayout.Direction.TopToBottom, self)
         self._outer_layout.setContentsMargins(0, 0, 0, 0)
         self._outer_layout.setSpacing(0)
 
         self._pin_row = QWidget(self)
-        pin_layout = QHBoxLayout(self._pin_row)
+        pin_layout = QBoxLayout(QBoxLayout.Direction.LeftToRight, self._pin_row)
         pin_layout.setContentsMargins(0, 0, 0, 0)
         pin_layout.addStretch(1)
         self._pin_button = PinDragButton(self._pin_row)
@@ -258,6 +360,7 @@ class MiniWidget(QWidget):
         self.set_enabled(self._settings.get_mini_widget_enabled(), persist=False)
 
     def stop(self) -> None:
+        self._pin_button.cancel_drag()
         self._position_save_timer.stop()
         self._pin_hide_timer.stop()
         self._taskbar_timer.stop()
@@ -318,6 +421,7 @@ class MiniWidget(QWidget):
             raise_without_activating(self)
 
     def hideEvent(self, event) -> None:
+        self._pin_button.cancel_drag()
         self._taskbar_timer.stop()
         super().hideEvent(event)
 
@@ -326,28 +430,34 @@ class MiniWidget(QWidget):
             return screen.geometry()
         return screen.availableGeometry()
 
-    def _layout_entries(self, widgets: list[MiniEntryWidget]) -> None:
+    def _layout_entries(self, widgets: list[MiniEntryWidget], screen=None) -> None:
         while self._grid.count():
             self._grid.takeAt(0)
 
         spacing = round(BASE_SPACING_PX * self._settings.get_mini_widget_scale())
         self._grid.setHorizontalSpacing(spacing)
         self._grid.setVerticalSpacing(spacing)
-        cell_width = max(widget.width() for widget in widgets)
-        screen = QGuiApplication.screenAt(self.frameGeometry().center()) or QGuiApplication.primaryScreen()
-        available_width = self._screen_geometry(screen).width() if screen is not None else cell_width
-        max_columns = max(1, (available_width + spacing) // (cell_width + spacing))
-        columns = min(len(widgets), max_columns)
+        if screen is None:
+            screen = QGuiApplication.screenAt(self.frameGeometry().center()) or QGuiApplication.primaryScreen()
+        vertical = self._dock_edge in ("left", "right")
+        for widget in widgets:
+            widget.set_vertical(vertical, slider_before_icon=self._dock_edge == "right")
+        if vertical:
+            cell_height = max(widget.height() for widget in widgets)
+            available_height = self._screen_geometry(screen).height() if screen is not None else cell_height
+            rows = max(1, (available_height + spacing) // (cell_height + spacing))
+        else:
+            cell_width = max(widget.width() for widget in widgets)
+            available_width = self._screen_geometry(screen).width() if screen is not None else cell_width
+            columns = max(1, (available_width + spacing) // (cell_width + spacing))
 
         for index, widget in enumerate(widgets):
-            self._grid.addWidget(widget, index // columns, index % columns, Qt.AlignmentFlag.AlignCenter)
+            row, column = (index % rows, index // rows) if vertical else (index // columns, index % columns)
+            self._grid.addWidget(widget, row, column, Qt.AlignmentFlag.AlignCenter)
 
         self._content.adjustSize()
         content_hint = self._grid.sizeHint()
         self._content.setFixedSize(content_hint)
-        self._pin_row.setFixedWidth(content_hint.width())
-        width = max(content_hint.width(), self._pin_row.sizeHint().width())
-        self.setFixedSize(width, self._pin_row.height() + content_hint.height())
         self._update_pin_position()
 
     def _on_scrolled(self, key: str, direction: int) -> None:
@@ -364,11 +474,13 @@ class MiniWidget(QWidget):
         scale = self._settings.get_mini_widget_scale()
         icon_px = round(BASE_ICON_PX * scale)
         self._pin_button.setIconSize(QSize(icon_px, icon_px))
-        self._pin_row.setFixedHeight(icon_px + round(8 * scale))
+        pin_extent = icon_px + round(8 * scale)
+        self._pin_button.setFixedSize(pin_extent, pin_extent)
         for widget in self._entries.values():
             widget.apply_scale(scale)
         if self._entries:
             self._layout_entries(list(self._entries.values()))
+            self._ensure_on_screen()
 
     def retranslate(self) -> None:
         self._pin_button.setToolTip(t("mini_pin_tooltip"))
@@ -383,6 +495,39 @@ class MiniWidget(QWidget):
             self._pin_hide_timer.start(PIN_HIDE_DELAY_MS)
         super().leaveEvent(event)
 
+    def drag_to(self, rect: QRect) -> None:
+        previous_edge = self._dock_edge
+        self._dock_edge = ""
+        screens = QGuiApplication.screens()
+        screen = None
+        if screens:
+            screen = self._screen_for_rect(rect, screens)
+            available = self._screen_geometry(screen)
+            distances = {
+                "left": max(0, rect.left() - available.left()),
+                "right": max(0, available.right() - rect.right()),
+                "top": max(0, rect.top() - available.top()),
+                "bottom": max(0, available.bottom() - rect.bottom()),
+            }
+            edge = min(distances, key=lambda candidate: (distances[candidate], candidate != previous_edge))
+            if previous_edge and distances[previous_edge] <= SNAP_RELEASE_DISTANCE_PX:
+                self._dock_edge = previous_edge
+            elif distances[edge] <= SNAP_DISTANCE_PX:
+                self._dock_edge = edge
+        layout_changed = self._dock_edge != previous_edge
+        updates_enabled = self.updatesEnabled()
+        self._updating_drag = True
+        if layout_changed:
+            self.setUpdatesEnabled(False)
+        try:
+            if self._entries and layout_changed:
+                self._layout_entries(list(self._entries.values()), screen)
+            self._ensure_on_screen(QRect(rect.topLeft(), self.size()), screen)
+        finally:
+            self._updating_drag = False
+            if layout_changed:
+                self.setUpdatesEnabled(updates_enabled)
+
     def finish_drag(self) -> None:
         self._ensure_on_screen()
         self._schedule_position_save()
@@ -394,7 +539,8 @@ class MiniWidget(QWidget):
             self._pin_button.hide()
 
     def moveEvent(self, event) -> None:
-        self._update_pin_position()
+        if not self._updating_drag:
+            self._update_pin_position()
         self._schedule_position_save()
         super().moveEvent(event)
 
@@ -402,14 +548,16 @@ class MiniWidget(QWidget):
         self._position_save_timer.start(POSITION_SAVE_DELAY_MS)
 
     def _save_position(self) -> None:
-        self._settings.set_mini_widget_position(self.x(), self.y())
+        self._settings.set_mini_widget_position(self.x(), self.y(), self._dock_edge)
 
-    def _ensure_on_screen(self) -> None:
+    def _ensure_on_screen(self, rect: QRect | None = None, screen=None) -> None:
         screens = QGuiApplication.screens()
         if not screens:
             return
-        rect = self.frameGeometry()
-        screen = self._screen_for_rect(rect, screens)
+        if rect is None:
+            rect = self.frameGeometry()
+        if screen is None:
+            screen = self._screen_for_rect(rect, screens)
         if QGuiApplication.screenAt(rect.center()) is None:
             overlap = self._screen_geometry(screen).intersected(rect)
             if overlap.width() < min(MIN_VISIBLE_PX, rect.width()) or overlap.height() < min(
@@ -419,7 +567,15 @@ class MiniWidget(QWidget):
         available = self._screen_geometry(screen)
         x = min(max(rect.x(), available.left()), max(available.left(), available.right() - rect.width() + 1))
         y = min(max(rect.y(), available.top()), max(available.top(), available.bottom() - rect.height() + 1))
-        if x != rect.x() or y != rect.y():
+        if self._dock_edge == "left":
+            x = available.left()
+        elif self._dock_edge == "right":
+            x = max(available.left(), available.right() - rect.width() + 1)
+        elif self._dock_edge == "top":
+            y = available.top()
+        elif self._dock_edge == "bottom":
+            y = max(available.top(), available.bottom() - rect.height() + 1)
+        if x != self.x() or y != self.y():
             self.move(x, y)
         self._update_pin_position()
 
@@ -429,14 +585,40 @@ class MiniWidget(QWidget):
             return
         rect = self.frameGeometry()
         screen = self._screen_for_rect(rect, screens)
-        pin_below_content = rect.center().y() <= self._screen_geometry(screen).center().y()
+        vertical = self._dock_edge in ("left", "right")
+        pin_below_content = self._dock_edge == "top" or (
+            self._dock_edge == "" and (
+                self._pin_below_content if self._pin_below_content is not None
+                else rect.center().y() <= self._screen_geometry(screen).center().y()
+            )
+        )
+        pin_extent = self._pin_button.width()
+        content_size = self._content.size()
+        state = (vertical, self._dock_edge, pin_below_content, pin_extent, content_size)
+        if state == self._pin_layout_state:
+            return
+        self._pin_layout_state = state
         for widget in self._entries.values():
             widget.set_volume_below_icon(pin_below_content)
-        if pin_below_content == self._pin_below_content:
-            return
-        self._outer_layout.removeWidget(self._pin_row)
-        self._outer_layout.insertWidget(1 if pin_below_content else 0, self._pin_row)
+        pin_after_content = self._dock_edge == "left" if vertical else pin_below_content
+        self._outer_layout.setDirection(
+            QBoxLayout.Direction.LeftToRight if vertical else QBoxLayout.Direction.TopToBottom
+        )
+        self._pin_row.layout().setDirection(
+            QBoxLayout.Direction.TopToBottom if vertical else QBoxLayout.Direction.LeftToRight
+        )
+        if self._outer_layout.indexOf(self._pin_row) != int(pin_after_content):
+            self._outer_layout.removeWidget(self._pin_row)
+            self._outer_layout.insertWidget(int(pin_after_content), self._pin_row)
         self._pin_below_content = pin_below_content
+        if vertical:
+            self._pin_row.setFixedSize(pin_extent, content_size.height())
+            self.setFixedSize(content_size.width() + pin_extent, content_size.height())
+        else:
+            self._pin_row.setFixedSize(content_size.width(), pin_extent)
+            self.setFixedSize(content_size.width(), content_size.height() + pin_extent)
+        self._outer_layout.activate()
+        self._pin_row.layout().activate()
 
     def _screen_for_rect(self, rect, screens):
         screen = QGuiApplication.screenAt(rect.center())

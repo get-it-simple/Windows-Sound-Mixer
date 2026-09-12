@@ -1,6 +1,10 @@
+import pytest
+
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
-from sound_mixer.overlay.guide import GuideDialog
+from sound_mixer import i18n
+from sound_mixer.i18n import t
+from sound_mixer.overlay.guide import GuideDialog, _MarqueeLabel
 
 
 def test_guide_dialog_opens(qapp):
@@ -17,8 +21,9 @@ def test_guide_dialog_has_window_icon(qapp):
     assert not dialog.windowIcon().isNull()
 
 
-def test_guide_dialog_fits_screen_without_forced_scroll(qapp):
-    dialog = GuideDialog()
+@pytest.mark.parametrize("mini_widget_enabled", [False, True])
+def test_guide_dialog_fits_screen_without_forced_scroll(qapp, mini_widget_enabled):
+    dialog = GuideDialog(mini_widget_enabled=mini_widget_enabled)
     screen = QApplication.primaryScreen()
     available_height = screen.availableGeometry().height()
 
@@ -66,3 +71,49 @@ def test_settings_has_guide_button(qapp, settings):
     assert hasattr(window, "_guide_button")
     buttons = window.findChildren(QPushButton)
     assert any("guide" in b.text().lower() for b in buttons)
+
+
+@pytest.mark.parametrize("language", ["en", "uk"])
+@pytest.mark.parametrize("mini_widget_enabled", [False, True])
+def test_guide_mini_widget_controls_follow_enabled_state(qapp, language, mini_widget_enabled):
+    previous_language = i18n.get_current_language()
+    i18n.setup(language)
+    try:
+        dialog = GuideDialog(mini_widget_enabled=mini_widget_enabled)
+        texts = [label.text() for label in dialog.findChildren(QLabel)]
+        descriptions = [label.text() for label in dialog.findChildren(_MarqueeLabel)]
+
+        assert (t("guide_section_mini_widget").upper() in texts) == mini_widget_enabled
+        for action in ("scroll", "click", "hover", "drag", "dock", "undock"):
+            assert (t(f"guide_mini_{action}") in texts) == mini_widget_enabled
+            assert (t(f"guide_mini_{action}_desc") in descriptions) == mini_widget_enabled
+        dialog.close()
+    finally:
+        i18n.setup(previous_language)
+
+
+@pytest.mark.parametrize("source", ["overlay", "settings"])
+def test_guide_buttons_use_current_mini_widget_state(qapp, fake_backend, settings, monkeypatch, source):
+    from sound_mixer.mixer.model import MixerModel
+    from sound_mixer.overlay.window import OverlayWindow
+    from sound_mixer.settings_window.window import SettingsWindow
+
+    if source == "overlay":
+        window = OverlayWindow(MixerModel(fake_backend, settings), settings)
+    else:
+        window = SettingsWindow(settings)
+
+    shown_sections = []
+
+    def capture_dialog(dialog):
+        shown_sections.append([label.text() for label in dialog.findChildren(QLabel)])
+        return 0
+
+    monkeypatch.setattr(GuideDialog, "exec", capture_dialog)
+    for enabled in (False, True, False):
+        settings.set_mini_widget_enabled(enabled)
+        window._guide_button.click()
+
+    assert len(shown_sections) == 3
+    assert [t("guide_section_mini_widget").upper() in texts for texts in shown_sections] == [False, True, False]
+    window.close()

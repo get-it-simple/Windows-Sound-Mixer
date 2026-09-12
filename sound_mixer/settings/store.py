@@ -14,6 +14,7 @@ from sound_mixer.settings.schema import (
     LAYOUT_MODES,
     MAX_UI_SCALE,
     MIN_UI_SCALE,
+    MINI_WIDGET_DOCK_EDGES,
 )
 from sound_mixer.volume import clamp_volume
 
@@ -330,8 +331,14 @@ class SettingsStore:
         state = self.data["mini_widget"]
         return {"x": int(state["x"]), "y": int(state["y"])}
 
-    def set_mini_widget_position(self, x: int, y: int) -> None:
+    def get_mini_widget_dock_edge(self) -> str:
+        edge = self.data["mini_widget"]["dock_edge"]
+        return edge if edge in MINI_WIDGET_DOCK_EDGES else ""
+
+    def set_mini_widget_position(self, x: int, y: int, dock_edge: str | None = None) -> None:
         self.data["mini_widget"].update({"x": int(x), "y": int(y)})
+        if dock_edge is not None:
+            self.data["mini_widget"]["dock_edge"] = dock_edge if dock_edge in MINI_WIDGET_DOCK_EDGES else ""
         self._request_save()
 
     @staticmethod

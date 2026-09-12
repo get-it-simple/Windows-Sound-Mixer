@@ -1,4 +1,4 @@
-CURRENT_VERSION = 11
+CURRENT_VERSION = 12
 
 MIN_UI_SCALE = 0.5
 MAX_UI_SCALE = 3.0
@@ -6,6 +6,7 @@ MAX_UI_SCALE = 3.0
 LAYOUT_HORIZONTAL = "horizontal"
 LAYOUT_VERTICAL = "vertical"
 LAYOUT_MODES = (LAYOUT_HORIZONTAL, LAYOUT_VERTICAL)
+MINI_WIDGET_DOCK_EDGES = ("", "left", "right", "top", "bottom")
 
 DEFAULT_HOTKEYS = [
     {"action": "toggle_overlay", "combo": "ctrl+alt+num5", "enabled": True},
@@ -49,6 +50,7 @@ DEFAULT_SETTINGS = {
         "apps": [],
     },
     "mini_widget": {
+        "dock_edge": "",
         "enabled": False,
         "background_transparency": 0.8,
         "show_master": False,
