@@ -70,6 +70,7 @@ class MiniEntryWidget(QFrame):
         self._background_transparency = 0.8
         self._volume_below_icon = False
         self._vertical = False
+        self._slider_before_icon = False
 
         self._volume_label = QLabel(self)
         self._volume_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -110,10 +111,11 @@ class MiniEntryWidget(QFrame):
         self._volume_below_icon = below
         self._update_layout()
 
-    def set_vertical(self, vertical: bool) -> None:
-        if vertical == self._vertical:
+    def set_vertical(self, vertical: bool, *, slider_before_icon: bool = False) -> None:
+        if vertical == self._vertical and slider_before_icon == self._slider_before_icon:
             return
         self._vertical = vertical
+        self._slider_before_icon = slider_before_icon
         self._update_layout()
         self.apply_scale(self._scale)
 
@@ -123,7 +125,9 @@ class MiniEntryWidget(QFrame):
             layout.takeAt(0)
         if self._vertical:
             layout.setDirection(QBoxLayout.Direction.LeftToRight)
-            widgets = (self._icon_container, self._slider)
+            widgets = (self._slider, self._icon_container) if self._slider_before_icon else (
+                self._icon_container, self._slider
+            )
         else:
             layout.setDirection(QBoxLayout.Direction.TopToBottom)
             widgets = (self._icon_container, self._volume_label) if self._volume_below_icon else (
@@ -402,7 +406,7 @@ class MiniWidget(QWidget):
         screen = QGuiApplication.screenAt(self.frameGeometry().center()) or QGuiApplication.primaryScreen()
         vertical = self._dock_edge in ("left", "right")
         for widget in widgets:
-            widget.set_vertical(vertical)
+            widget.set_vertical(vertical, slider_before_icon=self._dock_edge == "right")
         if vertical:
             cell_height = max(widget.height() for widget in widgets)
             available_height = self._screen_geometry(screen).height() if screen is not None else cell_height

@@ -558,6 +558,11 @@ def test_dock_layout_and_pin_update_before_mouse_release(qapp, mini, dock_screen
         assert mini._pin_button.is_dragging()
         assert getattr(mini.frameGeometry(), edge)() == getattr(work, edge)()
         assert mini._entries["aurora.exe"]._slider.isVisible() == (edge in ("left", "right"))
+        for entry in mini._entries.values():
+            if edge == "left":
+                assert entry._slider.geometry().left() > entry._icon_container.geometry().right()
+            elif edge == "right":
+                assert entry._slider.geometry().right() < entry._icon_container.geometry().left()
         pin = QRect(mini._pin_button.mapTo(mini, QPoint()), mini._pin_button.size())
         content = mini._content.geometry()
         if edge == "left":
@@ -715,7 +720,10 @@ def test_side_dock_slider_is_vertical_and_fits_tile_height(qapp, mini, settings,
     assert slider.height() == entry._icon_container.height()
     assert slider.width() < slider.height() / 3
     assert slider.geometry().top() == entry._icon_container.geometry().top()
-    assert slider.geometry().left() > entry._icon_container.geometry().right()
+    if edge == "left":
+        assert slider.geometry().left() > entry._icon_container.geometry().right()
+    else:
+        assert slider.geometry().right() < entry._icon_container.geometry().left()
     assert entry.rect().contains(slider.geometry())
     assert getattr(mini.frameGeometry(), edge)() == getattr(work, edge)()
 
