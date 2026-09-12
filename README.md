@@ -92,7 +92,13 @@ non-Windows platforms.
 - Mouse, scroll wheel, and layout-aware arrow-key controls.
 - Configurable global hotkeys, including overlay and mini-widget toggles,
   volume adjustment, focus navigation, and mute.
-- Optional transparent mini widget for quick volume and mute control.
+- Optional transparent mini widget for quick volume and mute control. Drag its
+  pin within 24 pixels of a screen edge and release to dock. Left/right docking
+  stacks applications from top to bottom with display-only volume sliders;
+  scrolling adjusts volume and clicking toggles mute as before. Top/bottom
+  docking keeps the horizontal view. Drag away from the edge to undock.
+- Settings grouped into Application, Volume, Main widget, and Mini widget
+  categories, with separate hotkey and application-list tabs.
 - Whitelist and ignored-app filters shared by the overlay and mini widget.
 - System tray controls, optional launch at Windows login, and a setting to show
   the overlay immediately on startup.
@@ -149,7 +155,7 @@ removes settings and rotating logs for that user.
 | `language`             | string          | UI language code (`"en"`, `"uk"`) or `"system"` to follow the Windows locale. Defaults to `"system"`. Changes take effect immediately when saved from Settings. |
 | `subprocess_management` | object          | `{ "interval_seconds": int, "apps": [{ "path": string, "enabled": bool }] }` - shared polling interval and the list of host executables (e.g. sandbox/launcher apps) whose child processes need active background scanning because they don't trigger the normal session-created event. The scan itself is also gated by a session-only on/off switch in the overlay (not persisted - always starts off). |
 | `whitelist`             | object          | `{ "enabled": bool, "apps": [{ "path": string, "enabled": bool }] }` - optional display filter for both the main overlay and mini widget. Hold the left mouse button on a row's drag handle in Settings and drag vertically within the list to reorder it; enabled apps follow that order in both widgets, with unlisted apps afterward when filtering is off. Full normalized paths distinguish same-named apps; bare session names fall back to matching an enabled path's file name. |
-| `mini_widget`           | object          | `{ "enabled": bool, "x": int, "y": int, "scale": float, "background_transparency": float, "show_master": bool, "show_above_taskbar": bool }` - mini widget visibility, position, independent 0.5-3.0 scale, app tile background transparency (0 = opaque, 1 = transparent; default 0.8), optional master volume in first position (default false), and display above the taskbar (default false). Enabling display above the taskbar allows placement across the full screen, including the taskbar area, and maintains window stacking without taking keyboard focus. Disabling it moves the widget back into the work area. |
+| `mini_widget`           | object          | `{ "enabled": bool, "x": int, "y": int, "dock_edge": string, "scale": float, "background_transparency": float, "show_master": bool, "show_above_taskbar": bool }` - mini widget visibility, position, independent 0.5-3.0 scale, app tile background transparency (0 = opaque, 1 = transparent; default 0.8), optional master volume in first position (default false), and display above the taskbar (default false). Enabling display above the taskbar allows placement across the full screen, including the taskbar area, and maintains window stacking without taking keyboard focus. Disabling it moves the widget back into the work area. `dock_edge` is `""` (free, the default), `"left"`, `"right"`, `"top"`, or `"bottom"`; docking survives restarts, scale changes, and session updates. Side docking uses a vertical app list with non-interactive volume indicators, wrapping into additional columns when needed. Settings schema 12 adds docking without changing existing positions or preferences. |
 
 ### Hotkey actions
 

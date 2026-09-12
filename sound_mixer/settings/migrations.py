@@ -116,6 +116,15 @@ def _migrate_10_to_11(data: dict) -> dict:
     return data
 
 
+def _migrate_11_to_12(data: dict) -> dict:
+    data = dict(data)
+    mini_widget = dict(data.get("mini_widget") or {})
+    mini_widget.setdefault("dock_edge", "")
+    data["mini_widget"] = mini_widget
+    data["version"] = 12
+    return data
+
+
 MIGRATIONS = {
     0: _migrate_0_to_1,
     1: _migrate_1_to_2,
@@ -128,6 +137,7 @@ MIGRATIONS = {
     8: _migrate_8_to_9,
     9: _migrate_9_to_10,
     10: _migrate_10_to_11,
+    11: _migrate_11_to_12,
 }
 
 

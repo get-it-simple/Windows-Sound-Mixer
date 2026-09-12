@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSpinBox,
     QTabWidget,
+    QToolBox,
     QVBoxLayout,
     QWidget,
 )
@@ -336,44 +337,49 @@ class SettingsWindow(QDialog):
         layout.addWidget(buttons)
 
     def _build_general_tab(self) -> QWidget:
-        tab = QWidget(self)
-        layout = QVBoxLayout(tab)
+        tab = QToolBox(self)
+        tab.setObjectName("settingsCategories")
+        groups = {}
+        for key in ("settings_application", "settings_volume", "settings_overlay", "settings_mini_widget"):
+            page = QWidget(tab)
+            page.setObjectName(key)
+            groups[key] = QVBoxLayout(page)
 
         self._autostart_checkbox = QCheckBox(tab)
         self._autostart_checkbox.setObjectName("autostartToggle")
         self._autostart_checkbox.setStyleSheet(toggle_switch_style("autostartToggle"))
         self._autostart_checkbox.setChecked(self._settings.get_autostart_enabled())
-        layout.addWidget(self._field(t("start_with_windows"), self._autostart_checkbox, tab))
+        groups["settings_application"].addWidget(self._field(t("start_with_windows"), self._autostart_checkbox, tab))
 
         self._start_opened_checkbox = QCheckBox(tab)
         self._start_opened_checkbox.setObjectName("startOpenedToggle")
         self._start_opened_checkbox.setStyleSheet(toggle_switch_style("startOpenedToggle"))
         self._start_opened_checkbox.setChecked(self._settings.get_visible_on_start())
-        layout.addWidget(self._field(t("start_opened"), self._start_opened_checkbox, tab))
+        groups["settings_overlay"].addWidget(self._field(t("start_opened"), self._start_opened_checkbox, tab))
 
         self._transparency_checkbox = QCheckBox(tab)
         self._transparency_checkbox.setObjectName("transparencyToggle")
         self._transparency_checkbox.setStyleSheet(toggle_switch_style("transparencyToggle"))
         self._transparency_checkbox.setChecked(self._settings.get_transparency_enabled())
-        layout.addWidget(self._field(t("transparent_overlay_background"), self._transparency_checkbox, tab))
+        groups["settings_overlay"].addWidget(self._field(t("transparent_overlay_background"), self._transparency_checkbox, tab))
 
         self._mini_widget_checkbox = QCheckBox(tab)
         self._mini_widget_checkbox.setObjectName("miniWidgetToggle")
         self._mini_widget_checkbox.setStyleSheet(toggle_switch_style("miniWidgetToggle"))
         self._mini_widget_checkbox.setChecked(self._settings.get_mini_widget_enabled())
-        layout.addWidget(self._field(t("show_mini_widget"), self._mini_widget_checkbox, tab))
+        groups["settings_mini_widget"].addWidget(self._field(t("show_mini_widget"), self._mini_widget_checkbox, tab))
 
         self._mini_widget_taskbar_checkbox = QCheckBox(tab)
         self._mini_widget_taskbar_checkbox.setObjectName("miniWidgetTaskbarToggle")
         self._mini_widget_taskbar_checkbox.setStyleSheet(toggle_switch_style("miniWidgetTaskbarToggle"))
         self._mini_widget_taskbar_checkbox.setChecked(self._settings.get_mini_widget_show_above_taskbar())
-        layout.addWidget(self._field(t("mini_widget_show_above_taskbar"), self._mini_widget_taskbar_checkbox, tab))
+        groups["settings_mini_widget"].addWidget(self._field(t("mini_widget_show_above_taskbar"), self._mini_widget_taskbar_checkbox, tab))
 
         self._mini_widget_master_checkbox = QCheckBox(tab)
         self._mini_widget_master_checkbox.setObjectName("miniWidgetMasterToggle")
         self._mini_widget_master_checkbox.setStyleSheet(toggle_switch_style("miniWidgetMasterToggle"))
         self._mini_widget_master_checkbox.setChecked(self._settings.get_mini_widget_show_master())
-        layout.addWidget(self._field(t("mini_widget_show_master"), self._mini_widget_master_checkbox, tab))
+        groups["settings_mini_widget"].addWidget(self._field(t("mini_widget_show_master"), self._mini_widget_master_checkbox, tab))
 
         self._mini_widget_transparency_spinbox = QSpinBox(tab)
         self._mini_widget_transparency_spinbox.setRange(0, 100)
@@ -381,32 +387,32 @@ class SettingsWindow(QDialog):
         self._mini_widget_transparency_spinbox.setValue(
             round(self._settings.get_mini_widget_background_transparency() * 100)
         )
-        layout.addWidget(self._field(t("mini_widget_background_transparency"), self._mini_widget_transparency_spinbox, tab))
+        groups["settings_mini_widget"].addWidget(self._field(t("mini_widget_background_transparency"), self._mini_widget_transparency_spinbox, tab))
 
         self._tooltip_delay_spinbox = QSpinBox(tab)
         self._tooltip_delay_spinbox.setRange(0, 10000)
         self._tooltip_delay_spinbox.setSingleStep(100)
         self._tooltip_delay_spinbox.setSuffix(" ms")
         self._tooltip_delay_spinbox.setValue(self._settings.get_tooltip_delay_ms())
-        layout.addWidget(self._field(t("tooltip_delay"), self._tooltip_delay_spinbox, tab))
+        groups["settings_application"].addWidget(self._field(t("tooltip_delay"), self._tooltip_delay_spinbox, tab))
 
         self._arrow_step_spinbox = QSpinBox(tab)
         self._arrow_step_spinbox.setRange(1, 100)
         self._arrow_step_spinbox.setSuffix(" %")
         self._arrow_step_spinbox.setValue(round(self._settings.get_arrow_step() * 100))
-        layout.addWidget(self._field(t("arrow_key_volume_step"), self._arrow_step_spinbox, tab))
+        groups["settings_volume"].addWidget(self._field(t("arrow_key_volume_step"), self._arrow_step_spinbox, tab))
 
         self._scroll_step_spinbox = QSpinBox(tab)
         self._scroll_step_spinbox.setRange(1, 100)
         self._scroll_step_spinbox.setSuffix(" %")
         self._scroll_step_spinbox.setValue(round(self._settings.get_scroll_step() * 100))
-        layout.addWidget(self._field(t("scroll_volume_step"), self._scroll_step_spinbox, tab))
+        groups["settings_volume"].addWidget(self._field(t("scroll_volume_step"), self._scroll_step_spinbox, tab))
 
         self._default_app_volume_spinbox = QSpinBox(tab)
         self._default_app_volume_spinbox.setRange(0, 100)
         self._default_app_volume_spinbox.setSuffix(" %")
         self._default_app_volume_spinbox.setValue(round(self._settings.get_default_app_volume() * 100))
-        layout.addWidget(self._field(t("default_volume_for_new_apps"), self._default_app_volume_spinbox, tab))
+        groups["settings_volume"].addWidget(self._field(t("default_volume_for_new_apps"), self._default_app_volume_spinbox, tab))
 
         scale_row = QWidget(tab)
         scale_layout = QHBoxLayout(scale_row)
@@ -424,7 +430,7 @@ class SettingsWindow(QDialog):
 
         scale_layout.addWidget(self._ui_scale_slider)
         scale_layout.addWidget(self._ui_scale_label)
-        layout.addWidget(self._field(t("overlay_scale"), scale_row, tab))
+        groups["settings_overlay"].addWidget(self._field(t("overlay_scale"), scale_row, tab))
 
         mini_scale_row = QWidget(tab)
         mini_scale_layout = QHBoxLayout(mini_scale_row)
@@ -442,7 +448,7 @@ class SettingsWindow(QDialog):
 
         mini_scale_layout.addWidget(self._mini_widget_scale_slider)
         mini_scale_layout.addWidget(self._mini_widget_scale_label)
-        layout.addWidget(self._field(t("mini_widget_scale"), mini_scale_row, tab))
+        groups["settings_mini_widget"].addWidget(self._field(t("mini_widget_scale"), mini_scale_row, tab))
 
         self._layout_mode_combo = QComboBox(tab)
         self._layout_mode_combo.addItem(t("layout_horizontal"), LAYOUT_HORIZONTAL)
@@ -450,7 +456,7 @@ class SettingsWindow(QDialog):
         mode_index = self._layout_mode_combo.findData(self._settings.get_layout_mode())
         if mode_index >= 0:
             self._layout_mode_combo.setCurrentIndex(mode_index)
-        layout.addWidget(self._field(t("overlay_layout"), self._layout_mode_combo, tab))
+        groups["settings_overlay"].addWidget(self._field(t("overlay_layout"), self._layout_mode_combo, tab))
 
         self._language_combo = QComboBox(tab)
         self._language_combo.addItem(t("language_system"), "system")
@@ -460,19 +466,25 @@ class SettingsWindow(QDialog):
         idx = self._language_combo.findData(current_language)
         if idx >= 0:
             self._language_combo.setCurrentIndex(idx)
-        layout.addWidget(self._field(t("language"), self._language_combo, tab))
+        groups["settings_application"].addWidget(self._field(t("language"), self._language_combo, tab))
 
         self._guide_button = QPushButton(t("controls_guide_button"), tab)
         self._guide_button.clicked.connect(self._show_guide)
-        layout.addWidget(self._guide_button)
-        layout.addStretch(1)
+        groups["settings_application"].addWidget(self._guide_button)
+        hint = QLabel(t("mini_widget_docking_hint"), tab)
+        hint.setWordWrap(True)
+        groups["settings_mini_widget"].addWidget(hint)
 
-        scroll = QScrollArea(self)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setWidget(tab)
-        scroll.setMinimumWidth(tab.sizeHint().width() + 24)
-        return scroll
+        for key, group_layout in groups.items():
+            group_layout.addStretch(1)
+            page = group_layout.parentWidget()
+            scroll = QScrollArea(tab)
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.Shape.NoFrame)
+            scroll.setWidget(page)
+            scroll.setMinimumWidth(page.sizeHint().width() + 24)
+            tab.addItem(scroll, t(key))
+        return tab
 
     def _on_ui_scale_changed(self, value: int) -> None:
         self._ui_scale_label.setText(f"{value}%")

@@ -5,6 +5,36 @@ from sound_mixer.overlay.window import OverlayWindow
 from sound_mixer.settings_window.window import SettingsWindow
 
 
+def test_general_settings_are_grouped_and_all_categories_are_accessible(qapp, settings):
+    from PySide6.QtWidgets import QToolBox
+    from sound_mixer.i18n import t
+
+    window = SettingsWindow(settings)
+    window.show()
+    categories = window.findChild(QToolBox, "settingsCategories")
+    groups = {
+        "settings_application": [window._autostart_checkbox, window._language_combo, window._tooltip_delay_spinbox, window._guide_button],
+        "settings_volume": [window._arrow_step_spinbox, window._scroll_step_spinbox, window._default_app_volume_spinbox],
+        "settings_overlay": [window._start_opened_checkbox, window._transparency_checkbox, window._ui_scale_slider, window._layout_mode_combo],
+        "settings_mini_widget": [window._mini_widget_checkbox, window._mini_widget_scale_slider, window._mini_widget_master_checkbox,
+                                 window._mini_widget_taskbar_checkbox, window._mini_widget_transparency_spinbox],
+    }
+    assert categories.count() == len(groups)
+    for index, (key, controls) in enumerate(groups.items()):
+        assert categories.itemText(index) == t(key)
+        categories.setCurrentIndex(index)
+        qapp.processEvents()
+        scroll = categories.widget(index)
+        assert scroll.widget().objectName() == key
+        for control in controls:
+            assert scroll.widget().isAncestorOf(control)
+            scroll.ensureWidgetVisible(control)
+            qapp.processEvents()
+            assert control.isVisible()
+            assert scroll.viewport().rect().intersects(control.rect().translated(control.mapTo(scroll.viewport(), control.rect().topLeft())))
+    window.close()
+
+
 def test_initial_field_values(qapp, settings):
     window = SettingsWindow(settings)
 

@@ -1,6 +1,7 @@
 import pytest
-from PySide6.QtCore import QEvent, QPoint, QPointF, QSize, Qt
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QSize, Qt
 from PySide6.QtGui import QEnterEvent, QMouseEvent, QWheelEvent
+from PySide6.QtTest import QTest
 
 from sound_mixer.audio.fake_backend import FakeAudioBackend, FakeAudioSession
 from sound_mixer.mixer.model import MixerModel
@@ -12,6 +13,7 @@ from sound_mixer.overlay.mini_widget import (
     BASE_SPACING_PX,
     MUTED_ICON_SCALE,
     MUTED_OPACITY,
+    SNAP_DISTANCE_PX,
     MiniWidget,
 )
 from sound_mixer.overlay.window import OverlayWindow
@@ -483,3 +485,253 @@ def test_empty_mini_widget_does_not_keep_taskbar_timer_running(qapp, settings):
     assert not mini._taskbar_timer.isActive()
     mini.stop()
     mini.close()
+
+
+@pytest.fixture
+def dock_screen(monkeypatch):
+    from types import SimpleNamespace
+
+    work = QRect(-1200, 100, 1200, 800)
+    full = work.adjusted(0, 0, 0, 40)
+    screen = SimpleNamespace(geometry=lambda: full, availableGeometry=lambda: work)
+    monkeypatch.setattr("sound_mixer.overlay.mini_widget.QGuiApplication", SimpleNamespace(
+        screens=lambda: [screen], screenAt=lambda point: screen if full.contains(point) else None,
+        primaryScreen=lambda: screen,
+    ))
+    return screen
+
+
+def drag_to(widget, position):
+    press = widget.pos() + QPoint(widget.width() // 2, widget._pin_row.y() + 4)
+    release = press + position - widget.pos()
+    widget._pin_button.mousePressEvent(mouse_event(
+        QEvent.Type.MouseButtonPress, press.x(), press.y(),
+        Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+    ))
+    widget._pin_button.mouseMoveEvent(mouse_event(
+        QEvent.Type.MouseMove, release.x(), release.y(),
+        Qt.MouseButton.NoButton, Qt.MouseButton.LeftButton,
+    ))
+    widget._pin_button.mouseReleaseEvent(mouse_event(
+        QEvent.Type.MouseButtonRelease, release.x(), release.y(),
+        Qt.MouseButton.LeftButton, Qt.MouseButton.NoButton,
+    ))
+
+
+@pytest.mark.parametrize("edge", ["left", "right", "top", "bottom"])
+def test_drag_snaps_to_each_edge_and_restores_after_restart(qapp, mini, settings, dock_screen, edge):
+    work = dock_screen.availableGeometry()
+    x, y = work.center().x(), work.center().y()
+    gap = SNAP_DISTANCE_PX - 1
+    if edge == "left":
+        x = work.left() + gap
+    elif edge == "right":
+        x = work.right() - mini.width() + 1 - gap
+    elif edge == "top":
+        y = work.top() + gap
+    else:
+        y = work.bottom() - mini.height() + 1 - gap
+
+    drag_to(mini, QPoint(x, y))
+    qapp.processEvents()
+
+    assert getattr(mini.frameGeometry(), edge)() == getattr(work, edge)()
+    vertical = edge in ("left", "right")
+    entries = list(mini._entries.values())
+    assert mini._grid.itemAtPosition(1 if vertical else 0, 0 if vertical else 1).widget() is entries[1]
+    assert entries[0]._slider.isVisible() == vertical
+    assert entries[0]._volume_label.isVisible() != vertical
+    assert work.contains(mini.frameGeometry())
+    mini.stop()
+    settings.load()
+    assert settings.get_mini_widget_dock_edge() == edge
+    restored = MiniWidget(mini._model, settings)
+    try:
+        restored.set_enabled(True)
+        qapp.processEvents()
+        assert restored.frameGeometry() == mini.frameGeometry()
+        assert restored._entries[entries[0].key]._slider.isVisible() == vertical
+    finally:
+        restored.stop()
+        restored.close()
+
+
+def test_dragging_away_restores_percentages_and_horizontal_order(qapp, mini, settings, dock_screen):
+    work = dock_screen.availableGeometry()
+    drag_to(mini, QPoint(work.left() + 5, work.center().y()))
+    mini._on_scrolled("lumen.exe", -1)
+
+    drag_to(mini, work.center())
+    qapp.processEvents()
+    mini._save_position()
+    settings.load()
+
+    assert settings.get_mini_widget_dock_edge() == ""
+    assert mini.pos() == work.center()
+    assert mini._grid.itemAtPosition(0, 1).widget().key == "lumen.exe"
+    assert mini._entries["lumen.exe"]._volume_label.isVisible()
+    assert mini._entries["lumen.exe"]._volume_label.text() == "98%"
+    assert mini._entries["lumen.exe"]._slider.isHidden()
+
+
+def test_drag_outside_snap_distance_stays_free(mini, dock_screen, settings):
+    work = dock_screen.availableGeometry()
+    position = QPoint(work.left() + SNAP_DISTANCE_PX + 1, work.center().y())
+    drag_to(mini, position)
+    mini._save_position()
+    assert mini.pos() == position
+    assert settings.get_mini_widget_dock_edge() == ""
+    assert mini._entries["aurora.exe"]._volume_label.isVisible()
+
+
+@pytest.mark.parametrize("edge", ["left", "right", "top", "bottom"])
+def test_docking_survives_scale_and_session_changes(qapp, mini, settings, fake_backend, dock_screen, edge):
+    work = dock_screen.availableGeometry()
+    position = QPoint(work.left() + 1 if edge == "left" else work.right() - mini.width(), work.center().y())
+    if edge in ("top", "bottom"):
+        position = QPoint(work.center().x(), work.top() + 1 if edge == "top" else work.bottom() - mini.height())
+    drag_to(mini, position)
+    settings.set_mini_widget_scale(2)
+    mini.apply_scale()
+    fake_backend.add_session(FakeAudioSession(pid=300, process_name="third.exe", display_name="Third"))
+    mini._model.refresh()
+    mini.refresh_view()
+    qapp.processEvents()
+
+    assert getattr(mini.frameGeometry(), edge)() == getattr(work, edge)()
+    assert work.contains(mini.frameGeometry())
+    assert len(mini._entries) == 3
+    entry = mini._entries["third.exe"]
+    assert entry._icon_label.width() == BASE_APP_ICON_PX * 2
+    assert entry._slider.isVisible() == (edge in ("left", "right"))
+
+
+@pytest.mark.parametrize("edge", ["left", "right"])
+@pytest.mark.parametrize("scale", [0.5, 1.0, 1.5, 3.0])
+def test_side_dock_slider_is_vertical_and_fits_tile_height(qapp, mini, settings, dock_screen, edge, scale):
+    work = dock_screen.availableGeometry()
+    x = work.left() + 5 if edge == "left" else work.right() - mini.width() - 4
+    drag_to(mini, QPoint(x, 300))
+    settings.set_mini_widget_scale(scale)
+    mini.apply_scale()
+    qapp.processEvents()
+
+    entry = mini._entries["lumen.exe"]
+    slider = entry._slider
+    margins = entry.layout().contentsMargins()
+    assert slider.isVisible()
+    assert slider.orientation() == Qt.Orientation.Vertical
+    assert slider.height() == entry.height() - margins.top() - margins.bottom()
+    assert slider.height() == entry._icon_container.height()
+    assert slider.width() < slider.height() / 3
+    assert slider.geometry().top() == entry._icon_container.geometry().top()
+    assert slider.geometry().left() > entry._icon_container.geometry().right()
+    assert entry.rect().contains(slider.geometry())
+    assert getattr(mini.frameGeometry(), edge)() == getattr(work, edge)()
+
+
+@pytest.mark.parametrize("scale", [0.5, 1.0, 1.5, 3.0])
+def test_mini_indicator_renders_volume_without_a_handle(qapp, mini, settings, dock_screen, monkeypatch, scale):
+    monkeypatch.setattr("sound_mixer.overlay.mini_widget.get_accent_color", lambda: "#3a96dd")
+    drag_to(mini, QPoint(dock_screen.availableGeometry().left() + 5, 300))
+    settings.set_mini_widget_scale(scale)
+    mini.apply_scale()
+    mini._model.focus_key("lumen.exe")
+    fills = []
+    for volume in (0.0, 0.5, 1.0):
+        mini._model.set_volume(volume)
+        mini.refresh_view()
+        qapp.processEvents()
+        rendered = mini._entries["lumen.exe"]._slider.grab().toImage()
+        pixels = [rendered.pixelColor(x, y).name()
+                  for x in range(rendered.width()) for y in range(rendered.height())]
+        assert "#ffffff" not in pixels
+        column = [rendered.pixelColor(rendered.width() // 2, y).name() for y in range(rendered.height())]
+        fills.append(column.count("#3a96dd"))
+        if volume == 0.5:
+            assert column[rendered.height() // 4] == "#555555"
+            assert column[3 * rendered.height() // 4] == "#3a96dd"
+    assert fills[0] == 0
+    assert 0 < fills[1] < fills[2]
+    assert fills[1] == pytest.approx(fills[2] / 2, abs=2)
+
+
+def test_vertical_indicator_preserves_click_wheel_and_model_sync(qapp, mini, dock_screen, fake_backend):
+    drag_to(mini, QPoint(dock_screen.availableGeometry().left() + 5, 300))
+    qapp.processEvents()
+    entry = mini._entries["lumen.exe"]
+    slider = entry._slider
+    assert slider.isVisible()
+    assert not slider.isEnabled()
+    assert slider.focusPolicy() == Qt.FocusPolicy.NoFocus
+    assert slider.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+    point = slider.geometry().center()
+    assert entry.childAt(point) is None
+    QTest.mouseClick(entry, Qt.MouseButton.LeftButton, pos=point)
+    assert mini._model.focused_entry.key == "lumen.exe"
+    assert mini._model.focused_entry.muted
+    assert slider.value() == 100
+    assert entry._muted_icon_label.isVisible()
+    qapp.sendEvent(entry, wheel_event(-1))
+    assert mini._model.focused_entry.volume == pytest.approx(0.98)
+    assert slider.value() == 98
+    assert mini._entries["aurora.exe"]._slider.value() == 100
+    assert fake_backend.get_master_volume() == 0.5
+    mini._model.set_volume(0.37)
+    mini.refresh_view()
+    assert slider.value() == 37
+    assert mini.windowFlags() & Qt.WindowType.WindowDoesNotAcceptFocus
+
+
+def test_vertical_list_wraps_top_to_bottom_without_losing_apps(qapp, mini, fake_backend, dock_screen):
+    for index in range(20):
+        fake_backend.add_session(FakeAudioSession(
+            pid=1000 + index, process_name=f"extra{index}.exe", display_name=f"Extra {index}",
+        ))
+    mini._model.refresh()
+    mini.refresh_view()
+    drag_to(mini, QPoint(dock_screen.availableGeometry().left() + 5, 300))
+    qapp.processEvents()
+
+    assert len(mini._entries) == 22
+    assert dock_screen.availableGeometry().contains(mini.frameGeometry())
+    positions = [mini._grid.getItemPosition(i)[:2] for i in range(mini._grid.count())]
+    assert max(column for row, column in positions) > 0
+    ordered = sorted(positions, key=lambda position: (position[1], position[0]))
+    assert [mini._grid.itemAtPosition(*position).widget().key for position in ordered] == list(mini._entries)
+
+
+def test_bottom_dock_follows_taskbar_option(mini, settings, dock_screen, monkeypatch):
+    monkeypatch.setattr("sound_mixer.overlay.mini_widget.raise_without_activating", lambda window: None)
+    work = dock_screen.availableGeometry()
+    drag_to(mini, QPoint(work.center().x(), work.bottom() - mini.height() - 4))
+    assert mini.frameGeometry().bottom() == work.bottom()
+
+    settings.set_mini_widget_show_above_taskbar(True)
+    mini.sync_from_settings()
+    assert mini.frameGeometry().bottom() == dock_screen.geometry().bottom()
+    settings.set_mini_widget_show_above_taskbar(False)
+    mini.sync_from_settings()
+    assert mini.frameGeometry().bottom() == work.bottom()
+
+
+def test_docks_to_secondary_monitor_then_recovers_when_it_is_removed(mini, settings, monkeypatch):
+    from types import SimpleNamespace
+
+    primary_rect = QRect(0, 0, 1200, 800)
+    secondary_rect = QRect(-1200, -100, 1200, 800)
+    primary = SimpleNamespace(geometry=lambda: primary_rect, availableGeometry=lambda: primary_rect)
+    secondary = SimpleNamespace(geometry=lambda: secondary_rect, availableGeometry=lambda: secondary_rect)
+    screens = [primary, secondary]
+    monkeypatch.setattr("sound_mixer.overlay.mini_widget.QGuiApplication", SimpleNamespace(
+        screens=lambda: screens,
+        screenAt=lambda point: next((screen for screen in screens if screen.geometry().contains(point)), None),
+        primaryScreen=lambda: primary,
+    ))
+    drag_to(mini, QPoint(secondary_rect.right() - mini.width() - 4, 200))
+    assert mini.frameGeometry().right() == secondary_rect.right()
+    assert secondary_rect.contains(mini.frameGeometry())
+    screens.remove(secondary)
+    mini.refresh_view()
+    assert primary_rect.contains(mini.frameGeometry())
+    assert mini.frameGeometry().right() == primary_rect.right()
