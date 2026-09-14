@@ -17,6 +17,7 @@ class MixerEntry:
     muted: bool
     is_master: bool = False
     icon_path: str = ""
+    pids: tuple[int, ...] = ()
 
 
 class MixerModel:
@@ -72,6 +73,7 @@ class MixerModel:
                 volume=session.volume,
                 muted=session.muted,
                 icon_path=session.icon_path,
+                pids=session.pids,
             )
 
             if not self._settings.is_app_whitelisted(exe):

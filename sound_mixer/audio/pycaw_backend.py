@@ -266,6 +266,7 @@ class PycawAudioSession:
         self.display_name = display_name
         self.icon_path = icon_path
         self.pid = controls[0].ProcessId
+        self.pids = tuple(dict.fromkeys(control.ProcessId for control in controls))
         self._controls = controls
 
     @property

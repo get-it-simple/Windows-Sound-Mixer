@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from sound_mixer.audio.process_exit_listener import ProcessExitListener
 from sound_mixer.i18n import t
 from sound_mixer.mixer.model import MixerEntry, MixerModel
 from sound_mixer.overlay.icons import DelayedTooltipButton, load_app_icon, load_icon
@@ -290,6 +291,8 @@ class MiniWidget(QWidget):
         self._pin_below_content: bool | None = None
         self._pin_layout_state = None
         self._updating_drag = False
+        self._process_exit_listener = ProcessExitListener(self)
+        self._process_exit_listener.process_exited.connect(self._on_process_exited)
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool
@@ -353,6 +356,7 @@ class MiniWidget(QWidget):
         if enabled:
             self.refresh_view()
         else:
+            self._process_exit_listener.stop()
             self.hide()
 
     def sync_from_settings(self) -> None:
@@ -360,6 +364,7 @@ class MiniWidget(QWidget):
         self.set_enabled(self._settings.get_mini_widget_enabled(), persist=False)
 
     def stop(self) -> None:
+        self._process_exit_listener.stop()
         self._pin_button.cancel_drag()
         self._position_save_timer.stop()
         self._pin_hide_timer.stop()
@@ -375,6 +380,7 @@ class MiniWidget(QWidget):
             entry for entry in self._model.entries
             if not entry.is_master or self._settings.get_mini_widget_show_master()
         ]
+        self._process_exit_listener.sync({pid for entry in entries for pid in entry.pids})
         active_keys = {entry.key for entry in entries}
         for key in list(self._entries):
             if key not in active_keys:
@@ -407,6 +413,12 @@ class MiniWidget(QWidget):
         if not self.isVisible():
             self.show()
         self._sync_taskbar_stacking()
+
+    def _on_process_exited(self) -> None:
+        if self._enabled:
+            self._model.refresh()
+            self.refresh_view()
+            self.model_changed.emit()
 
     def _sync_taskbar_stacking(self) -> None:
         if self._settings.get_mini_widget_show_above_taskbar() and self._enabled and self.isVisible():

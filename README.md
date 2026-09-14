@@ -107,6 +107,9 @@ non-Windows platforms.
   stacks applications from top to bottom with display-only volume sliders;
   scrolling adjusts volume and clicking toggles mute as before. Top/bottom
   docking keeps the horizontal view. Drag away from the edge to undock.
+- The mini widget updates when a displayed application's process exits, using
+  Windows process notifications without background polling. Applications with
+  several audio processes remain listed while another audio process is running.
 - Settings grouped into Application, Volume, Main widget, and Mini widget
   categories, with separate hotkey and application-list tabs.
 - Whitelist and ignored-app filters shared by the overlay and mini widget.
