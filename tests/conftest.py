@@ -1,4 +1,5 @@
 import os
+import subprocess
 import sys
 
 import pytest
@@ -11,6 +12,30 @@ from sound_mixer.audio.fake_backend import FakeAudioBackend, FakeAudioSession  #
 from sound_mixer.settings.store import SettingsStore  # noqa: E402
 
 windows_only = pytest.mark.skipif(sys.platform != "win32", reason="Windows-only")
+
+
+@pytest.fixture
+def process_factory():
+    processes = []
+
+    def create():
+        process = subprocess.Popen(
+            [sys.executable, "-c", "import sys; sys.stdin.read()"],
+            stdin=subprocess.PIPE,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        processes.append(process)
+        return process
+
+    yield create
+    for process in processes:
+        process.stdin.close()
+        process.wait(timeout=10)
+
+
+@pytest.fixture
+def child_process(process_factory):
+    return process_factory()
 
 
 @pytest.fixture(scope="session")

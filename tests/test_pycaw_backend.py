@@ -149,6 +149,7 @@ def test_refresh_groups_sessions_of_the_same_process():
     assert len(entries) == 1
     assert entries[0].process_name == "voidrunner.exe"
     assert entries[0].display_name == _GAME_TITLE
+    assert entries[0].pids == (11, 22)
 
 
 def test_refresh_keeps_same_named_executables_from_different_folders_apart():

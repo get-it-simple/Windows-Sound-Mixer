@@ -482,7 +482,6 @@ class SettingsWindow(QDialog):
             scroll.setWidgetResizable(True)
             scroll.setFrameShape(QFrame.Shape.NoFrame)
             scroll.setWidget(page)
-            scroll.setMinimumWidth(page.sizeHint().width() + 24)
             tab.addItem(scroll, t(key))
         return tab
 
@@ -658,6 +657,8 @@ class SettingsWindow(QDialog):
         layout = QVBoxLayout(field)
         layout.setContentsMargins(0, 0, 0, 10)
         layout.setSpacing(4)
-        layout.addWidget(QLabel(label, field))
+        title = QLabel(label, field)
+        title.setWordWrap(True)
+        layout.addWidget(title)
         layout.addWidget(control)
         return field

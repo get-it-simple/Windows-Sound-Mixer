@@ -1,3 +1,5 @@
+import os
+
 import pytest
 from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRect, QSize, Qt
 from PySide6.QtGui import QEnterEvent, QMouseEvent, QWheelEvent
@@ -19,6 +21,8 @@ from sound_mixer.overlay.mini_widget import (
     MiniWidget,
 )
 from sound_mixer.overlay.window import OverlayWindow
+from tests.conftest import windows_only
+from tests.test_process_exit_listener import wait_until
 
 
 def wheel_event(direction: int) -> QWheelEvent:
@@ -66,6 +70,73 @@ def test_mini_widget_is_transparent_and_excludes_master(mini):
         assert "background: rgba(0, 0, 0, 51)" in entry.styleSheet()
         assert f"border-radius: {BASE_ENTRY_RADIUS_PX}px" in entry.styleSheet()
     assert mini._grid.horizontalSpacing() == BASE_SPACING_PX
+
+
+@windows_only
+def test_mini_removes_closed_process_without_refresh_timer(qapp, settings, child_process):
+    class ProcessBackend(FakeAudioBackend):
+        def refresh(self):
+            if child_process.poll() is not None:
+                self.remove_session("child.exe")
+
+    backend = ProcessBackend(sessions=[
+        FakeAudioSession(pid=child_process.pid, process_name="child.exe", display_name="Child"),
+    ])
+    widget = MiniWidget(MixerModel(backend, settings), settings)
+    changes = []
+    widget.model_changed.connect(lambda: changes.append(True))
+    try:
+        widget.set_enabled(True)
+        assert "child.exe" in widget._entries
+        assert widget.isVisible()
+
+        child_process.stdin.close()
+        child_process.wait(timeout=10)
+        wait_until(lambda: "child.exe" not in widget._entries)
+
+        assert not widget.isVisible()
+        assert changes == [True]
+    finally:
+        widget.stop()
+        widget.close()
+
+
+@windows_only
+def test_mini_keeps_group_until_last_audio_process_exits(qapp, settings, process_factory):
+    first = process_factory()
+    second = process_factory()
+
+    class GroupedSession(FakeAudioSession):
+        @property
+        def pids(self):
+            return tuple(process.pid for process in (first, second) if process.poll() is None)
+
+    session = GroupedSession(pid=first.pid, process_name="child.exe", display_name="Child")
+
+    class ProcessBackend(FakeAudioBackend):
+        def refresh(self):
+            if not session.pids:
+                self.remove_session("child.exe")
+
+    widget = MiniWidget(MixerModel(ProcessBackend([session]), settings), settings)
+    changes = []
+    widget.model_changed.connect(lambda: changes.append(True))
+    try:
+        widget.set_enabled(True)
+        second.stdin.close()
+        second.wait(timeout=10)
+        wait_until(lambda: len(changes) == 1)
+        assert list(widget._entries) == ["child.exe"]
+        assert widget.isVisible()
+
+        first.stdin.close()
+        first.wait(timeout=10)
+        wait_until(lambda: len(changes) == 2)
+        assert not widget._entries
+        assert not widget.isVisible()
+    finally:
+        widget.stop()
+        widget.close()
 
 
 def test_mini_entry_centers_percentage_and_icon(mini):
@@ -251,7 +322,7 @@ def test_mini_widget_recovers_from_offscreen_position(qapp, mini):
     assert available.contains(mini.frameGeometry().topLeft())
 
 
-def test_mini_widget_does_not_refresh_audio_sessions(qapp, settings):
+def test_mini_widget_does_not_poll_audio_sessions(qapp, settings):
     class TrackingAudioBackend(FakeAudioBackend):
         def __init__(self):
             super().__init__()
@@ -272,7 +343,7 @@ def test_mini_widget_does_not_refresh_audio_sessions(qapp, settings):
     assert widget.is_enabled() is True
     assert not widget.isVisible()
 
-    backend.add_session(FakeAudioSession(pid=1, process_name="aurora.exe", display_name="Aurora"))
+    backend.add_session(FakeAudioSession(pid=os.getpid(), process_name="aurora.exe", display_name="Aurora"))
     model.refresh()
     widget.refresh_view()
     qapp.processEvents()

@@ -17,6 +17,10 @@ class FakeAudioSession:
     def __post_init__(self) -> None:
         self.key = normalize_app_key(self.key or self.process_name)
 
+    @property
+    def pids(self) -> tuple[int, ...]:
+        return (self.pid,)
+
     def set_volume(self, level: float) -> None:
         self.volume = clamp_volume(level)
 
