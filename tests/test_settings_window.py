@@ -1,8 +1,49 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 from sound_mixer.overlay.window import OverlayWindow
 from sound_mixer.settings_window.window import SettingsWindow
+
+
+@pytest.mark.parametrize("language", ["en", "uk"])
+@pytest.mark.parametrize("size", [(460, 740), (420, 420)])
+def test_general_settings_fit_width_without_horizontal_scrolling(qapp, settings, language, size):
+    from PySide6.QtWidgets import QLabel, QScrollArea, QToolBox
+    from sound_mixer.i18n import get_current_language, setup
+
+    previous_language = get_current_language()
+    setup(language)
+    window = SettingsWindow(settings)
+    categories = window.findChild(QToolBox, "settingsCategories")
+    categories.setParent(None)
+    try:
+        categories.resize(*size)
+        categories.show()
+        qapp.processEvents()
+        assert categories.width() == size[0]
+        for index in range(categories.count()):
+            categories.setCurrentIndex(index)
+            qapp.processEvents()
+            scroll = categories.widget(index)
+            for area in categories.findChildren(QScrollArea):
+                if area.isVisible():
+                    assert area.horizontalScrollBar().maximum() == 0
+                    assert area.widget().width() <= area.viewport().width()
+            for label in scroll.widget().findChildren(QLabel):
+                scroll.ensureWidgetVisible(label)
+                qapp.processEvents()
+                bounds = label.rect().translated(label.mapTo(scroll.viewport(), label.rect().topLeft()))
+                assert bounds.left() >= 0
+                assert bounds.right() < scroll.viewport().width()
+                assert scroll.viewport().rect().intersects(bounds)
+                if label.wordWrap():
+                    assert label.height() >= label.heightForWidth(label.width())
+    finally:
+        categories.close()
+        window.close()
+        setup(previous_language)
 
 
 def test_general_settings_are_grouped_and_all_categories_are_accessible(qapp, settings):
