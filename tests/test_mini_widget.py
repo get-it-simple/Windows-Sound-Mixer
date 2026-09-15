@@ -510,50 +510,70 @@ def test_taskbar_option_uses_full_screen_and_restores_work_area(mini, settings, 
     assert work.contains(mini.frameGeometry())
 
 
-def test_taskbar_stacking_runs_only_when_enabled_and_visible(mini, settings, monkeypatch):
+def test_taskbar_stacking_runs_only_on_events_when_enabled_and_visible(qapp, mini, settings, monkeypatch):
+    from unittest.mock import Mock
+
+    listener = mini._taskbar_listener
+    api = Mock()
+    api.SetWinEventHook.side_effect = range(1, 100)
+    listener._user32 = api
+
+    def foreground_event():
+        listener._on_event(1, 0x0003, 42, 0, 0, 1, 0)
+        qapp.sendPostedEvents()
+
     calls = []
     monkeypatch.setattr("sound_mixer.overlay.mini_widget.raise_without_activating", calls.append)
     mini.refresh_view()
     assert calls == []
-    assert not mini._taskbar_timer.isActive()
+    api.SetWinEventHook.assert_not_called()
 
     settings.set_mini_widget_show_above_taskbar(True)
     mini.sync_from_settings()
     assert calls == [mini]
-    assert mini._taskbar_timer.isActive()
-    mini._taskbar_timer.timeout.emit()
+    QTest.qWait(600)
+    assert calls == [mini]
+    foreground_event()
     assert calls == [mini, mini]
 
     mini.set_enabled(False)
-    assert not mini._taskbar_timer.isActive()
-    mini._taskbar_timer.timeout.emit()
+    assert api.UnhookWinEvent.call_count == 4
+    foreground_event()
     assert len(calls) == 2
     mini.set_enabled(True)
-    assert mini._taskbar_timer.isActive()
+    assert api.SetWinEventHook.call_count == 8
 
     settings.set_mini_widget_show_above_taskbar(False)
     mini.sync_from_settings()
-    assert not mini._taskbar_timer.isActive()
+    assert api.UnhookWinEvent.call_count == 8
     count = len(calls)
-    mini._taskbar_timer.timeout.emit()
+    foreground_event()
     assert len(calls) == count
     settings.set_mini_widget_show_above_taskbar(True)
     mini.sync_from_settings()
     mini.stop()
-    assert not mini._taskbar_timer.isActive()
+    count = len(calls)
+    foreground_event()
+    assert len(calls) == count
+    assert api.UnhookWinEvent.call_count == 12
 
 
-def test_empty_mini_widget_does_not_keep_taskbar_timer_running(qapp, settings):
+def test_empty_mini_widget_releases_taskbar_event_hooks(qapp, settings):
+    from unittest.mock import Mock
+
     backend = FakeAudioBackend()
     settings.set_mini_widget_show_above_taskbar(True)
     settings.set_mini_widget_show_master(True)
     mini = MiniWidget(MixerModel(backend, settings), settings)
+    api = Mock()
+    api.SetWinEventHook.side_effect = range(1, 5)
+    mini._taskbar_listener._user32 = api
     mini.set_enabled(True)
-    assert mini._taskbar_timer.isActive()
+    assert api.SetWinEventHook.call_count == 4
     settings.set_mini_widget_show_master(False)
     mini.sync_from_settings()
     assert not mini.isVisible()
-    assert not mini._taskbar_timer.isActive()
+    assert api.UnhookWinEvent.call_count == 4
     qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     mini.stop()
     mini.close()
@@ -891,6 +911,95 @@ def test_docking_survives_scale_and_session_changes(qapp, mini, settings, fake_b
     assert entry._slider.isVisible() == (edge in ("left", "right"))
 
 
+@pytest.mark.parametrize("edge", ["left", "right", "top", "bottom"])
+@pytest.mark.parametrize("scale", [0.5, 1.0, 1.5])
+def test_new_apps_have_spacing_on_first_refresh(qapp, mini, settings, fake_backend, dock_screen, edge, scale):
+    settings.set_mini_widget_scale(scale)
+    mini.apply_scale()
+    work = dock_screen.availableGeometry()
+    position = work.center()
+    if edge == "left":
+        position.setX(work.left())
+    elif edge == "right":
+        position.setX(work.right() - mini.width() + 1)
+    elif edge == "top":
+        position.setY(work.top())
+    else:
+        position.setY(work.bottom() - mini.height() + 1)
+    drag_to(mini, position)
+    for index in range(4):
+        fake_backend.add_session(FakeAudioSession(
+            pid=1000 + index, process_name=f"extra{index}.exe", display_name=f"Extra {index}",
+        ))
+        mini._model.refresh()
+        mini.refresh_view()
+        qapp.processEvents()
+
+        entries = list(mini._entries.values())
+        assert all(entry.isVisible() for entry in entries)
+        assert all(mini._content.rect().contains(entry.geometry()) for entry in entries)
+        for previous, current in zip(entries, entries[1:]):
+            gap = (current.y() - previous.geometry().bottom() - 1 if edge in ("left", "right")
+                   else current.x() - previous.geometry().right() - 1)
+            assert gap == round(BASE_SPACING_PX * scale)
+        assert getattr(mini.frameGeometry(), edge)() == getattr(work, edge)()
+
+
+@pytest.mark.parametrize("edge", ["", "left", "right", "top", "bottom"])
+@pytest.mark.parametrize("change", ["geometry", "work_area", "logical_dpi", "physical_dpi", "device_ratio"])
+def test_screen_changes_relayout_without_model_refresh(qapp, mini, fake_backend, dock_screen, edge, change):
+    for index in range(12):
+        fake_backend.add_session(FakeAudioSession(
+            pid=1000 + index, process_name=f"extra{index}.exe", display_name=f"Extra {index}",
+        ))
+    mini._model.refresh()
+    mini.refresh_view()
+    work = dock_screen.availableGeometry()
+    position = work.center()
+    if edge == "left":
+        position.setX(work.left())
+    elif edge == "right":
+        position.setX(work.right() - mini.width() + 1)
+    elif edge == "top":
+        position.setY(work.top())
+    elif edge == "bottom":
+        position.setY(work.bottom() - mini.height() + 1)
+    drag_to(mini, position)
+    qapp.processEvents()
+
+    work.setRect(-1200, 100, 600, 400)
+    dock_screen.geometry().setRect(-1200, 100, 600, 440)
+    screen = qapp.primaryScreen()
+    if change == "geometry":
+        screen.geometryChanged.emit(dock_screen.geometry())
+    elif change == "work_area":
+        screen.availableGeometryChanged.emit(work)
+    elif change == "logical_dpi":
+        screen.logicalDotsPerInchChanged.emit(144)
+    elif change == "physical_dpi":
+        screen.physicalDotsPerInchChanged.emit(144)
+    else:
+        qapp.sendEvent(mini, QEvent(QEvent.Type.DevicePixelRatioChange))
+    qapp.sendPostedEvents()
+
+    assert work.contains(mini.frameGeometry())
+    if edge:
+        assert getattr(mini.frameGeometry(), edge)() == getattr(work, edge)()
+    entries = list(mini._entries.values())
+    assert all(mini._content.rect().contains(entry.geometry()) for entry in entries)
+    for index, entry in enumerate(entries):
+        for other in entries[index + 1:]:
+            assert not entry.geometry().adjusted(0, 0, BASE_SPACING_PX, BASE_SPACING_PX).intersects(other.geometry())
+    mini._pin_button.show()
+    qapp.processEvents()
+    pin = QRect(mini._pin_button.mapTo(mini, QPoint()), mini._pin_button.size())
+    assert mini.rect().contains(pin)
+    entry = entries[-1]
+    QTest.mouseClick(entry, Qt.MouseButton.LeftButton)
+    assert mini._model.focused_entry.key == entry.key
+    assert mini._model.focused_entry.muted
+
+
 @pytest.mark.parametrize("edge", ["left", "right"])
 @pytest.mark.parametrize("scale", [0.5, 1.0, 1.5, 3.0])
 def test_side_dock_slider_is_vertical_and_fits_tile_height(qapp, mini, settings, dock_screen, edge, scale):
@@ -1003,7 +1112,7 @@ def test_bottom_dock_follows_taskbar_option(mini, settings, dock_screen, monkeyp
     assert mini.frameGeometry().bottom() == work.bottom()
 
 
-def test_docks_to_secondary_monitor_then_recovers_when_it_is_removed(mini, settings, monkeypatch):
+def test_docks_to_secondary_monitor_then_recovers_when_it_is_removed(qapp, mini, settings, monkeypatch):
     from types import SimpleNamespace
 
     primary_rect = QRect(0, 0, 1200, 800)
@@ -1019,7 +1128,80 @@ def test_docks_to_secondary_monitor_then_recovers_when_it_is_removed(mini, setti
     drag_to(mini, QPoint(secondary_rect.right() - mini.width() - 4, 200))
     assert mini.frameGeometry().right() == secondary_rect.right()
     assert secondary_rect.contains(mini.frameGeometry())
+    secondary_rect.setWidth(600)
+    qapp.primaryScreen().geometryChanged.emit(secondary_rect)
+    QTest.qWait(30)
+    assert secondary_rect.contains(mini.frameGeometry())
+    assert mini.frameGeometry().right() == secondary_rect.right()
     screens.remove(secondary)
-    mini.refresh_view()
+    qapp.screenRemoved.emit(qapp.primaryScreen())
+    QTest.qWait(30)
     assert primary_rect.contains(mini.frameGeometry())
     assert mini.frameGeometry().right() == primary_rect.right()
+
+
+def test_screen_change_cancels_pending_drag(qapp, mini, dock_screen):
+    work = dock_screen.availableGeometry()
+    drag_to(mini, QPoint(work.right() - mini.width() + 1, 300))
+    qapp.processEvents()
+    press = mini.pos() + QPoint(4, 4)
+    mini._pin_button.mousePressEvent(mouse_event(
+        QEvent.Type.MouseButtonPress, press.x(), press.y(),
+        Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+    ))
+    for distance in (1, 2):
+        mini._pin_button.mouseMoveEvent(mouse_event(
+            QEvent.Type.MouseMove, press.x(), press.y() + distance,
+            Qt.MouseButton.NoButton, Qt.MouseButton.LeftButton,
+        ))
+    work.setWidth(600)
+    dock_screen.geometry().setWidth(600)
+    qapp.primaryScreen().geometryChanged.emit(work)
+    QTest.qWait(DRAG_UPDATE_INTERVAL_MS + 30)
+    assert not mini._pin_button.is_dragging()
+    assert work.contains(mini.frameGeometry())
+    assert mini.frameGeometry().right() == work.right()
+    position = mini.pos()
+    mini._pin_button.mouseReleaseEvent(mouse_event(
+        QEvent.Type.MouseButtonRelease, press.x(), press.y() + 10,
+        Qt.MouseButton.LeftButton, Qt.MouseButton.NoButton,
+    ))
+    assert mini.pos() == position
+
+
+def test_screen_event_burst_relayouts_once_and_does_no_idle_work(qapp, mini, dock_screen, monkeypatch):
+    from unittest.mock import Mock
+
+    work = dock_screen.availableGeometry()
+    drag_to(mini, QPoint(work.right() - mini.width() + 1, 300))
+    qapp.processEvents()
+    layout = Mock(wraps=mini._layout_entries)
+    monkeypatch.setattr(mini, "_layout_entries", layout)
+    work.setWidth(600)
+    dock_screen.geometry().setWidth(600)
+    screen = qapp.primaryScreen()
+    screen.geometryChanged.emit(work)
+    screen.availableGeometryChanged.emit(work)
+    screen.logicalDotsPerInchChanged.emit(144)
+    qapp.sendEvent(mini, QEvent(QEvent.Type.DevicePixelRatioChange))
+    layout.assert_not_called()
+    qapp.sendPostedEvents()
+    layout.assert_called_once()
+    assert work.contains(mini.frameGeometry())
+    assert mini.frameGeometry().right() == work.right()
+    QTest.qWait(600)
+    layout.assert_called_once()
+
+
+@pytest.mark.parametrize("action", ["hide", "stop"])
+def test_pending_screen_event_is_cancelled_on_hide_or_stop(qapp, mini, dock_screen, action):
+    work = dock_screen.availableGeometry()
+    drag_to(mini, QPoint(work.right() - mini.width() + 1, 300))
+    qapp.processEvents()
+    position = mini.pos()
+    work.setWidth(600)
+    dock_screen.geometry().setWidth(600)
+    qapp.primaryScreen().geometryChanged.emit(work)
+    getattr(mini, action)()
+    qapp.sendPostedEvents()
+    assert mini.pos() == position

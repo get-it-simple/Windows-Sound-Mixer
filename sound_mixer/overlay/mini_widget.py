@@ -1,6 +1,7 @@
-from PySide6.QtCore import QPoint, QRect, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QGuiApplication, QMouseEvent
 from PySide6.QtWidgets import (
+    QApplication,
     QBoxLayout,
     QFrame,
     QGraphicsOpacityEffect,
@@ -14,12 +15,13 @@ from sound_mixer.audio.process_exit_listener import ProcessExitListener
 from sound_mixer.i18n import t
 from sound_mixer.mixer.model import MixerEntry, MixerModel
 from sound_mixer.overlay.icons import DelayedTooltipButton, load_app_icon, load_icon
+from sound_mixer.overlay.taskbar_listener import TaskbarListener
 from sound_mixer.settings.store import SettingsStore
 from sound_mixer.overlay.win_effects import get_accent_color, raise_without_activating
 
 POSITION_SAVE_DELAY_MS = 300
 PIN_HIDE_DELAY_MS = 600
-TASKBAR_RAISE_INTERVAL_MS = 250
+SCREEN_UPDATE_EVENT = QEvent.Type(QEvent.registerEventType())
 MIN_VISIBLE_PX = 48
 DRAG_UPDATE_INTERVAL_MS = 33
 SNAP_DISTANCE_PX = 8
@@ -291,6 +293,8 @@ class MiniWidget(QWidget):
         self._pin_below_content: bool | None = None
         self._pin_layout_state = None
         self._updating_drag = False
+        self._screen = None
+        self._screen_update_pending = False
         self._process_exit_listener = ProcessExitListener(self)
         self._process_exit_listener.process_exited.connect(self._on_process_exited)
 
@@ -337,9 +341,14 @@ class MiniWidget(QWidget):
         self._pin_hide_timer.setSingleShot(True)
         self._pin_hide_timer.timeout.connect(self._hide_pin_if_idle)
 
-        self._taskbar_timer = QTimer(self)
-        self._taskbar_timer.setInterval(TASKBAR_RAISE_INTERVAL_MS)
-        self._taskbar_timer.timeout.connect(self._raise_above_taskbar)
+        self._taskbar_listener = TaskbarListener(self)
+        self._taskbar_listener.changed.connect(self._raise_above_taskbar)
+
+        app = QApplication.instance()
+        app.screenAdded.connect(self._watch_screen)
+        app.screenRemoved.connect(self._schedule_screen_update)
+        for screen in app.screens():
+            self._watch_screen(screen)
 
         position = self._settings.get_mini_widget_position()
         self.move(position["x"], position["y"])
@@ -368,7 +377,8 @@ class MiniWidget(QWidget):
         self._pin_button.cancel_drag()
         self._position_save_timer.stop()
         self._pin_hide_timer.stop()
-        self._taskbar_timer.stop()
+        self._taskbar_listener.stop()
+        self._cancel_screen_update()
         self._save_position()
 
     def refresh_view(self) -> None:
@@ -386,6 +396,7 @@ class MiniWidget(QWidget):
             if key not in active_keys:
                 widget = self._entries.pop(key)
                 self._grid.removeWidget(widget)
+                widget.hide()
                 widget.deleteLater()
 
         ordered_widgets = []
@@ -422,11 +433,10 @@ class MiniWidget(QWidget):
 
     def _sync_taskbar_stacking(self) -> None:
         if self._settings.get_mini_widget_show_above_taskbar() and self._enabled and self.isVisible():
-            if not self._taskbar_timer.isActive():
-                self._taskbar_timer.start()
+            self._taskbar_listener.start()
             self._raise_above_taskbar()
         else:
-            self._taskbar_timer.stop()
+            self._taskbar_listener.stop()
 
     def _raise_above_taskbar(self) -> None:
         if self._settings.get_mini_widget_show_above_taskbar() and self._enabled and self.isVisible():
@@ -434,8 +444,47 @@ class MiniWidget(QWidget):
 
     def hideEvent(self, event) -> None:
         self._pin_button.cancel_drag()
-        self._taskbar_timer.stop()
+        self._taskbar_listener.stop()
+        self._cancel_screen_update()
         super().hideEvent(event)
+
+    def event(self, event) -> bool:
+        if event.type() == SCREEN_UPDATE_EVENT:
+            self._screen_update_pending = False
+            self._update_screen_layout()
+            return True
+        result = super().event(event)
+        if event.type() == QEvent.Type.DevicePixelRatioChange:
+            if hasattr(self, "_screen_update_pending"):
+                self._schedule_screen_update()
+        return result
+
+    def _watch_screen(self, screen) -> None:
+        screen.geometryChanged.connect(self._schedule_screen_update)
+        screen.availableGeometryChanged.connect(self._schedule_screen_update)
+        screen.logicalDotsPerInchChanged.connect(self._schedule_screen_update)
+        screen.physicalDotsPerInchChanged.connect(self._schedule_screen_update)
+        self._schedule_screen_update()
+
+    def _schedule_screen_update(self, *args) -> None:
+        if self._enabled and self.isVisible() and not self._screen_update_pending:
+            self._screen_update_pending = True
+            QApplication.postEvent(self, QEvent(SCREEN_UPDATE_EVENT))
+
+    def _cancel_screen_update(self) -> None:
+        QApplication.removePostedEvents(self, SCREEN_UPDATE_EVENT)
+        self._screen_update_pending = False
+
+    def _update_screen_layout(self) -> None:
+        if not self._enabled or not self.isVisible() or not self._entries:
+            return
+        screens = QGuiApplication.screens()
+        if not screens:
+            return
+        screen = self._screen if self._screen in screens else QGuiApplication.primaryScreen()
+        self._pin_button.cancel_drag()
+        self._layout_entries(list(self._entries.values()), screen)
+        self._ensure_on_screen(screen=screen)
 
     def _screen_geometry(self, screen):
         if self._settings.get_mini_widget_show_above_taskbar():
@@ -466,6 +515,7 @@ class MiniWidget(QWidget):
         for index, widget in enumerate(widgets):
             row, column = (index % rows, index // rows) if vertical else (index // columns, index % columns)
             self._grid.addWidget(widget, row, column, Qt.AlignmentFlag.AlignCenter)
+            widget.show()
 
         self._content.adjustSize()
         content_hint = self._grid.sizeHint()
@@ -570,12 +620,13 @@ class MiniWidget(QWidget):
             rect = self.frameGeometry()
         if screen is None:
             screen = self._screen_for_rect(rect, screens)
-        if QGuiApplication.screenAt(rect.center()) is None:
-            overlap = self._screen_geometry(screen).intersected(rect)
-            if overlap.width() < min(MIN_VISIBLE_PX, rect.width()) or overlap.height() < min(
-                MIN_VISIBLE_PX, rect.height()
-            ):
-                screen = QGuiApplication.primaryScreen()
+            if QGuiApplication.screenAt(rect.center()) is None:
+                overlap = self._screen_geometry(screen).intersected(rect)
+                if overlap.width() < min(MIN_VISIBLE_PX, rect.width()) or overlap.height() < min(
+                    MIN_VISIBLE_PX, rect.height()
+                ):
+                    screen = QGuiApplication.primaryScreen()
+        self._screen = screen
         available = self._screen_geometry(screen)
         x = min(max(rect.x(), available.left()), max(available.left(), available.right() - rect.width() + 1))
         y = min(max(rect.y(), available.top()), max(available.top(), available.bottom() - rect.height() + 1))
