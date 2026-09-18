@@ -118,6 +118,7 @@ non-Windows platforms.
 - System tray controls, optional launch at Windows login, and a setting to show
   the overlay immediately on startup.
 - Adjustable interface scale, volume steps, tooltip delay, and transparency.
+- Overlay and mini widget scaling is capped at 300% including the system display scale. At 200% system scaling, each widget allows up to 150%. Limits follow each window's display and update when its DPI changes. Saved scale preferences are preserved and automatically limited while displayed on a higher-DPI screen.
 - Optional background scanning for audio child processes created by selected
   launchers, sandboxes, and other host applications.
 

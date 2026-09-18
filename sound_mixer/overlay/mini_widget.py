@@ -15,6 +15,7 @@ from sound_mixer.audio.process_exit_listener import ProcessExitListener
 from sound_mixer.i18n import t
 from sound_mixer.mixer.model import MixerEntry, MixerModel
 from sound_mixer.overlay.icons import DelayedTooltipButton, load_app_icon, load_icon
+from sound_mixer.overlay.scaling import ScaleLimit
 from sound_mixer.overlay.taskbar_listener import TaskbarListener
 from sound_mixer.settings.store import SettingsStore
 from sound_mixer.overlay.win_effects import get_accent_color, raise_without_activating
@@ -361,6 +362,8 @@ class MiniWidget(QWidget):
 
         position = self._settings.get_mini_widget_position()
         self.move(position["x"], position["y"])
+        self.scale_limit = ScaleLimit(self)
+        self.scale_limit.changed.connect(self.apply_scale)
         self.apply_scale()
 
     def is_enabled(self) -> bool:
@@ -416,7 +419,7 @@ class MiniWidget(QWidget):
                 widget.focus_requested.connect(lambda w=widget: self._select_key(w.key))
                 widget.scrolled.connect(lambda direction, w=widget: self._on_scrolled(w.key, direction))
                 widget.mute_toggled.connect(lambda w=widget: self._on_mute_toggled(w.key))
-                widget.apply_scale(self._settings.get_mini_widget_scale())
+                widget.apply_scale(self.scale_limit.constrain(self._settings.get_mini_widget_scale()))
                 widget.set_volume_below_icon(bool(self._pin_below_content))
                 self._entries[entry.key] = widget
             widget.set_entry(entry)
@@ -505,7 +508,7 @@ class MiniWidget(QWidget):
         while self._grid.count():
             self._grid.takeAt(0)
 
-        spacing = round(BASE_SPACING_PX * self._settings.get_mini_widget_scale())
+        spacing = round(BASE_SPACING_PX * self.scale_limit.constrain(self._settings.get_mini_widget_scale()))
         self._grid.setHorizontalSpacing(spacing)
         self._grid.setVerticalSpacing(spacing)
         if screen is None:
@@ -586,7 +589,7 @@ class MiniWidget(QWidget):
         self.model_changed.emit()
 
     def apply_scale(self) -> None:
-        scale = self._settings.get_mini_widget_scale()
+        scale = self.scale_limit.constrain(self._settings.get_mini_widget_scale())
         icon_px = round(BASE_ICON_PX * scale)
         self._pin_button.setIconSize(QSize(icon_px, icon_px))
         pin_extent = icon_px + round(8 * scale)
