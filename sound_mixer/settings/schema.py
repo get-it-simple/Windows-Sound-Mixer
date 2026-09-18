@@ -1,4 +1,4 @@
-CURRENT_VERSION = 12
+CURRENT_VERSION = 13
 
 MIN_UI_SCALE = 0.5
 MAX_UI_SCALE = 3.0
@@ -11,6 +11,11 @@ MINI_WIDGET_DOCK_EDGES = ("", "left", "right", "top", "bottom")
 DEFAULT_HOTKEYS = [
     {"action": "toggle_overlay", "combo": "ctrl+alt+num5", "enabled": True},
     {"action": "toggle_mini_widget", "combo": "", "enabled": False},
+    {"action": "mini_focus_next", "combo": "", "enabled": False},
+    {"action": "mini_focus_prev", "combo": "", "enabled": False},
+    {"action": "mini_volume_up", "combo": "", "enabled": False},
+    {"action": "mini_volume_down", "combo": "", "enabled": False},
+    {"action": "toggle_mini_master", "combo": "", "enabled": False},
     {"action": "volume_up", "combo": "", "enabled": False},
     {"action": "volume_down", "combo": "", "enabled": False},
     {"action": "focus_next", "combo": "", "enabled": False},

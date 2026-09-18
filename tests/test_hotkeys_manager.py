@@ -1,3 +1,5 @@
+import pytest
+
 from sound_mixer.hotkeys import manager as manager_module
 from sound_mixer.hotkeys.binding import combo_to_hotkey
 from sound_mixer.hotkeys.manager import HotkeyManager
@@ -96,6 +98,29 @@ def test_mini_widget_hotkey_registers_and_emits(qapp, settings, monkeypatch):
     assert received == [True]
 
 
+@pytest.mark.parametrize("action", [
+    "mini_focus_next", "mini_focus_prev", "mini_volume_up", "mini_volume_down", "toggle_mini_master",
+])
+def test_mini_action_is_unassigned_then_registers_and_dispatches(qapp, settings, monkeypatch, action):
+    binding = next(item for item in settings.get_hotkeys() if item["action"] == action)
+    assert binding == {"action": action, "combo": "", "enabled": False}
+    fake_user32 = FakeUser32()
+    monkeypatch.setattr(manager_module, "user32", fake_user32)
+    settings.set_hotkey("toggle_overlay", "", enabled=False)
+    settings.set_hotkey(action, "ctrl+shift+f9", enabled=True)
+    manager = HotkeyManager(settings)
+    received = []
+    getattr(manager, action).connect(lambda: received.append(action))
+    try:
+        manager.start()
+        assert list(fake_user32.registered.values()) == [combo_to_hotkey("ctrl+shift+f9")]
+        manager._handle_hotkey(next(iter(fake_user32.registered)))
+        assert received == [action]
+    finally:
+        manager.stop()
+    assert fake_user32.registered == {}
+
+
 def test_failed_registration_is_not_tracked(qapp, settings, monkeypatch):
     fake_user32 = FakeUser32()
     fake_user32.RegisterHotKey = lambda hwnd, hotkey_id, modifiers, vk: False
@@ -105,4 +130,3 @@ def test_failed_registration_is_not_tracked(qapp, settings, monkeypatch):
     hotkey_manager.start()
 
     assert hotkey_manager._hotkey_ids == {}
-

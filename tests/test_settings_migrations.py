@@ -265,6 +265,27 @@ def test_migrates_v10_with_taskbar_overlay_disabled_and_preserves_settings():
     assert "show_above_taskbar" not in original["mini_widget"]
 
 
+def test_migrates_v12_adds_unassigned_mini_actions_and_preserves_bindings():
+    from copy import deepcopy
+
+    original = {"version": 12, "hotkeys": [
+        {"action": "toggle_overlay", "combo": "ctrl+shift+m", "enabled": False},
+        {"action": "toggle_mini_widget", "combo": "ctrl+shift+n", "enabled": True},
+        {"action": "mini_volume_up", "combo": "ctrl+shift+up", "enabled": True},
+    ], "mini_widget": {"show_master": True}}
+    before = deepcopy(original)
+    migrated = migrate(original)
+    assert original == before
+    assert migrated["version"] == 13
+    assert migrated["hotkeys"][:3] == original["hotkeys"]
+    actions = {binding["action"]: binding for binding in migrated["hotkeys"]}
+    assert len(actions) == len(migrated["hotkeys"])
+    for action in ("mini_focus_next", "mini_focus_prev", "mini_volume_down", "toggle_mini_master"):
+        assert actions[action] == {"action": action, "combo": "", "enabled": False}
+    assert migrated["mini_widget"] == original["mini_widget"]
+    assert migrate(migrated) == migrated
+
+
 def test_migrates_v11_without_docking_or_changing_existing_preferences():
     from copy import deepcopy
 

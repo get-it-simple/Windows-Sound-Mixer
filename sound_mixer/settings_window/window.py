@@ -83,6 +83,11 @@ def _action_labels() -> dict[str, str]:
     return {
         "toggle_overlay": t("action_toggle_overlay"),
         "toggle_mini_widget": t("action_toggle_mini_widget"),
+        "mini_focus_next": t("action_mini_focus_next"),
+        "mini_focus_prev": t("action_mini_focus_prev"),
+        "mini_volume_up": t("action_mini_volume_up"),
+        "mini_volume_down": t("action_mini_volume_down"),
+        "toggle_mini_master": t("action_toggle_mini_master"),
         "volume_up": t("action_volume_up"),
         "volume_down": t("action_volume_down"),
         "focus_next": t("action_focus_next"),
@@ -498,7 +503,10 @@ class SettingsWindow(QDialog):
             self._mini_widget.apply_scale()
 
     def _build_hotkeys_tab(self) -> QWidget:
-        tab = QWidget(self)
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        tab = QWidget(scroll)
         layout = QVBoxLayout(tab)
 
         labels = _action_labels()
@@ -525,7 +533,8 @@ class SettingsWindow(QDialog):
             self._hotkey_rows.append((action, combo_edit, enabled_checkbox))
 
         layout.addStretch(1)
-        return tab
+        scroll.setWidget(tab)
+        return scroll
 
     def _build_subprocess_management_tab(self) -> QWidget:
         tab = QWidget(self)

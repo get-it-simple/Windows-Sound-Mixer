@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 from sound_mixer.i18n import t
 from sound_mixer.mixer.model import MixerEntry
 from sound_mixer.overlay.icons import DelayedTooltipButton, load_app_icon, load_icon
+from sound_mixer.overlay.marquee import MarqueeLabel
 from sound_mixer.settings.schema import LAYOUT_VERTICAL
 
 MAX_WIDGET_SIZE = 16777215
@@ -128,9 +129,8 @@ class EntryWidget(QFrame):
         self._slider.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._slider.valueChanged.connect(self._on_slider_changed)
 
-        self._process_name_label = QLabel("", self)
+        self._process_name_label = MarqueeLabel("", self)
         self._process_name_label.setObjectName("processNameLabel")
-        self._process_name_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
         self._slider_column = QWidget(self)
         slider_col_layout = QVBoxLayout(self._slider_column)
@@ -308,11 +308,13 @@ class EntryWidget(QFrame):
         super().mousePressEvent(event)
 
     def enterEvent(self, event) -> None:
+        self._process_name_label.start_marquee()
         if not self._is_master:
             self._hide_button.show()
         super().enterEvent(event)
 
     def leaveEvent(self, event) -> None:
+        self._process_name_label.stop_marquee()
         self._hide_button.hide()
         super().leaveEvent(event)
 

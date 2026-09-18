@@ -100,6 +100,8 @@ non-Windows platforms.
   accent-colored focus, and automatic recovery from off-screen positions.
 - Horizontal and vertical layouts with independent saved size and position.
 - Mouse, scroll wheel, and layout-aware arrow-key controls.
+- Long application names scroll back and forth on row hover, using the same
+  animation as the controls guide.
 - Configurable global hotkeys, including overlay and mini-widget toggles,
   volume adjustment, focus navigation, and mute.
 - Optional transparent mini widget for quick volume and mute control. Drag its
@@ -172,10 +174,18 @@ removes settings and rotating logs for that user.
 
 ### Hotkey actions
 
+Settings schema 13 adds unassigned mini widget navigation, volume, and system
+volume visibility shortcuts. Migration preserves existing shortcut assignments.
+
 | Action               | Default combo   | Effect                                                 |
 | -------------------- | --------------- | ------------------------------------------------------ |
 | `toggle_overlay`     | `ctrl+alt+num5` | Show/hide the overlay.                                 |
 | `toggle_mini_widget` | (none)          | Show/hide the mini volume widget and persist the state.|
+| `mini_focus_next`    | (none)          | Select the next mini widget entry, wrapping to the first. |
+| `mini_focus_prev`    | (none)          | Select the previous mini widget entry, wrapping to the last. |
+| `mini_volume_up`     | (none)          | Increase the selected mini widget entry's volume by the arrow step. |
+| `mini_volume_down`   | (none)          | Decrease the selected mini widget entry's volume by the arrow step. |
+| `toggle_mini_master` | (none)          | Show/hide system volume in the mini widget and persist the state. |
 | `volume_up`          | (none)          | Increase the focused entry's volume by the arrow step. |
 | `volume_down`        | (none)          | Decrease the focused entry's volume by the arrow step. |
 | `focus_next`         | (none)          | Move focus to the next entry.                          |
@@ -187,6 +197,16 @@ Hotkey combos are stored as `+`-separated key names, e.g. `ctrl+alt+num5`,
 names such as `Ctrl (Left)`, `Alt (Left)`, and `NumPad 5` as selectors inside
 the same shortcut input. Modifier keys: `ctrl`, `alt`, `shift`, `win`. Numpad
 digit keys are written as `num0`-`num9`.
+
+The mini widget keeps its own selected entry, marked with an accent-colored
+border. Clicking or scrolling an entry selects it without changing the main
+widget's selection. Navigation follows the displayed application order and
+includes system volume only when its display is enabled. Initially, or when the
+selected entry disappears, the first available entry is selected. Selection
+survives hiding and showing the mini widget but resets on application restart.
+Mini widget navigation and volume shortcuts only act while the widget is shown;
+both visibility toggles also work while it is hidden. All mini widget shortcuts
+are unassigned and disabled by default. Configure them in Settings > Hotkeys.
 
 ## Known limitations
 

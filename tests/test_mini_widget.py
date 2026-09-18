@@ -169,15 +169,16 @@ def test_mini_widget_keeps_all_entries_and_wraps_to_rows(qapp, fake_backend, set
     widget.close()
 
 
-def test_wheel_adjusts_matching_volume_and_focus(mini):
+def test_wheel_adjusts_matching_volume_and_independent_selection(mini):
     entry = mini._entries["lumen.exe"]
     changed = []
     mini.model_changed.connect(lambda: changed.append(True))
 
     entry.wheelEvent(wheel_event(-1))
 
-    assert mini._model.focused_entry.key == "lumen.exe"
-    assert mini._model.focused_entry.volume == pytest.approx(0.98)
+    assert mini.selected_key == "lumen.exe"
+    assert mini._model.focused_entry.key == "master"
+    assert next(item for item in mini._model.entries if item.key == "lumen.exe").volume == pytest.approx(0.98)
     assert entry._volume_label.text() == "98%"
     assert changed == [True]
 
@@ -195,8 +196,9 @@ def test_click_toggles_mute_and_dims_icon_without_changing_percentage(mini):
         )
     )
 
-    assert mini._model.focused_entry.key == "aurora.exe"
-    assert mini._model.focused_entry.muted is True
+    assert mini.selected_key == "aurora.exe"
+    assert mini._model.focused_entry.key == "master"
+    assert next(item for item in mini._model.entries if item.key == "aurora.exe").muted is True
     assert entry._volume_label.text() == "100%"
     assert entry._icon_effect.opacity() == pytest.approx(MUTED_OPACITY)
     assert entry._muted_icon_label.isVisible()
@@ -216,7 +218,7 @@ def test_click_toggles_mute_and_dims_icon_without_changing_percentage(mini):
         )
     )
 
-    assert mini._model.focused_entry.muted is False
+    assert next(item for item in mini._model.entries if item.key == "aurora.exe").muted is False
     assert entry._volume_label.text() == "100%"
     assert entry._icon_effect.opacity() == pytest.approx(1.0)
     assert entry._muted_icon_label.isHidden()
@@ -996,8 +998,9 @@ def test_screen_changes_relayout_without_model_refresh(qapp, mini, fake_backend,
     assert mini.rect().contains(pin)
     entry = entries[-1]
     QTest.mouseClick(entry, Qt.MouseButton.LeftButton)
-    assert mini._model.focused_entry.key == entry.key
-    assert mini._model.focused_entry.muted
+    assert mini.selected_key == entry.key
+    assert mini._model.focused_entry.key == "master"
+    assert next(item for item in mini._model.entries if item.key == entry.key).muted
 
 
 @pytest.mark.parametrize("edge", ["left", "right"])
@@ -1065,15 +1068,17 @@ def test_vertical_indicator_preserves_click_wheel_and_model_sync(qapp, mini, doc
     point = slider.geometry().center()
     assert entry.childAt(point) is None
     QTest.mouseClick(entry, Qt.MouseButton.LeftButton, pos=point)
-    assert mini._model.focused_entry.key == "lumen.exe"
-    assert mini._model.focused_entry.muted
+    assert mini.selected_key == "lumen.exe"
+    assert mini._model.focused_entry.key == "master"
+    assert next(item for item in mini._model.entries if item.key == "lumen.exe").muted
     assert slider.value() == 100
     assert entry._muted_icon_label.isVisible()
     qapp.sendEvent(entry, wheel_event(-1))
-    assert mini._model.focused_entry.volume == pytest.approx(0.98)
+    assert next(item for item in mini._model.entries if item.key == "lumen.exe").volume == pytest.approx(0.98)
     assert slider.value() == 98
     assert mini._entries["aurora.exe"]._slider.value() == 100
     assert fake_backend.get_master_volume() == 0.5
+    mini._model.focus_key("lumen.exe")
     mini._model.set_volume(0.37)
     mini.refresh_view()
     assert slider.value() == 37

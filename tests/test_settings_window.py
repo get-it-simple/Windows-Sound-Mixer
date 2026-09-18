@@ -96,6 +96,44 @@ def test_initial_field_values(qapp, settings):
         assert enabled_checkbox.isChecked() == hotkey["enabled"]
 
 
+@pytest.mark.parametrize("language", ["en", "uk"])
+def test_mini_hotkeys_are_localized_scrollable_and_saved(qapp, settings, language):
+    from PySide6.QtWidgets import QLabel, QTabWidget, QScrollArea
+    from sound_mixer.i18n import get_current_language, setup, t
+    from sound_mixer.settings.store import SettingsStore
+
+    previous_language = get_current_language()
+    setup(language)
+    window = SettingsWindow(settings)
+    try:
+        tabs = window.findChild(QTabWidget)
+        tabs.setCurrentIndex(1)
+        window.show()
+        qapp.processEvents()
+        scroll = tabs.widget(1)
+        assert isinstance(scroll, QScrollArea)
+        texts = [label.text() for label in scroll.findChildren(QLabel)]
+        actions = ("mini_focus_next", "mini_focus_prev", "mini_volume_up", "mini_volume_down", "toggle_mini_master")
+        for action in actions:
+            assert t(f"action_{action}") in texts
+            assert t(f"action_{action}") != f"action_{action}"
+        action, editor, enabled = next(row for row in window._hotkey_rows if row[0] == "toggle_mini_master")
+        scroll.ensureWidgetVisible(editor)
+        qapp.processEvents()
+        assert scroll.viewport().rect().intersects(editor.rect().translated(editor.mapTo(scroll.viewport(), editor.rect().topLeft())))
+        editor.set_combo("ctrl+shift+f9")
+        enabled.setChecked(True)
+        window.accept()
+        saved = SettingsStore(settings.path)
+        saved.load()
+        assert next(item for item in saved.get_hotkeys() if item["action"] == action) == {
+            "action": action, "combo": "ctrl+shift+f9", "enabled": True,
+        }
+    finally:
+        window.close()
+        setup(previous_language)
+
+
 def test_accept_saves_general_settings(qapp, settings):
     window = SettingsWindow(settings)
 

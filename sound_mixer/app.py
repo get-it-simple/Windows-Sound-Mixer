@@ -57,6 +57,11 @@ class SoundMixerApp:
         self.hotkeys = HotkeyManager(self.settings)
         self.hotkeys.toggle_overlay.connect(self._on_toggle_overlay_hotkey)
         self.hotkeys.toggle_mini_widget.connect(self._on_toggle_mini_widget_hotkey)
+        self.hotkeys.mini_focus_next.connect(self._on_mini_focus_next_hotkey)
+        self.hotkeys.mini_focus_prev.connect(self._on_mini_focus_prev_hotkey)
+        self.hotkeys.mini_volume_up.connect(self._on_mini_volume_up_hotkey)
+        self.hotkeys.mini_volume_down.connect(self._on_mini_volume_down_hotkey)
+        self.hotkeys.toggle_mini_master.connect(self.mini_widget.toggle_master_visibility)
         self.hotkeys.volume_up.connect(self._on_volume_up_hotkey)
         self.hotkeys.volume_down.connect(self._on_volume_down_hotkey)
         self.hotkeys.focus_next.connect(self._on_focus_next_hotkey)
@@ -141,6 +146,18 @@ class SoundMixerApp:
 
     def _on_toggle_mini_widget_hotkey(self) -> None:
         self.mini_widget.set_enabled(not self.mini_widget.is_enabled())
+
+    def _on_mini_focus_next_hotkey(self) -> None:
+        self.mini_widget.move_selection(1)
+
+    def _on_mini_focus_prev_hotkey(self) -> None:
+        self.mini_widget.move_selection(-1)
+
+    def _on_mini_volume_up_hotkey(self) -> None:
+        self.mini_widget.adjust_selected_volume(1)
+
+    def _on_mini_volume_down_hotkey(self) -> None:
+        self.mini_widget.adjust_selected_volume(-1)
 
     def _refresh_views(self) -> None:
         self.overlay.refresh_view()

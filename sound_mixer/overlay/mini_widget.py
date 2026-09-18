@@ -73,6 +73,7 @@ class MiniEntryWidget(QFrame):
         self._entry: MixerEntry | None = None
         self._scale = 1.0
         self._background_transparency = 0.8
+        self._selected = False
         self._volume_below_icon = False
         self._vertical = False
         self._slider_before_icon = False
@@ -178,9 +179,16 @@ class MiniEntryWidget(QFrame):
 
     def _apply_background(self, radius: int) -> None:
         alpha = round(255 * (1 - self._background_transparency))
+        border = get_accent_color() if self._selected else "transparent"
         self.setStyleSheet(
-            f"QFrame#miniEntryWidget {{ background: rgba(0, 0, 0, {alpha}); border: none; border-radius: {radius}px; }}"
+            f"QFrame#miniEntryWidget {{ background: rgba(0, 0, 0, {alpha}); border: 1px solid {border}; border-radius: {radius}px; }}"
         )
+
+    def set_selected(self, selected: bool) -> None:
+        if self._selected != selected:
+            self._selected = selected
+            self.setProperty("selected", selected)
+            self._apply_background(round(BASE_ENTRY_RADIUS_PX * self._scale))
 
     def set_entry(self, entry: MixerEntry) -> None:
         self._entry = entry
@@ -288,6 +296,7 @@ class MiniWidget(QWidget):
         self._model = model
         self._settings = settings
         self._enabled = False
+        self._selected_key: str | None = None
         self._dock_edge = self._settings.get_mini_widget_dock_edge()
         self._entries: dict[str, MiniEntryWidget] = {}
         self._pin_below_content: bool | None = None
@@ -382,14 +391,14 @@ class MiniWidget(QWidget):
         self._save_position()
 
     def refresh_view(self) -> None:
+        entries = self._available_entries()
+        keys = [entry.key for entry in entries]
+        if self._selected_key not in keys:
+            self._selected_key = keys[0] if keys else None
         if not self._enabled:
             self.hide()
             return
 
-        entries = [
-            entry for entry in self._model.entries
-            if not entry.is_master or self._settings.get_mini_widget_show_master()
-        ]
         self._process_exit_listener.sync({pid for entry in entries for pid in entry.pids})
         active_keys = {entry.key for entry in entries}
         for key in list(self._entries):
@@ -404,13 +413,14 @@ class MiniWidget(QWidget):
             widget = self._entries.get(entry.key)
             if widget is None:
                 widget = MiniEntryWidget(self._content)
-                widget.focus_requested.connect(lambda w=widget: self._model.focus_key(w.key))
+                widget.focus_requested.connect(lambda w=widget: self._select_key(w.key))
                 widget.scrolled.connect(lambda direction, w=widget: self._on_scrolled(w.key, direction))
                 widget.mute_toggled.connect(lambda w=widget: self._on_mute_toggled(w.key))
                 widget.apply_scale(self._settings.get_mini_widget_scale())
                 widget.set_volume_below_icon(bool(self._pin_below_content))
                 self._entries[entry.key] = widget
             widget.set_entry(entry)
+            widget.set_selected(entry.key == self._selected_key)
             widget.set_background_transparency(self._settings.get_mini_widget_background_transparency())
             ordered_widgets.append(widget)
 
@@ -522,13 +532,56 @@ class MiniWidget(QWidget):
         self._content.setFixedSize(content_hint)
         self._update_pin_position()
 
-    def _on_scrolled(self, key: str, direction: int) -> None:
-        self._model.adjust_volume_by_key(key, direction * self._settings.get_scroll_step())
+    @property
+    def selected_key(self) -> str | None:
+        return self._selected_key
+
+    def _available_entries(self) -> list[MixerEntry]:
+        return [entry for entry in self._model.entries
+                if not entry.is_master or self._settings.get_mini_widget_show_master()]
+
+    def _select_key(self, key: str) -> None:
+        self._selected_key = key
+        for entry_key, widget in self._entries.items():
+            widget.set_selected(entry_key == key)
+
+    def move_selection(self, delta: int) -> None:
+        if not self.isVisible():
+            return
+        self.refresh_view()
+        keys = [entry.key for entry in self._available_entries()]
+        if keys:
+            self._select_key(keys[(keys.index(self._selected_key) + delta) % len(keys)])
+
+    def adjust_selected_volume(self, direction: int) -> None:
+        if not self.isVisible():
+            return
+        self.refresh_view()
+        if self._selected_key is not None:
+            self._adjust_volume(self._selected_key, direction * self._settings.get_arrow_step())
+
+    def toggle_master_visibility(self) -> None:
+        self._settings.set_mini_widget_show_master(not self._settings.get_mini_widget_show_master())
+        self.refresh_view()
+
+    def _adjust_volume(self, key: str, delta: float) -> None:
+        for index, entry in enumerate(self._model.entries):
+            if entry.key == key:
+                self._model.adjust_volume(delta, index)
+                break
         self.refresh_view()
         self.model_changed.emit()
 
+    def _on_scrolled(self, key: str, direction: int) -> None:
+        self._select_key(key)
+        self._adjust_volume(key, direction * self._settings.get_scroll_step())
+
     def _on_mute_toggled(self, key: str) -> None:
-        self._model.toggle_mute_by_key(key)
+        self._select_key(key)
+        for index, entry in enumerate(self._model.entries):
+            if entry.key == key:
+                self._model.toggle_mute(index)
+                break
         self.refresh_view()
         self.model_changed.emit()
 
