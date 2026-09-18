@@ -1,6 +1,7 @@
-from PySide6.QtCore import QPoint, QRect, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QGuiApplication, QMouseEvent
 from PySide6.QtWidgets import (
+    QApplication,
     QBoxLayout,
     QFrame,
     QGraphicsOpacityEffect,
@@ -14,12 +15,14 @@ from sound_mixer.audio.process_exit_listener import ProcessExitListener
 from sound_mixer.i18n import t
 from sound_mixer.mixer.model import MixerEntry, MixerModel
 from sound_mixer.overlay.icons import DelayedTooltipButton, load_app_icon, load_icon
+from sound_mixer.overlay.scaling import ScaleLimit
+from sound_mixer.overlay.taskbar_listener import TaskbarListener
 from sound_mixer.settings.store import SettingsStore
 from sound_mixer.overlay.win_effects import get_accent_color, raise_without_activating
 
 POSITION_SAVE_DELAY_MS = 300
 PIN_HIDE_DELAY_MS = 600
-TASKBAR_RAISE_INTERVAL_MS = 250
+SCREEN_UPDATE_EVENT = QEvent.Type(QEvent.registerEventType())
 MIN_VISIBLE_PX = 48
 DRAG_UPDATE_INTERVAL_MS = 33
 SNAP_DISTANCE_PX = 8
@@ -71,6 +74,7 @@ class MiniEntryWidget(QFrame):
         self._entry: MixerEntry | None = None
         self._scale = 1.0
         self._background_transparency = 0.8
+        self._selected = False
         self._volume_below_icon = False
         self._vertical = False
         self._slider_before_icon = False
@@ -176,9 +180,16 @@ class MiniEntryWidget(QFrame):
 
     def _apply_background(self, radius: int) -> None:
         alpha = round(255 * (1 - self._background_transparency))
+        border = get_accent_color() if self._selected else "transparent"
         self.setStyleSheet(
-            f"QFrame#miniEntryWidget {{ background: rgba(0, 0, 0, {alpha}); border: none; border-radius: {radius}px; }}"
+            f"QFrame#miniEntryWidget {{ background: rgba(0, 0, 0, {alpha}); border: 1px solid {border}; border-radius: {radius}px; }}"
         )
+
+    def set_selected(self, selected: bool) -> None:
+        if self._selected != selected:
+            self._selected = selected
+            self.setProperty("selected", selected)
+            self._apply_background(round(BASE_ENTRY_RADIUS_PX * self._scale))
 
     def set_entry(self, entry: MixerEntry) -> None:
         self._entry = entry
@@ -286,11 +297,14 @@ class MiniWidget(QWidget):
         self._model = model
         self._settings = settings
         self._enabled = False
+        self._selected_key: str | None = None
         self._dock_edge = self._settings.get_mini_widget_dock_edge()
         self._entries: dict[str, MiniEntryWidget] = {}
         self._pin_below_content: bool | None = None
         self._pin_layout_state = None
         self._updating_drag = False
+        self._screen = None
+        self._screen_update_pending = False
         self._process_exit_listener = ProcessExitListener(self)
         self._process_exit_listener.process_exited.connect(self._on_process_exited)
 
@@ -337,12 +351,19 @@ class MiniWidget(QWidget):
         self._pin_hide_timer.setSingleShot(True)
         self._pin_hide_timer.timeout.connect(self._hide_pin_if_idle)
 
-        self._taskbar_timer = QTimer(self)
-        self._taskbar_timer.setInterval(TASKBAR_RAISE_INTERVAL_MS)
-        self._taskbar_timer.timeout.connect(self._raise_above_taskbar)
+        self._taskbar_listener = TaskbarListener(self)
+        self._taskbar_listener.changed.connect(self._raise_above_taskbar)
+
+        app = QApplication.instance()
+        app.screenAdded.connect(self._watch_screen)
+        app.screenRemoved.connect(self._schedule_screen_update)
+        for screen in app.screens():
+            self._watch_screen(screen)
 
         position = self._settings.get_mini_widget_position()
         self.move(position["x"], position["y"])
+        self.scale_limit = ScaleLimit(self)
+        self.scale_limit.changed.connect(self.apply_scale)
         self.apply_scale()
 
     def is_enabled(self) -> bool:
@@ -368,24 +389,26 @@ class MiniWidget(QWidget):
         self._pin_button.cancel_drag()
         self._position_save_timer.stop()
         self._pin_hide_timer.stop()
-        self._taskbar_timer.stop()
+        self._taskbar_listener.stop()
+        self._cancel_screen_update()
         self._save_position()
 
     def refresh_view(self) -> None:
+        entries = self._available_entries()
+        keys = [entry.key for entry in entries]
+        if self._selected_key not in keys:
+            self._selected_key = keys[0] if keys else None
         if not self._enabled:
             self.hide()
             return
 
-        entries = [
-            entry for entry in self._model.entries
-            if not entry.is_master or self._settings.get_mini_widget_show_master()
-        ]
         self._process_exit_listener.sync({pid for entry in entries for pid in entry.pids})
         active_keys = {entry.key for entry in entries}
         for key in list(self._entries):
             if key not in active_keys:
                 widget = self._entries.pop(key)
                 self._grid.removeWidget(widget)
+                widget.hide()
                 widget.deleteLater()
 
         ordered_widgets = []
@@ -393,13 +416,14 @@ class MiniWidget(QWidget):
             widget = self._entries.get(entry.key)
             if widget is None:
                 widget = MiniEntryWidget(self._content)
-                widget.focus_requested.connect(lambda w=widget: self._model.focus_key(w.key))
+                widget.focus_requested.connect(lambda w=widget: self._select_key(w.key))
                 widget.scrolled.connect(lambda direction, w=widget: self._on_scrolled(w.key, direction))
                 widget.mute_toggled.connect(lambda w=widget: self._on_mute_toggled(w.key))
-                widget.apply_scale(self._settings.get_mini_widget_scale())
+                widget.apply_scale(self.scale_limit.constrain(self._settings.get_mini_widget_scale()))
                 widget.set_volume_below_icon(bool(self._pin_below_content))
                 self._entries[entry.key] = widget
             widget.set_entry(entry)
+            widget.set_selected(entry.key == self._selected_key)
             widget.set_background_transparency(self._settings.get_mini_widget_background_transparency())
             ordered_widgets.append(widget)
 
@@ -422,11 +446,10 @@ class MiniWidget(QWidget):
 
     def _sync_taskbar_stacking(self) -> None:
         if self._settings.get_mini_widget_show_above_taskbar() and self._enabled and self.isVisible():
-            if not self._taskbar_timer.isActive():
-                self._taskbar_timer.start()
+            self._taskbar_listener.start()
             self._raise_above_taskbar()
         else:
-            self._taskbar_timer.stop()
+            self._taskbar_listener.stop()
 
     def _raise_above_taskbar(self) -> None:
         if self._settings.get_mini_widget_show_above_taskbar() and self._enabled and self.isVisible():
@@ -434,8 +457,47 @@ class MiniWidget(QWidget):
 
     def hideEvent(self, event) -> None:
         self._pin_button.cancel_drag()
-        self._taskbar_timer.stop()
+        self._taskbar_listener.stop()
+        self._cancel_screen_update()
         super().hideEvent(event)
+
+    def event(self, event) -> bool:
+        if event.type() == SCREEN_UPDATE_EVENT:
+            self._screen_update_pending = False
+            self._update_screen_layout()
+            return True
+        result = super().event(event)
+        if event.type() == QEvent.Type.DevicePixelRatioChange:
+            if hasattr(self, "_screen_update_pending"):
+                self._schedule_screen_update()
+        return result
+
+    def _watch_screen(self, screen) -> None:
+        screen.geometryChanged.connect(self._schedule_screen_update)
+        screen.availableGeometryChanged.connect(self._schedule_screen_update)
+        screen.logicalDotsPerInchChanged.connect(self._schedule_screen_update)
+        screen.physicalDotsPerInchChanged.connect(self._schedule_screen_update)
+        self._schedule_screen_update()
+
+    def _schedule_screen_update(self, *args) -> None:
+        if self._enabled and self.isVisible() and not self._screen_update_pending:
+            self._screen_update_pending = True
+            QApplication.postEvent(self, QEvent(SCREEN_UPDATE_EVENT))
+
+    def _cancel_screen_update(self) -> None:
+        QApplication.removePostedEvents(self, SCREEN_UPDATE_EVENT)
+        self._screen_update_pending = False
+
+    def _update_screen_layout(self) -> None:
+        if not self._enabled or not self.isVisible() or not self._entries:
+            return
+        screens = QGuiApplication.screens()
+        if not screens:
+            return
+        screen = self._screen if self._screen in screens else QGuiApplication.primaryScreen()
+        self._pin_button.cancel_drag()
+        self._layout_entries(list(self._entries.values()), screen)
+        self._ensure_on_screen(screen=screen)
 
     def _screen_geometry(self, screen):
         if self._settings.get_mini_widget_show_above_taskbar():
@@ -446,7 +508,7 @@ class MiniWidget(QWidget):
         while self._grid.count():
             self._grid.takeAt(0)
 
-        spacing = round(BASE_SPACING_PX * self._settings.get_mini_widget_scale())
+        spacing = round(BASE_SPACING_PX * self.scale_limit.constrain(self._settings.get_mini_widget_scale()))
         self._grid.setHorizontalSpacing(spacing)
         self._grid.setVerticalSpacing(spacing)
         if screen is None:
@@ -466,24 +528,68 @@ class MiniWidget(QWidget):
         for index, widget in enumerate(widgets):
             row, column = (index % rows, index // rows) if vertical else (index // columns, index % columns)
             self._grid.addWidget(widget, row, column, Qt.AlignmentFlag.AlignCenter)
+            widget.show()
 
         self._content.adjustSize()
         content_hint = self._grid.sizeHint()
         self._content.setFixedSize(content_hint)
         self._update_pin_position()
 
-    def _on_scrolled(self, key: str, direction: int) -> None:
-        self._model.adjust_volume_by_key(key, direction * self._settings.get_scroll_step())
+    @property
+    def selected_key(self) -> str | None:
+        return self._selected_key
+
+    def _available_entries(self) -> list[MixerEntry]:
+        return [entry for entry in self._model.entries
+                if not entry.is_master or self._settings.get_mini_widget_show_master()]
+
+    def _select_key(self, key: str) -> None:
+        self._selected_key = key
+        for entry_key, widget in self._entries.items():
+            widget.set_selected(entry_key == key)
+
+    def move_selection(self, delta: int) -> None:
+        if not self.isVisible():
+            return
+        self.refresh_view()
+        keys = [entry.key for entry in self._available_entries()]
+        if keys:
+            self._select_key(keys[(keys.index(self._selected_key) + delta) % len(keys)])
+
+    def adjust_selected_volume(self, direction: int) -> None:
+        if not self.isVisible():
+            return
+        self.refresh_view()
+        if self._selected_key is not None:
+            self._adjust_volume(self._selected_key, direction * self._settings.get_arrow_step())
+
+    def toggle_master_visibility(self) -> None:
+        self._settings.set_mini_widget_show_master(not self._settings.get_mini_widget_show_master())
+        self.refresh_view()
+
+    def _adjust_volume(self, key: str, delta: float) -> None:
+        for index, entry in enumerate(self._model.entries):
+            if entry.key == key:
+                self._model.adjust_volume(delta, index)
+                break
         self.refresh_view()
         self.model_changed.emit()
 
+    def _on_scrolled(self, key: str, direction: int) -> None:
+        self._select_key(key)
+        self._adjust_volume(key, direction * self._settings.get_scroll_step())
+
     def _on_mute_toggled(self, key: str) -> None:
-        self._model.toggle_mute_by_key(key)
+        self._select_key(key)
+        for index, entry in enumerate(self._model.entries):
+            if entry.key == key:
+                self._model.toggle_mute(index)
+                break
         self.refresh_view()
         self.model_changed.emit()
 
     def apply_scale(self) -> None:
-        scale = self._settings.get_mini_widget_scale()
+        scale = self.scale_limit.constrain(self._settings.get_mini_widget_scale())
         icon_px = round(BASE_ICON_PX * scale)
         self._pin_button.setIconSize(QSize(icon_px, icon_px))
         pin_extent = icon_px + round(8 * scale)
@@ -570,12 +676,13 @@ class MiniWidget(QWidget):
             rect = self.frameGeometry()
         if screen is None:
             screen = self._screen_for_rect(rect, screens)
-        if QGuiApplication.screenAt(rect.center()) is None:
-            overlap = self._screen_geometry(screen).intersected(rect)
-            if overlap.width() < min(MIN_VISIBLE_PX, rect.width()) or overlap.height() < min(
-                MIN_VISIBLE_PX, rect.height()
-            ):
-                screen = QGuiApplication.primaryScreen()
+            if QGuiApplication.screenAt(rect.center()) is None:
+                overlap = self._screen_geometry(screen).intersected(rect)
+                if overlap.width() < min(MIN_VISIBLE_PX, rect.width()) or overlap.height() < min(
+                    MIN_VISIBLE_PX, rect.height()
+                ):
+                    screen = QGuiApplication.primaryScreen()
+        self._screen = screen
         available = self._screen_geometry(screen)
         x = min(max(rect.x(), available.left()), max(available.left(), available.right() - rect.width() + 1))
         y = min(max(rect.y(), available.top()), max(available.top(), available.bottom() - rect.height() + 1))

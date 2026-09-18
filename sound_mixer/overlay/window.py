@@ -33,6 +33,7 @@ from sound_mixer.overlay.icons import (
     load_icon,
     toggle_switch_style,
 )
+from sound_mixer.overlay.scaling import ScaleLimit
 from sound_mixer.overlay.win_effects import WM_DWMCOLORIZATIONCOLORCHANGED, apply_acrylic_effect, get_accent_color
 from sound_mixer.settings.schema import LAYOUT_HORIZONTAL, LAYOUT_VERTICAL
 from sound_mixer.settings.store import SettingsStore
@@ -299,6 +300,8 @@ class OverlayWindow(QWidget):
         self._geometry_save_timer.timeout.connect(self._save_geometry)
 
         self._build_ui()
+        self.scale_limit = ScaleLimit(self)
+        self.scale_limit.changed.connect(self.apply_scale)
         self._apply_layout_mode()
         self._restore_geometry()
         self.apply_scale()
@@ -608,7 +611,7 @@ class OverlayWindow(QWidget):
         entries_extent = total_entries * entry_extent + max(0, total_entries - 1) * spacing
 
         extra_extent = 0
-        fallback = round(28 * self._settings.get_ui_scale())
+        fallback = round(28 * self.scale_limit.constrain(self._settings.get_ui_scale()))
         has_ignored = bool(self._ignored_widgets)
         if has_ignored and not self._ignored_expanded:
             btn = self._widget_extent(self._expand_button)
@@ -757,7 +760,7 @@ class OverlayWindow(QWidget):
         self._scroll_area.setHorizontalScrollBarPolicy(policy)
 
     def apply_scale(self) -> None:
-        scale = self._settings.get_ui_scale()
+        scale = self.scale_limit.constrain(self._settings.get_ui_scale())
         transparent = self._settings.get_transparency_enabled()
         self._background.setStyleSheet(background_style(scale, self._accent_color, transparent, self._vertical))
 
@@ -793,6 +796,7 @@ class OverlayWindow(QWidget):
             widget.apply_scale(scale, self._accent_color)
 
         self._update_window_size()
+        self._ensure_on_screen()
 
     def _make_active_widget(self) -> EntryWidget:
         widget = EntryWidget(self._active_container)
@@ -802,7 +806,7 @@ class OverlayWindow(QWidget):
         widget.scrolled.connect(lambda direction, w=widget: self._on_scrolled(w, direction))
         widget.ignore_requested.connect(lambda w=widget: self._on_ignore_requested(w))
         widget.set_layout_mode(self._layout_mode)
-        widget.apply_scale(self._settings.get_ui_scale(), self._accent_color)
+        widget.apply_scale(self.scale_limit.constrain(self._settings.get_ui_scale()), self._accent_color)
         return widget
 
     def _make_ignored_widget(self) -> EntryWidget:
@@ -813,7 +817,7 @@ class OverlayWindow(QWidget):
         widget.scrolled.connect(lambda direction, w=widget: self._on_ignored_scrolled(w, direction))
         widget.ignore_requested.connect(lambda w=widget: self._on_unignore_requested(w))
         widget.set_layout_mode(self._layout_mode)
-        widget.apply_scale(self._settings.get_ui_scale(), self._accent_color)
+        widget.apply_scale(self.scale_limit.constrain(self._settings.get_ui_scale()), self._accent_color)
         return widget
 
     def _sync_entry_widgets(self) -> None:

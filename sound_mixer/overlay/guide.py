@@ -1,15 +1,12 @@
-from PySide6.QtCore import (
-    Property, QEasingCurve, QPauseAnimation,
-    QPropertyAnimation, QSequentialAnimationGroup, QSize, Qt,
-)
-from PySide6.QtGui import QPainter, QPalette
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (
     QApplication, QDialog, QFrame, QHBoxLayout, QLabel,
-    QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
+    QScrollArea, QVBoxLayout, QWidget,
 )
 
 from sound_mixer.i18n import t
 from sound_mixer.overlay.icons import load_icon
+from sound_mixer.overlay.marquee import MarqueeLabel
 
 
 def _get_sections(vertical: bool = False, mini_widget_enabled: bool = False) -> list[tuple[str, list[tuple[str, str]]]]:
@@ -38,6 +35,9 @@ def _get_sections(vertical: bool = False, mini_widget_enabled: bool = False) -> 
             [
                 (t("guide_hotkey_toggle"), t("guide_hotkey_toggle_desc")),
                 (t("guide_hotkey_mini"), t("guide_hotkey_mini_desc")),
+                (t("guide_hotkey_mini_focus"), t("guide_hotkey_mini_focus_desc")),
+                (t("guide_hotkey_mini_volume"), t("guide_hotkey_mini_volume_desc")),
+                (t("guide_hotkey_mini_master"), t("guide_hotkey_mini_master_desc")),
                 (t("guide_hotkey_vol"), t("guide_hotkey_vol_desc")),
                 (t("guide_hotkey_focus"), t("guide_hotkey_focus_desc")),
                 (t("guide_hotkey_mute"), t("guide_hotkey_mute_desc")),
@@ -120,82 +120,10 @@ QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
 """
 
 
-class _MarqueeLabel(QWidget):
+class _MarqueeLabel(MarqueeLabel):
     def __init__(self, text: str = "", parent=None) -> None:
-        super().__init__(parent)
+        super().__init__(text, parent)
         self.setObjectName("rowDesc")
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self._text = text
-        self._x = 0
-
-        self._fwd = QPropertyAnimation(self, b"xOffset")
-        self._fwd.setEasingCurve(QEasingCurve.Type.InOutSine)
-        self._bwd = QPropertyAnimation(self, b"xOffset")
-        self._bwd.setEasingCurve(QEasingCurve.Type.InOutSine)
-        self._pause1 = QPauseAnimation(700)
-        self._pause2 = QPauseAnimation(700)
-
-        self._group = QSequentialAnimationGroup(self)
-        self._group.setLoopCount(-1)
-        self._group.addAnimation(self._fwd)
-        self._group.addAnimation(self._pause1)
-        self._group.addAnimation(self._bwd)
-        self._group.addAnimation(self._pause2)
-
-    @Property(int)
-    def xOffset(self) -> int:
-        return self._x
-
-    @xOffset.setter
-    def xOffset(self, value: int) -> None:
-        self._x = value
-        self.update()
-
-    def text(self) -> str:
-        return self._text
-
-    def start_marquee(self) -> None:
-        container_w = self.width()
-        if container_w <= 0:
-            return
-        text_w = self.fontMetrics().horizontalAdvance(self._text)
-        if text_w <= container_w:
-            return
-        travel = text_w - container_w
-        duration = max(1000, travel * 12)
-
-        self._fwd.setDuration(duration)
-        self._fwd.setStartValue(0)
-        self._fwd.setEndValue(-travel)
-
-        self._bwd.setDuration(duration)
-        self._bwd.setStartValue(-travel)
-        self._bwd.setEndValue(0)
-
-        self._x = 0
-        self._group.start()
-
-    def stop_marquee(self) -> None:
-        self._group.stop()
-        self._x = 0
-        self.update()
-
-    def paintEvent(self, event) -> None:
-        painter = QPainter(self)
-        painter.setClipRect(self.rect())
-        painter.setFont(self.font())
-        painter.setPen(self.palette().color(QPalette.ColorRole.WindowText))
-        text_w = self.fontMetrics().horizontalAdvance(self._text) + 2
-        painter.drawText(self._x, 0, text_w, self.height(),
-                         Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
-                         self._text)
-
-    def sizeHint(self) -> QSize:
-        fm = self.fontMetrics()
-        return QSize(160, fm.height() + 6)
-
-    def minimumSizeHint(self) -> QSize:
-        return QSize(0, self.fontMetrics().height() + 6)
 
 
 class _GuideRow(QWidget):

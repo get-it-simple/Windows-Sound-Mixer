@@ -125,6 +125,18 @@ def _migrate_11_to_12(data: dict) -> dict:
     return data
 
 
+def _migrate_12_to_13(data: dict) -> dict:
+    data = dict(data)
+    hotkeys = list(data.get("hotkeys") or [])
+    actions = {hotkey.get("action") for hotkey in hotkeys}
+    for default in DEFAULT_SETTINGS["hotkeys"]:
+        if default["action"] not in actions:
+            hotkeys.append(dict(default))
+    data["hotkeys"] = hotkeys
+    data["version"] = 13
+    return data
+
+
 MIGRATIONS = {
     0: _migrate_0_to_1,
     1: _migrate_1_to_2,
@@ -138,6 +150,7 @@ MIGRATIONS = {
     9: _migrate_9_to_10,
     10: _migrate_10_to_11,
     11: _migrate_11_to_12,
+    12: _migrate_12_to_13,
 }
 
 

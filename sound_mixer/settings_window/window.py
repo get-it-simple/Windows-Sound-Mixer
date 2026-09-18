@@ -28,11 +28,11 @@ from sound_mixer.i18n import AVAILABLE_LANGUAGES, language_display_name, t
 from sound_mixer.mixer.subprocess_manager import SubprocessManager
 from sound_mixer.overlay.icons import bordered_input_style, icon_path, load_icon, toggle_switch_style
 from sound_mixer.overlay.mini_widget import MiniWidget
+from sound_mixer.overlay.scaling import ScaleLimit
 from sound_mixer.overlay.window import OverlayWindow
 from sound_mixer.settings.schema import (
     LAYOUT_HORIZONTAL,
     LAYOUT_VERTICAL,
-    MAX_UI_SCALE,
     MIN_UI_SCALE,
 )
 from sound_mixer.settings.store import SettingsStore
@@ -83,6 +83,11 @@ def _action_labels() -> dict[str, str]:
     return {
         "toggle_overlay": t("action_toggle_overlay"),
         "toggle_mini_widget": t("action_toggle_mini_widget"),
+        "mini_focus_next": t("action_mini_focus_next"),
+        "mini_focus_prev": t("action_mini_focus_prev"),
+        "mini_volume_up": t("action_mini_volume_up"),
+        "mini_volume_down": t("action_mini_volume_down"),
+        "toggle_mini_master": t("action_toggle_mini_master"),
         "volume_up": t("action_volume_up"),
         "volume_down": t("action_volume_down"),
         "focus_next": t("action_focus_next"),
@@ -312,6 +317,9 @@ class SettingsWindow(QDialog):
         self._subprocess_manager = subprocess_manager
         self._hotkey_rows: list[tuple[str, HotkeyComboEditor, QCheckBox]] = []
         self._managed_app_rows: list[ManagedAppRow] = []
+        self.scale_limit = ScaleLimit(self)
+        self._overlay_scale_limit = overlay.scale_limit if overlay is not None else self.scale_limit
+        self._mini_scale_limit = mini_widget.scale_limit if mini_widget is not None else self.scale_limit
 
         self.setWindowTitle(t("settings_title"))
         self.setWindowIcon(load_icon("logo"))
@@ -335,6 +343,22 @@ class SettingsWindow(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+        self._update_scale_limits()
+        for limit in {self.scale_limit, self._overlay_scale_limit, self._mini_scale_limit}:
+            limit.changed.connect(self._update_scale_limits)
+
+    def _update_scale_limits(self) -> None:
+        for slider, label, limit, scale in (
+            (self._ui_scale_slider, self._ui_scale_label, self._overlay_scale_limit, self._settings.get_ui_scale()),
+            (self._mini_widget_scale_slider, self._mini_widget_scale_label,
+             self._mini_scale_limit, self._settings.get_mini_widget_scale()),
+        ):
+            maximum = limit.maximum_percent()
+            slider.blockSignals(True)
+            slider.setRange(min(round(MIN_UI_SCALE * 100), maximum), maximum)
+            slider.setValue(round(scale * 100))
+            slider.blockSignals(False)
+            label.setText(f"{slider.value()}%")
 
     def _build_general_tab(self) -> QWidget:
         tab = QToolBox(self)
@@ -419,7 +443,7 @@ class SettingsWindow(QDialog):
         scale_layout.setContentsMargins(0, 0, 0, 0)
 
         self._ui_scale_slider = QSlider(Qt.Orientation.Horizontal, scale_row)
-        self._ui_scale_slider.setRange(round(MIN_UI_SCALE * 100), round(MAX_UI_SCALE * 100))
+        self._ui_scale_slider.setRange(0, self._overlay_scale_limit.maximum_percent())
         self._ui_scale_slider.setSingleStep(10)
         self._ui_scale_slider.setValue(round(self._settings.get_ui_scale() * 100))
 
@@ -437,7 +461,7 @@ class SettingsWindow(QDialog):
         mini_scale_layout.setContentsMargins(0, 0, 0, 0)
 
         self._mini_widget_scale_slider = QSlider(Qt.Orientation.Horizontal, mini_scale_row)
-        self._mini_widget_scale_slider.setRange(round(MIN_UI_SCALE * 100), round(MAX_UI_SCALE * 100))
+        self._mini_widget_scale_slider.setRange(0, self._mini_scale_limit.maximum_percent())
         self._mini_widget_scale_slider.setSingleStep(10)
         self._mini_widget_scale_slider.setValue(round(self._settings.get_mini_widget_scale() * 100))
 
@@ -498,7 +522,10 @@ class SettingsWindow(QDialog):
             self._mini_widget.apply_scale()
 
     def _build_hotkeys_tab(self) -> QWidget:
-        tab = QWidget(self)
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        tab = QWidget(scroll)
         layout = QVBoxLayout(tab)
 
         labels = _action_labels()
@@ -525,7 +552,8 @@ class SettingsWindow(QDialog):
             self._hotkey_rows.append((action, combo_edit, enabled_checkbox))
 
         layout.addStretch(1)
-        return tab
+        scroll.setWidget(tab)
+        return scroll
 
     def _build_subprocess_management_tab(self) -> QWidget:
         tab = QWidget(self)
