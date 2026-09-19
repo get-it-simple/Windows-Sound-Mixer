@@ -5,8 +5,9 @@ import uuid
 
 import pytest
 
-from PySide6.QtNetwork import QLocalServer
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
+from sound_mixer import instance_control
 from sound_mixer.instance_control import CommandResult, InstanceController, send_command
 
 
@@ -54,6 +55,35 @@ def test_second_controller_cannot_claim_active_server(qapp):
     finally:
         second.close()
         first.close()
+
+
+@pytest.mark.parametrize(
+    ("command", "expected", "shutdown_count"),
+    [("shutdown", CommandResult.ACCEPTED, 1), ("unknown", CommandResult.FAILED, 0)],
+)
+def test_command_handles_response_buffered_before_read_wait(qapp, monkeypatch, command, expected, shutdown_count):
+    name = f"SoundMixer.Test.{uuid.uuid4()}"
+    shutdowns = []
+    controller = InstanceController(lambda: shutdowns.append(True), name=name)
+    assert controller.start() is True
+
+    class BufferedResponseSocket(QLocalSocket):
+        def write(self, data):
+            written = super().write(data)
+            self.flush()
+            deadline = time.monotonic() + 5
+            while self.state() != QLocalSocket.LocalSocketState.UnconnectedState and time.monotonic() < deadline:
+                qapp.processEvents()
+            assert self.state() == QLocalSocket.LocalSocketState.UnconnectedState
+            assert self.canReadLine()
+            return written
+
+    monkeypatch.setattr(instance_control, "QLocalSocket", BufferedResponseSocket)
+    try:
+        assert send_command(command, 1000, name) is expected
+        assert shutdowns == [True] * shutdown_count
+    finally:
+        controller.close()
 
 
 def test_command_reports_when_instance_is_not_running():
