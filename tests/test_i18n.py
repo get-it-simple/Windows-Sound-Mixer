@@ -1,115 +1,86 @@
+import ast
+import json
+import shutil
+from pathlib import Path
+
 import pytest
 
 import sound_mixer.i18n as i18n
-from sound_mixer.i18n import (
-    AVAILABLE_LANGUAGES,
-    FALLBACK_LANGUAGE,
-    _language_english_name,
-    _language_native_name,
-    language_display_name,
-    t,
-)
 
 
 @pytest.fixture(autouse=True)
 def reset_i18n():
+    i18n.setup("en")
     yield
-    i18n.setup(FALLBACK_LANGUAGE)
-
-
-def test_default_language_is_english():
-    assert i18n.get_current_language() == "en"
-
-
-def test_t_returns_english_string_by_default():
-    assert t("sound_mixer_title") == "Sound Mixer"
-    assert t("close_tooltip") == "Close"
-
-
-def test_t_returns_key_for_unknown_string():
-    assert t("nonexistent_key_xyz") == "nonexistent_key_xyz"
-
-
-def test_setup_english_returns_english_strings():
     i18n.setup("en")
 
-    assert t("sound_mixer_title") == "Sound Mixer"
-    assert t("exit_menu") == "Exit"
+
+def test_english_catalog_and_unknown_keys():
     assert i18n.get_current_language() == "en"
+    assert i18n.t("sound_mixer_title") == "Sound Mixer"
+    assert i18n.t("exit_menu") == "Exit"
+    assert i18n.t("nonexistent_key_xyz") == "nonexistent_key_xyz"
+    catalog = json.loads((i18n._TRANSLATIONS_DIR / "en" / "strings.json").read_text(encoding="utf-8"))
+    assert catalog
+    assert all(isinstance(value, str) and value for value in catalog.values())
+    for source in i18n._TRANSLATIONS_DIR.parent.rglob("*.py"):
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "t":
+                if node.args and isinstance(node.args[0], ast.Constant):
+                    assert node.args[0].value in catalog, f"Missing English string in {source}: {node.args[0].value}"
 
 
-def test_setup_ukrainian_returns_ukrainian_strings():
-    i18n.setup("uk")
-
-    assert t("sound_mixer_title") == "Sound Mixer"
-    assert t("exit_menu") == "Вийти"
-    assert t("tab_general") == "Загальні"
-    assert i18n.get_current_language() == "uk"
-
-
-def test_setup_unknown_language_falls_back_to_english():
-    i18n.setup("zz")
-
+def test_unknown_language_falls_back_to_english():
+    i18n.setup("nonexistent-language")
     assert i18n.get_current_language() == "en"
-    assert t("exit_menu") == "Exit"
+    assert i18n.t("exit_menu") == "Exit"
 
 
-def test_setup_system_does_not_crash():
+def test_english_language_names():
+    assert "en" in i18n.AVAILABLE_LANGUAGES
+    assert i18n._language_native_name("en") == "English"
+    assert i18n._language_english_name("en") == "English"
+    assert i18n.language_display_name("en") == "English"
+
+
+def test_new_catalog_is_discovered_loaded_and_falls_back(tmp_path, monkeypatch):
+    shutil.copytree(i18n._TRANSLATIONS_DIR / "en", tmp_path / "en")
+    catalog_dir = tmp_path / "en-GB"
+    catalog_dir.mkdir()
+    (catalog_dir / "strings.json").write_text(json.dumps({"exit_menu": "Leave"}), encoding="utf-8")
+    (tmp_path / "empty-directory").mkdir()
+    (tmp_path / "ignored.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(i18n, "_TRANSLATIONS_DIR", tmp_path)
+    monkeypatch.setattr(i18n, "AVAILABLE_LANGUAGES", i18n._discover_languages())
+
+    assert i18n.AVAILABLE_LANGUAGES == ["en", "en-GB"]
+    i18n.setup("en-GB")
+    assert i18n.get_current_language() == "en-GB"
+    assert i18n.t("exit_menu") == "Leave"
+    assert i18n.t("close_tooltip") == "Close"
+    assert i18n.t("nonexistent_key_xyz") == "nonexistent_key_xyz"
+    i18n.setup("en")
+    assert i18n.t("exit_menu") == "Exit"
+
+
+def test_system_locale_prefers_exact_then_parent_language(monkeypatch):
+    monkeypatch.setattr(i18n, "AVAILABLE_LANGUAGES", ["en", "en-GB"])
+    assert i18n._match_language("en_GB.UTF-8") == "en-GB"
+    assert i18n._match_language("EN-gb") == "en-GB"
+    assert i18n._match_language("en-US") == "en"
+    assert i18n._match_language("zz-ZZ") is None
     i18n.setup("system")
-
-    assert i18n.get_current_language() in AVAILABLE_LANGUAGES
-
-
-def test_ukrainian_falls_back_to_english_for_missing_keys():
-    i18n.setup("uk")
-
-    assert t("nonexistent_key_xyz") == "nonexistent_key_xyz"
+    assert i18n.get_current_language() in i18n.AVAILABLE_LANGUAGES
 
 
-def test_available_languages_contains_en_and_uk():
-    assert "en" in AVAILABLE_LANGUAGES
-    assert "uk" in AVAILABLE_LANGUAGES
+def test_build_collects_catalogs_without_registering_languages():
+    from PyInstaller.utils.hooks import collect_data_files
 
-
-def test_language_native_name_uses_windows_api():
-    native_en = _language_native_name("en")
-    native_uk = _language_native_name("uk")
-    assert native_en == "English"
-    assert "Українська" in native_uk
-
-
-def test_language_english_name_uses_windows_api():
-    assert _language_english_name("en") == "English"
-    assert _language_english_name("uk") == "Ukrainian"
-
-
-def test_language_display_name_different_languages():
-    i18n.setup("en")
-
-    name = language_display_name("uk")
-    assert "Українська" in name
-    assert "Ukrainian" in name
-
-
-def test_language_display_name_same_as_current_shows_native_only():
-    i18n.setup("en")
-
-    name = language_display_name("en")
-    assert name == "English"
-
-
-def test_language_display_name_en_from_uk_shows_english_only():
-    name = language_display_name("en", current_lang="uk")
-    assert name == "English"
-
-
-def test_language_display_name_uk_from_en():
-    name = language_display_name("uk", current_lang="en")
-    assert "Українська" in name
-    assert "Ukrainian" in name
-
-
-def test_detect_system_language_returns_valid_code():
-    lang = i18n.detect_system_language()
-
-    assert lang in AVAILABLE_LANGUAGES
+    catalogs = {
+        str(Path(source).resolve())
+        for source, destination in collect_data_files("sound_mixer.i18n")
+        if Path(source).name == "strings.json"
+    }
+    assert str((i18n._TRANSLATIONS_DIR / "en" / "strings.json").resolve()) in catalogs
+    assert catalogs == {str(path.resolve()) for path in i18n._TRANSLATIONS_DIR.glob("*/strings.json")}

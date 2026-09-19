@@ -492,6 +492,10 @@ class SettingsWindow(QDialog):
             self._language_combo.setCurrentIndex(idx)
         groups["settings_application"].addWidget(self._field(t("language"), self._language_combo, tab))
 
+        self._language_guide_button = QPushButton(t("language_guide_button"), tab)
+        self._language_guide_button.clicked.connect(self._show_language_guide)
+        groups["settings_application"].addWidget(self._language_guide_button)
+
         self._guide_button = QPushButton(t("controls_guide_button"), tab)
         self._guide_button.clicked.connect(self._show_guide)
         groups["settings_application"].addWidget(self._guide_button)
@@ -613,7 +617,21 @@ class SettingsWindow(QDialog):
 
         layout.addWidget(QLabel(f"Sound Mixer v{__version__}", tab))
         layout.addWidget(QLabel(t("app_description"), tab))
+        repository_url = "https://github.com/get-it-simple/Windows-Sound-Mixer"
+        repository_label = QLabel(f'<a href="{repository_url}">{repository_url}</a>', tab)
+        repository_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+        repository_label.setOpenExternalLinks(True)
+        repository_label.setWordWrap(True)
+        layout.addWidget(repository_label)
+        feedback_label = QLabel(t("app_feedback"), tab)
+        feedback_label.setWordWrap(True)
+        layout.addWidget(feedback_label)
         return tab
+
+    def _show_language_guide(self) -> None:
+        from sound_mixer.settings_window.language_guide import LanguageGuideDialog
+
+        LanguageGuideDialog(self).exec()
 
     def _show_guide(self) -> None:
         from sound_mixer.overlay.guide import GuideDialog

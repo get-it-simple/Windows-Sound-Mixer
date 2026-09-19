@@ -168,7 +168,7 @@ removes settings and rotating logs for that user.
 | `default_app_volume`   | float (0.0-1.0) | Initial volume applied to apps the first time they appear, if not already in `app_volumes`.                                                                     |
 | `transparency_enabled` | bool            | Whether the overlay background uses the translucent acrylic effect. If disabled, the overlay has a solid background.                                            |
 | `ignored_apps`         | array of string | Lowercase executable paths (e.g. `"d:/games/mygame/game.exe"`) hidden from the main entry list. Legacy bare executable names (e.g. `"discord.exe"`) still hide every app with that file name. Ignored entries can be revealed via the expand button. |
-| `language`             | string          | UI language code (`"en"`, `"uk"`) or `"system"` to follow the Windows locale. Defaults to `"system"`. Changes take effect immediately when saved from Settings. |
+| `language`             | string          | Windows language code discovered from `sound_mixer/i18n/<code>/strings.json`, or `"system"` to follow the Windows locale. Defaults to `"system"`. Changes take effect immediately when saved from Settings. Missing translations fall back to English. |
 | `subprocess_management` | object          | `{ "interval_seconds": int, "apps": [{ "path": string, "enabled": bool }] }` - shared polling interval and the list of host executables (e.g. sandbox/launcher apps) whose child processes need active background scanning because they don't trigger the normal session-created event. The scan itself is also gated by a session-only on/off switch in the overlay (not persisted - always starts off). |
 | `whitelist`             | object          | `{ "enabled": bool, "apps": [{ "path": string, "enabled": bool }] }` - optional display filter for both the main overlay and mini widget. Hold the left mouse button on a row's drag handle in Settings and drag vertically within the list to reorder it; enabled apps follow that order in both widgets, with unlisted apps afterward when filtering is off. Full normalized paths distinguish same-named apps; bare session names fall back to matching an enabled path's file name. |
 | `mini_widget`           | object          | `{ "enabled": bool, "x": int, "y": int, "dock_edge": string, "scale": float, "background_transparency": float, "show_master": bool, "show_above_taskbar": bool }` - mini widget visibility, position, independent 0.5-3.0 scale, app tile background transparency (0 = opaque, 1 = transparent; default 0.8), optional master volume in first position (default false), and display above the taskbar (default false). Enabling display above the taskbar allows placement across the full screen, including the taskbar area, and maintains window stacking without taking keyboard focus. Disabling it moves the widget back into the work area. `dock_edge` is `""` (free, the default), `"left"`, `"right"`, `"top"`, or `"bottom"`; docking survives restarts, scale changes, and session updates. Side docking uses a vertical app list with non-interactive volume indicators, wrapping into additional columns when needed. Settings schema 12 adds docking without changing existing positions or preferences. |
@@ -240,43 +240,29 @@ it.
 
 ## Supported languages
 
-| Language               | Code | Added by |
-| ---------------------- | ---- | -------- |
-| English                | `en` | author   |
-| Українська (Ukrainian) | `uk` | author   |
+Languages are discovered automatically from `sound_mixer/i18n/<language-code>/strings.json`
+and included in each build. English (`en`) is the base language; missing translated keys
+use the English text. Display names come from Windows. System language detection prefers
+an exact locale match, then its parent language, then English.
 
 <details>
 <summary>How to add a new translation</summary>
 
-1. **Create the language file.** Copy `sound_mixer/i18n/en.py` to a new file named after the
-   [ISO 639-1](https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes) code of the language
-   (e.g. `sound_mixer/i18n/de.py` for German). Translate every string value; do not change
-   the keys.
+1. **Add one file.** Copy `sound_mixer/i18n/en/strings.json` to
+   `sound_mixer/i18n/<language-code>/strings.json`. Use a Windows locale code for the
+   directory name, such as `de` or `pt-BR`.
+2. **Translate the values.** Keep the JSON keys unchanged and save the file as UTF-8.
+   A partial translation is supported: omitted keys use English automatically.
+3. **Build.** Run `python build.py`. The new language appears in Settings automatically;
+   no language registry, loader branch, or language-specific tests are needed.
+   Version bumps follow the normal project release rules.
 
-2. **Register the language in the i18n module.** Open `sound_mixer/i18n/__init__.py` and make
-   two additions:
-    - Add the code to `AVAILABLE_LANGUAGES`:
-        ```python
-        AVAILABLE_LANGUAGES: list[str] = ["en", "uk", "de"]
-        ```
-    - Add a branch in `_load_language_strings()` to import the new module:
-        ```python
-        def _load_language_strings(language: str) -> dict[str, str]:
-            if language == "uk":
-                from sound_mixer.i18n.uk import STRINGS
-                return STRINGS
-            if language == "de":
-                from sound_mixer.i18n.de import STRINGS
-                return STRINGS
-            return {}
-        ```
+The **Missing your language?** button below the language selector opens a short guide.
+To share a translation, submit its JSON file to this project on GitHub.
 
-3. **Add tests.** In `tests/test_i18n.py`, add a test that calls `i18n.setup("de")` and
-   asserts at least one translated string is returned correctly.
-
-4. **Update this table** in `README.md` with the new language and your name.
-
-5. **Bump the version** in `sound_mixer/__init__.py` (required for every source change).
+When adding, changing, or removing UI strings, update the English catalog and every
+existing language catalog, including languages contributed later. Translation-content
+and UI tests use English; generic tests cover language discovery and fallback.
 
 </details>
 

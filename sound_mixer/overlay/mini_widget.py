@@ -22,6 +22,7 @@ from sound_mixer.overlay.win_effects import get_accent_color, raise_without_acti
 
 POSITION_SAVE_DELAY_MS = 300
 PIN_HIDE_DELAY_MS = 600
+SELECTION_HIGHLIGHT_MS = 1500
 SCREEN_UPDATE_EVENT = QEvent.Type(QEvent.registerEventType())
 MIN_VISIBLE_PX = 48
 DRAG_UPDATE_INTERVAL_MS = 33
@@ -298,6 +299,7 @@ class MiniWidget(QWidget):
         self._settings = settings
         self._enabled = False
         self._selected_key: str | None = None
+        self._selected_state: tuple[str, float, bool] | None = None
         self._dock_edge = self._settings.get_mini_widget_dock_edge()
         self._entries: dict[str, MiniEntryWidget] = {}
         self._pin_below_content: bool | None = None
@@ -350,6 +352,10 @@ class MiniWidget(QWidget):
         self._pin_hide_timer = QTimer(self)
         self._pin_hide_timer.setSingleShot(True)
         self._pin_hide_timer.timeout.connect(self._hide_pin_if_idle)
+        self._selection_timer = QTimer(self)
+        self._selection_timer.setSingleShot(True)
+        self._selection_timer.setInterval(SELECTION_HIGHLIGHT_MS)
+        self._selection_timer.timeout.connect(self._clear_selection_highlight)
 
         self._taskbar_listener = TaskbarListener(self)
         self._taskbar_listener.changed.connect(self._raise_above_taskbar)
@@ -385,6 +391,7 @@ class MiniWidget(QWidget):
         self.set_enabled(self._settings.get_mini_widget_enabled(), persist=False)
 
     def stop(self) -> None:
+        self._clear_selection_highlight()
         self._process_exit_listener.stop()
         self._pin_button.cancel_drag()
         self._position_save_timer.stop()
@@ -397,10 +404,17 @@ class MiniWidget(QWidget):
         entries = self._available_entries()
         keys = [entry.key for entry in entries]
         if self._selected_key not in keys:
+            self._clear_selection_highlight()
             self._selected_key = keys[0] if keys else None
         if not self._enabled:
             self.hide()
             return
+
+        selected = next((entry for entry in entries if entry.key == self._selected_key), None)
+        state = (selected.key, selected.volume, selected.muted) if selected else None
+        if state and self._selected_state and state[0] == self._selected_state[0] and state != self._selected_state:
+            self._highlight_selection()
+        self._selected_state = state
 
         self._process_exit_listener.sync({pid for entry in entries for pid in entry.pids})
         active_keys = {entry.key for entry in entries}
@@ -423,7 +437,7 @@ class MiniWidget(QWidget):
                 widget.set_volume_below_icon(bool(self._pin_below_content))
                 self._entries[entry.key] = widget
             widget.set_entry(entry)
-            widget.set_selected(entry.key == self._selected_key)
+            widget.set_selected(entry.key == self._selected_key and self._selection_timer.isActive())
             widget.set_background_transparency(self._settings.get_mini_widget_background_transparency())
             ordered_widgets.append(widget)
 
@@ -456,6 +470,8 @@ class MiniWidget(QWidget):
             raise_without_activating(self)
 
     def hideEvent(self, event) -> None:
+        self._clear_selection_highlight()
+        self._selected_state = None
         self._pin_button.cancel_drag()
         self._taskbar_listener.stop()
         self._cancel_screen_update()
@@ -544,9 +560,20 @@ class MiniWidget(QWidget):
                 if not entry.is_master or self._settings.get_mini_widget_show_master()]
 
     def _select_key(self, key: str) -> None:
+        if self._selected_key == key:
+            return
         self._selected_key = key
+        self._highlight_selection()
+
+    def _highlight_selection(self) -> None:
+        self._selection_timer.start()
         for entry_key, widget in self._entries.items():
-            widget.set_selected(entry_key == key)
+            widget.set_selected(entry_key == self._selected_key)
+
+    def _clear_selection_highlight(self) -> None:
+        self._selection_timer.stop()
+        for widget in self._entries.values():
+            widget.set_selected(False)
 
     def move_selection(self, delta: int) -> None:
         if not self.isVisible():
@@ -571,6 +598,7 @@ class MiniWidget(QWidget):
         for index, entry in enumerate(self._model.entries):
             if entry.key == key:
                 self._model.adjust_volume(delta, index)
+                self._highlight_selection()
                 break
         self.refresh_view()
         self.model_changed.emit()

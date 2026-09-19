@@ -7,14 +7,13 @@ from sound_mixer.overlay.window import OverlayWindow
 from sound_mixer.settings_window.window import SettingsWindow
 
 
-@pytest.mark.parametrize("language", ["en", "uk"])
 @pytest.mark.parametrize("size", [(460, 740), (420, 420)])
-def test_general_settings_fit_width_without_horizontal_scrolling(qapp, settings, language, size):
+def test_general_settings_fit_width_without_horizontal_scrolling(qapp, settings, size):
     from PySide6.QtWidgets import QLabel, QScrollArea, QToolBox
     from sound_mixer.i18n import get_current_language, setup
 
     previous_language = get_current_language()
-    setup(language)
+    setup("en")
     window = SettingsWindow(settings)
     categories = window.findChild(QToolBox, "settingsCategories")
     categories.setParent(None)
@@ -96,14 +95,13 @@ def test_initial_field_values(qapp, settings):
         assert enabled_checkbox.isChecked() == hotkey["enabled"]
 
 
-@pytest.mark.parametrize("language", ["en", "uk"])
-def test_mini_hotkeys_are_localized_scrollable_and_saved(qapp, settings, language):
+def test_mini_hotkeys_are_localized_scrollable_and_saved(qapp, settings):
     from PySide6.QtWidgets import QLabel, QTabWidget, QScrollArea
     from sound_mixer.i18n import get_current_language, setup, t
     from sound_mixer.settings.store import SettingsStore
 
     previous_language = get_current_language()
-    setup(language)
+    setup("en")
     window = SettingsWindow(settings)
     try:
         tabs = window.findChild(QTabWidget)
@@ -313,6 +311,55 @@ def test_about_tab_shows_version(qapp, settings):
     assert any(__version__ in label for label in labels)
 
 
+def test_about_repository_link_opens_only_on_click(qapp, settings):
+    from PySide6.QtCore import QObject, QPoint, Qt, QUrl, Slot
+    from PySide6.QtGui import QDesktopServices
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QLabel
+
+    from sound_mixer.i18n import get_current_language, setup, t
+
+    class UrlHandler(QObject):
+        def __init__(self):
+            super().__init__()
+            self.urls = []
+
+        @Slot(QUrl)
+        def open(self, url):
+            self.urls.append(url.toString())
+
+    previous_language = get_current_language()
+    setup("en")
+    handler = UrlHandler()
+    QDesktopServices.setUrlHandler("https", handler, "open")
+    window = None
+    tab = None
+    try:
+        window = SettingsWindow(settings)
+        tab = window._build_about_tab()
+        tab.setParent(None)
+        tab.resize(800, 300)
+        tab.show()
+        qapp.processEvents()
+        url = "https://github.com/get-it-simple/Windows-Sound-Mixer"
+        labels = tab.findChildren(QLabel)
+        link = next(label for label in labels if f'href="{url}"' in label.text())
+        assert link.openExternalLinks()
+        assert t("app_feedback") != "app_feedback"
+        assert any(label.text() == t("app_feedback") and "Issues" in label.text() for label in labels)
+        assert handler.urls == []
+
+        QTest.mouseClick(link, Qt.MouseButton.LeftButton, pos=QPoint(12, link.height() // 2))
+        assert handler.urls == [url]
+    finally:
+        QDesktopServices.unsetUrlHandler("https")
+        setup(previous_language)
+        if tab is not None:
+            tab.close()
+        if window is not None:
+            window.close()
+
+
 def test_settings_window_has_app_icon(qapp, settings):
     window = SettingsWindow(settings)
 
@@ -350,10 +397,10 @@ def test_language_combo_contains_all_available_languages(qapp, settings):
 
 
 def test_language_combo_reflects_saved_setting(qapp, settings):
-    settings.set_language("uk")
+    settings.set_language("en")
     window = SettingsWindow(settings)
 
-    assert window._language_combo.currentData() == "uk"
+    assert window._language_combo.currentData() == "en"
 
 
 def test_subprocess_management_tab_builds_row_per_persisted_app(qapp, settings):
@@ -471,12 +518,12 @@ def test_whitelist_tab_loads_and_saves_independent_app_list(qapp, settings):
 
 def test_accept_saves_language(qapp, settings):
     window = SettingsWindow(settings)
-    uk_index = window._language_combo.findData("uk")
-    window._language_combo.setCurrentIndex(uk_index)
+    en_index = window._language_combo.findData("en")
+    window._language_combo.setCurrentIndex(en_index)
 
     window.accept()
 
-    assert settings.get_language() == "uk"
+    assert settings.get_language() == "en"
 
 
 def test_start_opened_checkbox_reflects_setting(qapp, settings):

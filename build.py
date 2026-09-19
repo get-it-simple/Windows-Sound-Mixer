@@ -138,6 +138,8 @@ def _run_pyinstaller() -> None:
         str(version_resource),
         "--add-data",
         f"{ROOT / 'resources'}{os.pathsep}resources",
+        "--collect-data",
+        "sound_mixer.i18n",
         "--add-binary",
         f"{staged_vcruntime}{os.pathsep}.",
         str(ROOT / "sound_mixer" / "__main__.py"),

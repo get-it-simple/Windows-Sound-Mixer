@@ -1,11 +1,32 @@
 import ctypes
+import json
 import sys
-
-from sound_mixer.i18n.en import STRINGS as _EN_STRINGS
+from pathlib import Path
 
 FALLBACK_LANGUAGE = "en"
 
-AVAILABLE_LANGUAGES: list[str] = ["en", "uk"]
+_TRANSLATIONS_DIR = Path(__file__).resolve().parent
+
+
+def _discover_languages() -> list[str]:
+    return sorted(path.parent.name for path in _TRANSLATIONS_DIR.glob("*/strings.json") if path.is_file())
+
+
+def _load_language_strings(language: str) -> dict[str, str]:
+    path = _TRANSLATIONS_DIR / language / "strings.json"
+    try:
+        strings = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        if language == FALLBACK_LANGUAGE:
+            raise
+        return {}
+    if not isinstance(strings, dict):
+        raise ValueError(f"Expected a translation object in {path}")
+    return {key: value for key, value in strings.items() if isinstance(value, str)}
+
+
+AVAILABLE_LANGUAGES: list[str] = _discover_languages()
+_EN_STRINGS = _load_language_strings(FALLBACK_LANGUAGE)
 
 _strings: dict[str, str] = dict(_EN_STRINGS)
 _current_language: str = FALLBACK_LANGUAGE
@@ -39,13 +60,23 @@ def _language_english_name(lang_code: str) -> str:
     return name if name else lang_code
 
 
+def _match_language(locale_name: str) -> str | None:
+    languages = {code.lower(): code for code in AVAILABLE_LANGUAGES}
+    candidate = locale_name.replace("_", "-").split(".")[0].lower()
+    while candidate:
+        if candidate in languages:
+            return languages[candidate]
+        candidate = candidate.rpartition("-")[0]
+    return None
+
+
 def detect_system_language() -> str:
     if sys.platform == "win32":
         try:
             buf = ctypes.create_unicode_buffer(85)
             ctypes.windll.kernel32.GetUserDefaultLocaleName(buf, 85)
-            lang_code = buf.value.split("-")[0].lower()
-            if lang_code in AVAILABLE_LANGUAGES:
+            lang_code = _match_language(buf.value)
+            if lang_code:
                 return lang_code
         except Exception:
             pass
@@ -54,8 +85,8 @@ def detect_system_language() -> str:
 
         lang = locale.getdefaultlocale()[0]
         if lang:
-            lang_code = lang.split("_")[0].lower()
-            if lang_code in AVAILABLE_LANGUAGES:
+            lang_code = _match_language(lang)
+            if lang_code:
                 return lang_code
     except Exception:
         pass
@@ -95,11 +126,3 @@ def language_display_name(lang_code: str, current_lang: str | None = None) -> st
 
 def t(key: str) -> str:
     return _strings.get(key, key)
-
-
-def _load_language_strings(language: str) -> dict[str, str]:
-    if language == "uk":
-        from sound_mixer.i18n.uk import STRINGS
-
-        return STRINGS
-    return {}
