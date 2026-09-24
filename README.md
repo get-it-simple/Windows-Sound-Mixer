@@ -240,6 +240,32 @@ it.
 
 ## Supported languages
 
+The application includes 21 languages:
+
+| Language | Windows language code |
+| --- | --- |
+| Bulgarian | `bg` |
+| Croatian | `hr` |
+| Czech | `cs` |
+| Danish | `da` |
+| Dutch | `nl` |
+| English | `en` |
+| Finnish | `fi` |
+| French | `fr` |
+| German | `de` |
+| Greek | `el` |
+| Hungarian | `hu` |
+| Italian | `it` |
+| Norwegian Bokmål | `nb` |
+| Polish | `pl` |
+| Portuguese (Portugal) | `pt-PT` |
+| Romanian | `ro` |
+| Slovak | `sk` |
+| Spanish (wording for Spain) | `es` |
+| Swedish | `sv` |
+| Turkish | `tr` |
+| Ukrainian | `uk` |
+
 Languages are discovered automatically from `sound_mixer/i18n/<language-code>/strings.json`
 and included in each build. English (`en`) is the base language; missing translated keys
 use the English text. Display names come from Windows. System language detection prefers
