@@ -47,6 +47,12 @@ class FakeAudioBackend:
     def get_master_volume(self) -> float:
         return self._master_volume
 
+    def get_master_state(self) -> tuple[float, bool] | None:
+        return self.get_master_volume(), self.get_master_mute()
+
+    def invalidate_master_endpoint(self) -> None:
+        pass
+
     def set_master_volume(self, level: float) -> None:
         self._master_volume = clamp_volume(level)
 

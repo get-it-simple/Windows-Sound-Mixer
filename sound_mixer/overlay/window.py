@@ -640,18 +640,23 @@ class OverlayWindow(QWidget):
 
     def _on_new_session(self) -> None:
         try:
-            self._model.refresh()
+            self._model.refresh(include_master=False)
+            self._model.refresh_master_after_app_event()
         except Exception:
             return
         self.model_changed.emit()
 
     def _refresh(self) -> None:
         try:
-            self._model.refresh()
+            self._model.refresh(include_master=False)
         except Exception:
             return
         self._sync_entry_widgets()
         self.model_changed.emit()
+
+    def restart_session_listener(self) -> None:
+        if not self.isVisible():
+            self._session_listener.start()
 
     def _pause_refresh(self) -> None:
         self._refresh_timer.stop()

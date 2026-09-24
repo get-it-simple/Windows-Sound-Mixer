@@ -454,7 +454,8 @@ class MiniWidget(QWidget):
 
     def _on_process_exited(self) -> None:
         if self._enabled:
-            self._model.refresh()
+            self._model.refresh(include_master=False)
+            self._model.refresh_master_after_app_event()
             self.refresh_view()
             self.model_changed.emit()
 

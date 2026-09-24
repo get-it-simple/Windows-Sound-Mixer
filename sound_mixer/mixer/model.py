@@ -30,6 +30,7 @@ class MixerModel:
         self.focused_index = 0
         self._on_master_mute_changed: Optional[Callable[[bool], None]] = None
         self._last_master_muted: Optional[bool] = None
+        self._master_refresh_scheduler: Optional[Callable[[], None]] = None
         self.refresh()
 
     def set_master_mute_listener(self, callback: Callable[[bool], None]) -> None:
@@ -46,14 +47,39 @@ class MixerModel:
             if self._on_master_mute_changed is not None:
                 self._on_master_mute_changed(muted)
 
-    def refresh(self) -> None:
+    def apply_master_state(self, volume: float, muted: bool) -> bool:
+        entry = self.entries[0]
+        state = (clamp_volume(volume), bool(muted))
+        changed = (entry.volume, entry.muted) != state
+        entry.volume, entry.muted = state
+        self._notify_master_mute()
+        return changed
+
+    def refresh_master(self) -> bool:
+        state = self._backend.get_master_state()
+        if state is None:
+            return False
+        self.apply_master_state(*state)
+        return True
+
+    def refresh_master_after_app_event(self) -> None:
+        if self._settings.get_mini_widget_show_master():
+            if self._master_refresh_scheduler is not None:
+                self._master_refresh_scheduler()
+            else:
+                self.refresh_master()
+
+    def set_master_refresh_scheduler(self, callback: Optional[Callable[[], None]]) -> None:
+        self._master_refresh_scheduler = callback
+
+    def refresh(self, *, include_master: bool = True) -> None:
         self._backend.refresh()
 
-        master_entry = MixerEntry(
+        master_entry = next((entry for entry in self.entries if entry.is_master), None) or MixerEntry(
             key=MASTER_KEY,
             display_name=MASTER_DISPLAY_NAME,
-            volume=self._backend.get_master_volume(),
-            muted=self._backend.get_master_mute(),
+            volume=self._settings.get_master_volume(),
+            muted=self._settings.get_master_muted(),
             is_master=True,
         )
 
@@ -94,6 +120,9 @@ class MixerModel:
         self.entries = [master_entry, *app_entries]
         self.ignored_entries = ignored_entries
 
+        if include_master:
+            self.refresh_master()
+
         if focused_key is not None:
             for index, entry in enumerate(self.entries):
                 if entry.key == focused_key:
@@ -126,6 +155,7 @@ class MixerModel:
         else:
             self._set_session_volume(entry.key, level)
             self._settings.set_app_volume(entry.key, level)
+            self.refresh_master_after_app_event()
 
         return level
 
@@ -146,6 +176,7 @@ class MixerModel:
         else:
             self._set_session_muted(entry.key, muted)
             self._settings.set_app_muted(entry.key, muted)
+            self.refresh_master_after_app_event()
 
         self._notify_master_mute()
         return muted
@@ -186,6 +217,7 @@ class MixerModel:
                 entry.volume = level
                 self._set_session_volume(key, level)
                 self._settings.set_app_volume(key, level)
+                self.refresh_master_after_app_event()
                 return level
         return level
 
@@ -202,6 +234,7 @@ class MixerModel:
                 entry.muted = muted
                 self._set_session_muted(key, muted)
                 self._settings.set_app_muted(key, muted)
+                self.refresh_master_after_app_event()
                 return muted
         return False
 

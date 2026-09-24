@@ -365,6 +365,15 @@ class PycawAudioBackend:
         except Exception:
             return 1.0
 
+    def get_master_state(self) -> tuple[float, bool] | None:
+        try:
+            return self._endpoint.call(lambda ep: (ep.GetMasterVolumeLevelScalar(), bool(ep.GetMute())))
+        except Exception:
+            return None
+
+    def invalidate_master_endpoint(self) -> None:
+        self._endpoint.invalidate()
+
     def set_master_volume(self, level: float) -> None:
         try:
             self._endpoint.call(lambda ep: ep.SetMasterVolumeLevelScalar(clamp_volume(level), None))

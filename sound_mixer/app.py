@@ -9,6 +9,7 @@ from sound_mixer.autostart.registry import AutostartManager, AutostartUnavailabl
 from sound_mixer.hotkeys.manager import HotkeyManager
 from sound_mixer.instance_control import InstanceController
 from sound_mixer.mixer.model import MixerModel
+from sound_mixer.mixer.master_sync import MasterAudioSync
 from sound_mixer.mixer.subprocess_manager import SubprocessManager
 from sound_mixer.overlay.window import OverlayWindow
 from sound_mixer.overlay.mini_widget import MiniWidget
@@ -84,6 +85,13 @@ class SoundMixerApp:
         self.tray.show()
         self.model.set_master_mute_listener(self.tray.set_muted)
 
+        self.master_sync = MasterAudioSync(
+            self.model, self.backend, self._refresh_views, self.overlay.restart_session_listener, self.qt_app
+        )
+        self.overlay.visibility_changed.connect(self.master_sync.set_overlay_visible)
+        self.master_sync.set_overlay_visible(self.overlay.isVisible())
+        self.master_sync.start()
+
     def _shutdown_for_update(self) -> None:
         self.settings.flush()
         QTimer.singleShot(0, self.qt_app.quit)
@@ -116,7 +124,7 @@ class SoundMixerApp:
                 if self.overlay is not None:
                     self.overlay.retranslate()
                     self.overlay.sync_subprocess_management_toggle()
-                    self.model.refresh()
+                    self.model.refresh(include_master=False)
                     self.overlay.refresh_view()
                 mini_widget = getattr(self, "mini_widget", None)
                 if mini_widget is not None:
@@ -184,7 +192,7 @@ class SoundMixerApp:
         self._refresh_views()
 
     def _on_subprocess_manager_tick(self) -> None:
-        self.model.refresh()
+        self.model.refresh(include_master=False)
         self._refresh_views()
 
     def run(self) -> int:
@@ -195,6 +203,8 @@ class SoundMixerApp:
         try:
             return self.qt_app.exec()
         finally:
+            self.master_sync.stop()
+            self.overlay._session_listener.stop()
             self.hotkeys.stop()
             self.mini_widget.stop()
             self.settings.flush()
