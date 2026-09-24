@@ -240,11 +240,12 @@ it.
 
 ## Supported languages
 
-The application includes 21 languages:
+The application includes 24 languages:
 
 | Language | Windows language code |
 | --- | --- |
 | Bulgarian | `bg` |
+| Chinese (Simplified, mainland China) | `zh-CN` |
 | Croatian | `hr` |
 | Czech | `cs` |
 | Danish | `da` |
@@ -256,6 +257,8 @@ The application includes 21 languages:
 | Greek | `el` |
 | Hungarian | `hu` |
 | Italian | `it` |
+| Japanese | `ja` |
+| Korean | `ko` |
 | Norwegian Bokmål | `nb` |
 | Polish | `pl` |
 | Portuguese (Portugal) | `pt-PT` |
