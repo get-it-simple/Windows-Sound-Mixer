@@ -10,6 +10,7 @@ from sound_mixer.hotkeys.manager import HotkeyManager
 from sound_mixer.instance_control import InstanceController
 from sound_mixer.mixer.model import MixerModel
 from sound_mixer.mixer.master_sync import MasterAudioSync
+from sound_mixer.mixer.session_sync import SessionAudioSync
 from sound_mixer.mixer.subprocess_manager import SubprocessManager
 from sound_mixer.overlay.window import OverlayWindow
 from sound_mixer.overlay.mini_widget import MiniWidget
@@ -44,13 +45,17 @@ class SoundMixerApp:
         install_deferred_saves(self.settings, self.qt_app)
         i18n.setup(self.settings.get_language())
         self.backend = create_backend()
+        if hasattr(self.backend, "set_names_visible"):
+            self.backend.set_names_visible(False)
         self.model = MixerModel(self.backend, self.settings)
+        self.session_sync = SessionAudioSync(self.model, self.backend, self._refresh_views, self.qt_app)
         self.subprocess_manager = SubprocessManager(self.settings, self._on_subprocess_manager_tick, parent=self.qt_app)
         self.subprocess_manager.sync()
-        self.overlay = OverlayWindow(self.model, self.settings, subprocess_manager=self.subprocess_manager)
+        self.overlay = OverlayWindow(self.model, self.settings, subprocess_manager=self.subprocess_manager,
+                                     request_refresh=self.session_sync.request_refresh)
         self.overlay.visibility_changed.connect(self._on_overlay_visibility_changed)
         self.overlay.settings_requested.connect(self._open_settings)
-        self.mini_widget = MiniWidget(self.model, self.settings)
+        self.mini_widget = MiniWidget(self.model, self.settings, request_refresh=self.session_sync.request_refresh)
         self.overlay.model_changed.connect(self.mini_widget.refresh_view)
         self.mini_widget.model_changed.connect(self.overlay.refresh_view)
         self.mini_widget.set_enabled(self.settings.get_mini_widget_enabled(), persist=False)
@@ -86,11 +91,18 @@ class SoundMixerApp:
         self.model.set_master_mute_listener(self.tray.set_muted)
 
         self.master_sync = MasterAudioSync(
-            self.model, self.backend, self._refresh_views, self.overlay.restart_session_listener, self.qt_app
+            self.model, self.backend, self._refresh_views, self.session_sync.device_changed, self.qt_app
         )
         self.overlay.visibility_changed.connect(self.master_sync.set_overlay_visible)
         self.master_sync.set_overlay_visible(self.overlay.isVisible())
+        self.overlay.visibility_changed.connect(self._sync_audio_visibility)
+        self.mini_widget.visibility_changed.connect(self._sync_audio_visibility)
+        self.session_sync.start()
+        self._sync_audio_visibility()
         self.master_sync.start()
+
+    def _sync_audio_visibility(self, visible=None) -> None:
+        self.session_sync.set_visible(self.overlay.isVisible() or self.mini_widget.isVisible())
 
     def _shutdown_for_update(self) -> None:
         self.settings.flush()
@@ -192,8 +204,7 @@ class SoundMixerApp:
         self._refresh_views()
 
     def _on_subprocess_manager_tick(self) -> None:
-        self.model.refresh(include_master=False)
-        self._refresh_views()
+        self.session_sync.request_refresh()
 
     def run(self) -> int:
         if not self._is_primary_instance:
@@ -204,7 +215,8 @@ class SoundMixerApp:
             return self.qt_app.exec()
         finally:
             self.master_sync.stop()
-            self.overlay._session_listener.stop()
+            self.session_sync.stop()
+            self.subprocess_manager.stop()
             self.hotkeys.stop()
             self.mini_widget.stop()
             self.settings.flush()

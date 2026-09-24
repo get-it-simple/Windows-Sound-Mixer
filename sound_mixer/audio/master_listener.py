@@ -57,6 +57,7 @@ class MasterAudioListener(QObject):
         self._endpoint = None
         self._endpoint_id = None
         self._volume_callback = None
+        self._unavailable_reported = False
 
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
@@ -106,8 +107,6 @@ class MasterAudioListener(QObject):
         if self._endpoint is not None and speakers.id == self._endpoint_id and changed_device_id != speakers.id:
             return
         self._generation += 1
-        self._post("device")
-        self._post("available", False)
         self._unbind()
         self._endpoint = speakers.EndpointVolume
         self._endpoint_id = speakers.id
@@ -116,8 +115,18 @@ class MasterAudioListener(QObject):
         self._volume_callback = callback
         volume = self._endpoint.GetMasterVolumeLevelScalar()
         muted = bool(self._endpoint.GetMute())
+        self._unavailable_reported = False
+        self._post("device")
         self._post("state", volume, muted)
         self._post("available", True)
+
+    def _report_unavailable(self) -> None:
+        self._unbind()
+        if not self._unavailable_reported:
+            self._generation += 1
+            self._unavailable_reported = True
+            self._post("device")
+            self._post("available", False)
 
     def _listen(self) -> None:
         enumerator = AudioUtilities.GetDeviceEnumerator()
@@ -133,10 +142,7 @@ class MasterAudioListener(QObject):
                         self._bind(changed_device_id)
                         retry_at = None
                     except Exception:
-                        self._generation += 1
-                        self._unbind()
-                        self._post("device")
-                        self._post("available", False)
+                        self._report_unavailable()
                         retry_at = time.monotonic() + RETRY_INTERVAL_S
                         _logger.debug("Master endpoint unavailable; retrying", exc_info=True)
                     needs_bind = False
@@ -169,9 +175,7 @@ class MasterAudioListener(QObject):
                 try:
                     self._listen()
                 except Exception:
-                    self._generation += 1
-                    self._post("device")
-                    self._post("available", False)
+                    self._report_unavailable()
                     _logger.debug("Master audio subscription unavailable; retrying", exc_info=True)
                     if self._stop_event.wait(RETRY_INTERVAL_S):
                         return

@@ -108,8 +108,11 @@ class SettingsStore:
 
     def set_app_volume(self, exe: str, level: float) -> None:
         exe = normalize_app_key(exe)
+        level = clamp_volume(level)
+        if exe in self.data["app_volumes"] and self.get_app_volume(exe) == level:
+            return
         entry = self.data["app_volumes"].setdefault(exe, {"volume": 1.0, "muted": False})
-        entry["volume"] = clamp_volume(level)
+        entry["volume"] = level
         self._request_save()
 
     def get_app_muted(self, exe: str) -> bool:
@@ -117,6 +120,8 @@ class SettingsStore:
 
     def set_app_muted(self, exe: str, muted: bool) -> None:
         exe = normalize_app_key(exe)
+        if exe in self.data["app_volumes"] and self.get_app_muted(exe) == bool(muted):
+            return
         entry = self.data["app_volumes"].setdefault(exe, {"volume": 1.0, "muted": False})
         entry["muted"] = bool(muted)
         self._request_save()

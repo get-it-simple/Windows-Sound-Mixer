@@ -93,7 +93,6 @@ def test_volume_uses_first_entry_step_bounds_and_updates_both_views(mini, settin
         assert reloaded.get_app_volume("aurora.exe") == 0.0
     finally:
         overlay.close()
-        overlay._session_listener.stop()
         overlay.deleteLater()
 
 

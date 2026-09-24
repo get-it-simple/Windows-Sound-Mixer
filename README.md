@@ -96,6 +96,10 @@ non-Windows platforms.
   application, with app icons and readable display names.
 - Persistent per-application levels, mute states, hotkeys, overlay layout, and
   other preferences in a human-editable JSON file.
+- Event-driven application volume and mute synchronization, including changes
+  made in the Windows mixer. External changes are saved and shared across the
+  application's sessions. Each newly created session receives its saved state,
+  including additional sessions within an already running process.
 - Compact always-on-top overlay with optional Windows 11 acrylic transparency,
   accent-colored focus, and automatic recovery from off-screen positions.
 - Horizontal and vertical layouts with independent saved size and position.
@@ -121,6 +125,26 @@ non-Windows platforms.
 - Overlay and mini widget scaling is capped at 300% including the system display scale. At 200% system scaling, each widget allows up to 150%. Limits follow each window's display and update when its DPI changes. Saved scale preferences are preserved and automatically limited while displayed on a higher-DPI screen.
 - Optional background scanning for audio child processes created by selected
   launchers, sandboxes, and other host applications.
+
+Application audio subscriptions stay active with either widget shown or hidden.
+Session events are batched in 50 ms windows; changing volume does not require a
+full session scan. When subscriptions are healthy and optional launcher scanning
+is off, idle audio synchronization does not periodically scan sessions or processes.
+If subscriptions fail, session polling runs every 5 seconds with a visible widget
+or every 30 seconds with both hidden. Subscription retries back off from 5 to 30
+seconds, and polling stops after recovery. Changing the default output or restoring
+the audio service reconnects subscriptions and refreshes application sessions.
+
+Optional launcher scanning checks full executable paths. While no configured
+launcher is running, its interval doubles up to 30 seconds (or the configured
+interval when that is already longer). Detection can therefore take up to that
+interval. Finding a launcher restores the configured interval. Disabling scanning
+stops its timer and resets the backoff.
+
+Hidden main-widget updates are deferred until it is shown. Volume-only changes
+reuse the mini widget's layout. Application name and icon caches each retain at
+most 256 recently used entries, with no cleanup timer. Window-title retries run
+only while a widget is visible.
 
 </details>
 
@@ -224,8 +248,9 @@ are unassigned and disabled by default. Configure them in Settings > Hotkeys.
 - Global hotkeys are subject to Windows UIPI: an elevated foreground
   application will not receive hotkeys from a non-elevated Sound Mixer, and
   vice versa.
-- Newly started applications may take a second or two to appear in the
-  overlay, as sessions are picked up on a periodic refresh.
+- Newly started applications appear through audio-session notifications. When
+  notifications are unavailable, detection follows the fallback polling interval
+  described above. Optional launcher scanning uses its separate adaptive interval.
 - An application with multiple audio sessions is shown as a single entry;
   volume and mute changes apply to all of its sessions.
 - "System Sounds" has no dedicated entry; use the master volume entry to

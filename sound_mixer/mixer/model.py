@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Callable, Optional
+from time import perf_counter
 
 from sound_mixer.audio.interface import AudioBackend
 from sound_mixer.settings.store import SettingsStore
@@ -24,7 +25,12 @@ class MixerModel:
     def __init__(self, backend: AudioBackend, settings: SettingsStore):
         self._backend = backend
         self._settings = settings
-        self._known_pids: set[int] = set()
+        self._known_ids: set[str] = set()
+        self._sessions_by_id = {}
+        self._sessions_by_key = {}
+        self._ready_at = {}
+        self._last_change = {}
+        self._observed_states = {}
         self.entries: list[MixerEntry] = []
         self.ignored_entries: list[MixerEntry] = []
         self.focused_index = 0
@@ -85,19 +91,40 @@ class MixerModel:
 
         app_entries: list[MixerEntry] = []
         ignored_entries: list[MixerEntry] = []
-        current_pids: set[int] = set()
+        current_ids: set[str] = set()
+        observed_states = {}
+        self._sessions_by_id = {}
+        self._sessions_by_key = {}
         for session in self._backend.enumerate_sessions():
             exe = session.key
-            current_pids.add(session.pid)
-            if session.pid not in self._known_pids:
-                session.set_volume(self._settings.get_app_volume(exe))
-                session.set_muted(self._settings.get_app_muted(exe))
+            identities = set(session.member_ids)
+            current_ids.update(identities)
+            new_ids = identities - self._known_ids
+            if new_ids:
+                session.set_volume(self._settings.get_app_volume(exe), new_ids)
+                session.set_muted(self._settings.get_app_muted(exe), new_ids)
+                self._ready_at.update({identity: perf_counter() for identity in new_ids})
+            self._sessions_by_key[exe] = session
+            self._sessions_by_id.update({identity: session for identity in identities})
+
+            try:
+                volume, muted = session.volume, session.muted
+            except Exception:
+                continue
+            state = (volume, muted)
+            previous = self._observed_states.get(exe)
+            if previous is not None and identities & self._known_ids and previous != state:
+                session.set_volume(volume)
+                session.set_muted(muted)
+                self._settings.set_app_volume(exe, volume)
+                self._settings.set_app_muted(exe, muted)
+            observed_states[exe] = state
 
             entry = MixerEntry(
                 key=exe,
                 display_name=session.display_name,
-                volume=session.volume,
-                muted=session.muted,
+                volume=volume,
+                muted=muted,
                 icon_path=session.icon_path,
                 pids=session.pids,
             )
@@ -110,7 +137,11 @@ class MixerModel:
             else:
                 app_entries.append(entry)
 
-        self._known_pids = current_pids
+        self._known_ids = current_ids
+        self._observed_states = observed_states
+        self._ready_at = {key: value for key, value in self._ready_at.items() if key in current_ids}
+        self._last_change = {key: value for key, value in self._last_change.items()
+                            if key in self._sessions_by_key}
 
         focused_key = None
         if self.entries and 0 <= self.focused_index < len(self.entries):
@@ -134,6 +165,37 @@ class MixerModel:
             self.focused_index = max(0, min(self.focused_index, len(self.entries) - 1))
 
         self._notify_master_mute()
+
+    def apply_session_state(self, event) -> bool:
+        session = self._sessions_by_id.get(event.session_id)
+        if session is None:
+            return False
+        key = session.key
+        if event.timestamp < max(self._ready_at.get(event.session_id, 0), self._last_change.get(key, 0)):
+            return False
+        self._last_change[key] = event.timestamp
+        volume, muted = clamp_volume(event.volume), bool(event.muted)
+        session.set_volume(volume)
+        session.set_muted(muted)
+        self._settings.set_app_volume(key, volume)
+        self._settings.set_app_muted(key, muted)
+        self._observed_states[key] = (volume, muted)
+        changed = False
+        for entry in self.entries + self.ignored_entries:
+            if entry.key == key:
+                changed |= (entry.volume, entry.muted) != (volume, muted)
+                entry.volume, entry.muted = volume, muted
+        return changed
+
+    @property
+    def session_pids(self) -> set[int]:
+        return {pid for session in self._sessions_by_key.values() for pid in session.pids}
+
+    def sync_names(self) -> None:
+        for entry in self.entries + self.ignored_entries:
+            session = self._sessions_by_key.get(entry.key)
+            if session is not None:
+                entry.display_name = session.display_name
 
     @property
     def focused_entry(self) -> MixerEntry:
@@ -239,11 +301,17 @@ class MixerModel:
         return False
 
     def _set_session_volume(self, key: str, level: float) -> None:
-        for session in self._backend.enumerate_sessions():
-            if session.key == key:
-                session.set_volume(level)
+        self._last_change[key] = perf_counter()
+        if key in self._observed_states:
+            self._observed_states[key] = (level, self._observed_states[key][1])
+        session = self._sessions_by_key.get(key)
+        if session is not None:
+            session.set_volume(level)
 
     def _set_session_muted(self, key: str, muted: bool) -> None:
-        for session in self._backend.enumerate_sessions():
-            if session.key == key:
-                session.set_muted(muted)
+        self._last_change[key] = perf_counter()
+        if key in self._observed_states:
+            self._observed_states[key] = (self._observed_states[key][0], muted)
+        session = self._sessions_by_key.get(key)
+        if session is not None:
+            session.set_muted(muted)

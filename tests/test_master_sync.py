@@ -103,6 +103,7 @@ def widgets(qapp, fake_backend, settings, monkeypatch):
     mini.model_changed.connect(overlay.refresh_view)
     app = SoundMixerApp.__new__(SoundMixerApp)
     app.model, app.overlay, app.mini_widget, app.settings = model, overlay, mini, settings
+    app.session_sync = Mock()
     sync = MasterAudioSync(model, fake_backend, app._refresh_views, Mock(), listener=Listener())
     sync.start()
     fake_backend.get_master_state = Mock(wraps=fake_backend.get_master_state)
@@ -111,7 +112,6 @@ def widgets(qapp, fake_backend, settings, monkeypatch):
     mini.stop()
     mini.close()
     overlay.close()
-    overlay._session_listener.stop()
     mini.deleteLater()
     overlay.deleteLater()
     qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)

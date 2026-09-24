@@ -237,6 +237,19 @@ def test_failed_master_read_preserves_last_known_state(devices, settings):
     assert model.entries[0].muted is False
 
 
+def test_unavailable_output_does_not_repeatedly_restart_session_listener(qapp, devices, listener, monkeypatch):
+    monkeypatch.setattr(master_listener, "RETRY_INTERVAL_S", 0.02)
+    devices.current = None
+    changes = []
+    listener.device_changed.connect(lambda: changes.append(True))
+    listener.start()
+    wait_until(lambda: bool(changes))
+    QTest.qWait(150)
+    assert changes == [True]
+    devices.current = devices.first
+    wait_until(lambda: len(changes) == 2)
+
+
 def test_hidden_overlay_mini_and_tray_follow_system_and_new_endpoint(qapp, devices, settings):
     settings.set_mini_widget_show_master(True)
     backend = PycawAudioBackend()
@@ -252,7 +265,7 @@ def test_hidden_overlay_mini_and_tray_follow_system_and_new_endpoint(qapp, devic
         overlay.refresh_view()
         mini.refresh_view()
 
-    sync = MasterAudioSync(model, backend, refresh_views, overlay.restart_session_listener)
+    sync = MasterAudioSync(model, backend, refresh_views, lambda: model.refresh(include_master=False))
     overlay.visibility_changed.connect(sync.set_overlay_visible)
     try:
         sync.start()
@@ -263,7 +276,10 @@ def test_hidden_overlay_mini_and_tray_follow_system_and_new_endpoint(qapp, devic
         devices.first.EndpointVolume.notify()
         wait_until(lambda: mini._entries["master"]._volume_label.text() == "40%")
         assert model.entries[0].volume == pytest.approx(0.4)
+        assert overlay._entry_widgets[0]._slider.value() == 25
+        overlay.show()
         assert overlay._entry_widgets[0]._slider.value() == 40
+        overlay.hide()
         assert mini._entries["master"]._muted_icon_label.isVisible()
         assert tray_mutes[-1] is True
 
@@ -278,7 +294,6 @@ def test_hidden_overlay_mini_and_tray_follow_system_and_new_endpoint(qapp, devic
         mini.stop()
         mini.close()
         overlay.close()
-        overlay._session_listener.stop()
         mini.deleteLater()
         overlay.deleteLater()
         sync.deleteLater()

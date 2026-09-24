@@ -89,26 +89,30 @@ def test_overlay_restores_persisted_width(qapp, fake_backend, settings):
 
 def test_dragging_title_bar_pauses_and_resumes_refresh(qapp, fake_backend, settings):
     overlay = make_overlay(qapp, fake_backend, settings)
-    assert overlay._refresh_timer.isActive()
+    old_value = overlay._entry_widgets[1]._slider.value()
 
     title_bar = overlay._title_bar
     title_bar.mousePressEvent(press_event(QPointF(10, 10)))
-    assert not overlay._refresh_timer.isActive()
+    overlay._model.set_volume(0.37, 1)
+    overlay.refresh_view()
+    assert overlay._entry_widgets[1]._slider.value() == old_value
 
     title_bar.mouseReleaseEvent(release_event(QPointF(10, 10)))
-    assert overlay._refresh_timer.isActive()
+    assert overlay._entry_widgets[1]._slider.value() == 37
 
 
 def test_dragging_resize_handle_pauses_and_resumes_refresh(qapp, fake_backend, settings):
     overlay = make_overlay(qapp, fake_backend, settings)
-    assert overlay._refresh_timer.isActive()
+    old_value = overlay._entry_widgets[1]._slider.value()
 
     handle = overlay._resize_handle
     handle.mousePressEvent(press_event(QPointF(10, 10)))
-    assert not overlay._refresh_timer.isActive()
+    overlay._model.set_volume(0.42, 1)
+    overlay.refresh_view()
+    assert overlay._entry_widgets[1]._slider.value() == old_value
 
     handle.mouseReleaseEvent(release_event(QPointF(10, 10)))
-    assert overlay._refresh_timer.isActive()
+    assert overlay._entry_widgets[1]._slider.value() == 42
 
 
 def test_overlay_has_no_vertical_resize_handle(qapp, fake_backend, settings):

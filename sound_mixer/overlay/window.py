@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
 )
 
 from sound_mixer import __version__
-from sound_mixer.audio.session_listener import AudioSessionListener
 from sound_mixer.i18n import t
 from sound_mixer.mixer.model import MixerModel
 from sound_mixer.mixer.subprocess_manager import SubprocessManager
@@ -38,7 +37,6 @@ from sound_mixer.overlay.win_effects import WM_DWMCOLORIZATIONCOLORCHANGED, appl
 from sound_mixer.settings.schema import LAYOUT_HORIZONTAL, LAYOUT_VERTICAL
 from sound_mixer.settings.store import SettingsStore
 
-REFRESH_INTERVAL_MS = 1000
 GEOMETRY_SAVE_DELAY_MS = 300
 WARM_UP_HIDE_DELAY_MS = 150
 WARM_UP_RESHOW_DELAY_MS = 50
@@ -272,11 +270,16 @@ class OverlayWindow(QWidget):
         settings: SettingsStore,
         subprocess_manager: Optional[SubprocessManager] = None,
         parent=None,
+        request_refresh=None,
     ) -> None:
         super().__init__(parent)
         self._model = model
         self._settings = settings
         self._subprocess_manager = subprocess_manager
+        self._request_refresh = request_refresh
+        self._updates_paused = False
+        self._view_dirty = True
+        self._entry_states = {}
         self._entry_widgets: list[EntryWidget] = []
         self._ignored_widgets: list[EntryWidget] = []
         self._ignored_expanded = False
@@ -308,13 +311,8 @@ class OverlayWindow(QWidget):
         self._ensure_on_screen()
         apply_acrylic_effect(self, self._settings.get_transparency_enabled())
 
-        self._refresh_timer = QTimer(self)
-        self._refresh_timer.timeout.connect(self._refresh)
-
-        self._session_listener = AudioSessionListener(self._on_new_session)
-
         self.sync_subprocess_management_toggle()
-        self._sync_entry_widgets()
+        self._sync_entry_widgets(force=True)
 
         if sys.platform == "win32":
             self._warm_up_acrylic()
@@ -429,15 +427,11 @@ class OverlayWindow(QWidget):
         self._ensure_on_screen()
         super().showEvent(event)
         self._refresh_accent_color()
-        self._session_listener.stop()
         self._refresh()
-        self._refresh_timer.start(REFRESH_INTERVAL_MS)
         self.visibility_changed.emit(True)
 
     def hideEvent(self, event) -> None:
         super().hideEvent(event)
-        self._refresh_timer.stop()
-        self._session_listener.start()
         self.visibility_changed.emit(False)
 
     def _build_title_bar(self, parent: QWidget) -> QWidget:
@@ -639,6 +633,9 @@ class OverlayWindow(QWidget):
             self.setFixedHeight(target_height)
 
     def _on_new_session(self) -> None:
+        if self._request_refresh is not None:
+            self._request_refresh()
+            return
         try:
             self._model.refresh(include_master=False)
             self._model.refresh_master_after_app_event()
@@ -647,6 +644,10 @@ class OverlayWindow(QWidget):
         self.model_changed.emit()
 
     def _refresh(self) -> None:
+        if self._request_refresh is not None:
+            self._request_refresh()
+            self.refresh_view()
+            return
         try:
             self._model.refresh(include_master=False)
         except Exception:
@@ -654,15 +655,12 @@ class OverlayWindow(QWidget):
         self._sync_entry_widgets()
         self.model_changed.emit()
 
-    def restart_session_listener(self) -> None:
-        if not self.isVisible():
-            self._session_listener.start()
-
     def _pause_refresh(self) -> None:
-        self._refresh_timer.stop()
+        self._updates_paused = True
 
     def _resume_refresh(self) -> None:
-        self._refresh_timer.start(REFRESH_INTERVAL_MS)
+        self._updates_paused = False
+        self.refresh_view()
 
     def refresh_view(self) -> None:
         self._sync_entry_widgets()
@@ -825,9 +823,18 @@ class OverlayWindow(QWidget):
         widget.apply_scale(self.scale_limit.constrain(self._settings.get_ui_scale()), self._accent_color)
         return widget
 
-    def _sync_entry_widgets(self) -> None:
+    def _sync_entry_widgets(self, force=False) -> None:
+        if not force and (not self.isVisible() or self._updates_paused):
+            self._view_dirty = True
+            return
+        self._view_dirty = False
         active_entries = self._model.entries
         ignored_entries = self._model.ignored_entries
+        layout_state = (tuple((entry.key, entry.display_name) for entry in active_entries),
+                        tuple((entry.key, entry.display_name) for entry in ignored_entries),
+                        self._ignored_expanded)
+        layout_changed = layout_state != getattr(self, "_entry_layout_state", None)
+        self._entry_layout_state = layout_state
 
         while len(self._entry_widgets) < len(active_entries):
             widget = self._make_active_widget()
@@ -848,10 +855,14 @@ class OverlayWindow(QWidget):
             widget.deleteLater()
 
         for index, (entry, widget) in enumerate(zip(active_entries, self._entry_widgets)):
-            widget.set_entry(entry, focused=(index == self._model.focused_index))
+            self._update_entry(widget, entry, index == self._model.focused_index)
 
         for entry, widget in zip(ignored_entries, self._ignored_widgets):
-            widget.set_entry(entry, focused=False)
+            self._update_entry(widget, entry, False)
+
+        current_widgets = set(self._entry_widgets + self._ignored_widgets)
+        self._entry_states = {widget: state for widget, state in self._entry_states.items()
+                              if widget in current_widgets}
 
         has_ignored = bool(self._ignored_widgets)
         self._expand_button.setVisible(has_ignored and not self._ignored_expanded)
@@ -859,7 +870,14 @@ class OverlayWindow(QWidget):
         self._ignored_container.setVisible(has_ignored and self._ignored_expanded)
         self._collapse_button.setVisible(has_ignored and self._ignored_expanded)
 
-        self._update_window_size()
+        if layout_changed:
+            self._update_window_size()
+
+    def _update_entry(self, widget, entry, focused):
+        state = (entry.key, entry.display_name, entry.volume, entry.muted, entry.icon_path, focused)
+        if self._entry_states.get(widget) != state:
+            widget.set_entry(entry, focused=focused)
+            self._entry_states[widget] = state
 
     def _on_volume_changed(self, widget: EntryWidget, value: float) -> None:
         index = self._entry_widgets.index(widget)

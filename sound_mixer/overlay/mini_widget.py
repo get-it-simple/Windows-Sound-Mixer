@@ -193,6 +193,12 @@ class MiniEntryWidget(QFrame):
             self._apply_background(round(BASE_ENTRY_RADIUS_PX * self._scale))
 
     def set_entry(self, entry: MixerEntry) -> None:
+        state = (entry.key, entry.display_name, entry.volume, entry.muted, entry.icon_path, entry.is_master)
+        if state == getattr(self, "_entry_state", None):
+            self._entry = entry
+            return
+        old_icon = getattr(self, "_entry_icon", None)
+        self._entry_state = state
         self._entry = entry
         self.key = entry.key
         self._volume_label.setText(f"{round(entry.volume * 100)}%")
@@ -203,7 +209,9 @@ class MiniEntryWidget(QFrame):
         self._volume_label.setToolTip(entry.display_name)
         self._icon_label.setToolTip(entry.display_name)
         self._muted_icon_label.setToolTip(entry.display_name)
-        self._update_icon()
+        self._entry_icon = (entry.is_master, entry.icon_path)
+        if self._entry_icon != old_icon:
+            self._update_icon()
 
     def _update_icon(self) -> None:
         if self._entry is None:
@@ -291,14 +299,16 @@ class PinDragButton(DelayedTooltipButton):
 
 
 class MiniWidget(QWidget):
+    visibility_changed = Signal(bool)
     model_changed = Signal()
 
-    def __init__(self, model: MixerModel, settings: SettingsStore, parent=None) -> None:
+    def __init__(self, model: MixerModel, settings: SettingsStore, parent=None, request_refresh=None) -> None:
         super().__init__(parent)
         self._model = model
         self._settings = settings
         self._enabled = False
         self._selected_key: str | None = None
+        self._request_refresh = request_refresh
         self._selected_state: tuple[str, float, bool] | None = None
         self._dock_edge = self._settings.get_mini_widget_dock_edge()
         self._entries: dict[str, MiniEntryWidget] = {}
@@ -416,7 +426,9 @@ class MiniWidget(QWidget):
             self._highlight_selection()
         self._selected_state = state
 
-        self._process_exit_listener.sync({pid for entry in entries for pid in entry.pids})
+        if self._request_refresh is None:
+            self._process_exit_listener.sync({pid for entry in entries for pid in entry.pids})
+        order_changed = keys != list(self._entries)
         active_keys = {entry.key for entry in entries}
         for key in list(self._entries):
             if key not in active_keys:
@@ -446,13 +458,17 @@ class MiniWidget(QWidget):
             return
 
         self._entries = {widget.key: widget for widget in ordered_widgets}
-        self._layout_entries(ordered_widgets)
-        self._ensure_on_screen()
+        if order_changed:
+            self._layout_entries(ordered_widgets)
+            self._ensure_on_screen()
         if not self.isVisible():
             self.show()
         self._sync_taskbar_stacking()
 
     def _on_process_exited(self) -> None:
+        if self._request_refresh is not None:
+            self._request_refresh()
+            return
         if self._enabled:
             self._model.refresh(include_master=False)
             self._model.refresh_master_after_app_event()
@@ -477,6 +493,11 @@ class MiniWidget(QWidget):
         self._taskbar_listener.stop()
         self._cancel_screen_update()
         super().hideEvent(event)
+        self.visibility_changed.emit(False)
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self.visibility_changed.emit(True)
 
     def event(self, event) -> bool:
         if event.type() == SCREEN_UPDATE_EVENT:

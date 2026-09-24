@@ -5,6 +5,7 @@ import psutil
 from PySide6.QtCore import QObject, QTimer
 
 from sound_mixer.settings.store import SettingsStore
+from sound_mixer.app_key import normalize_app_key
 
 MIN_INTERVAL_MS = 1000
 
@@ -14,7 +15,8 @@ def _basename_key(path: str) -> str:
 
 
 def is_any_managed_app_running(paths: Iterable[str], process_iter: Callable = psutil.process_iter) -> bool:
-    targets = {_basename_key(path) for path in paths if path}
+    paths = {normalize_app_key(path) for path in paths if path}
+    targets = {_basename_key(path) for path in paths}
     if not targets:
         return False
 
@@ -29,7 +31,11 @@ def is_any_managed_app_running(paths: Iterable[str], process_iter: Callable = ps
         except psutil.Error:
             continue
         if name and os.path.normcase(name) in targets:
-            return True
+            try:
+                if normalize_app_key(process.exe()) in paths:
+                    return True
+            except psutil.Error:
+                continue
     return False
 
 
@@ -39,6 +45,8 @@ class SubprocessManager(QObject):
         self._settings = settings
         self._on_tick = on_tick
         self._active = False
+        self._base_interval = MIN_INTERVAL_MS
+        self._interval = MIN_INTERVAL_MS
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._check)
 
@@ -53,18 +61,26 @@ class SubprocessManager(QObject):
         self.sync()
 
     def sync(self) -> None:
+        self._base_interval = max(MIN_INTERVAL_MS, self._settings.get_subprocess_management_interval_seconds() * 1000)
+        self._interval = self._base_interval
         if not self._active or not self.has_enabled_apps():
             self._timer.stop()
             return
-        interval_ms = max(MIN_INTERVAL_MS, self._settings.get_subprocess_management_interval_seconds() * 1000)
-        self._timer.start(interval_ms)
+        self._timer.start(self._interval)
 
     def stop(self) -> None:
         self._timer.stop()
+        self._active = False
+        self._interval = self._base_interval
 
     def _enabled_paths(self) -> list[str]:
         return [app["path"] for app in self._settings.get_managed_apps() if app.get("enabled")]
 
     def _check(self) -> None:
         if is_any_managed_app_running(self._enabled_paths()):
+            self._interval = self._base_interval
             self._on_tick()
+        else:
+            self._interval = min(max(30000, self._base_interval), self._interval * 2)
+        if self._timer.isActive():
+            self._timer.setInterval(self._interval)
