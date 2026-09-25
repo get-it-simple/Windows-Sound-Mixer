@@ -60,7 +60,7 @@ def send_command(command: str, timeout_ms: int = 3000, name: Optional[str] = Non
     if socket.bytesToWrite() and not socket.waitForBytesWritten(timeout_ms):
         socket.abort()
         return CommandResult.FAILED
-    if not socket.waitForReadyRead(timeout_ms):
+    if not socket.bytesAvailable() and not socket.waitForReadyRead(timeout_ms):
         socket.abort()
         return CommandResult.FAILED
 

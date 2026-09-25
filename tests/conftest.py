@@ -1,3 +1,4 @@
+import gc
 import os
 import subprocess
 import sys
@@ -7,11 +8,22 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtCore import QEvent
 
 from sound_mixer.audio.fake_backend import FakeAudioBackend, FakeAudioSession  # noqa: E402
 from sound_mixer.settings.store import SettingsStore  # noqa: E402
 
 windows_only = pytest.mark.skipif(sys.platform != "win32", reason="Windows-only")
+
+
+@pytest.fixture(autouse=True)
+def collect_gui_objects(request):
+    yield
+    if "qapp" in request.fixturenames:
+        app = QApplication.instance()
+        app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        gc.collect()
+        app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 @pytest.fixture

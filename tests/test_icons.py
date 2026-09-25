@@ -74,3 +74,23 @@ def test_file_icon_provider_constructed_once(qapp, monkeypatch):
     load_app_icon(__file__)
 
     assert len(constructed) == 1
+def test_app_icon_cache_evicts_least_recently_used(qapp, monkeypatch):
+    from PySide6.QtGui import QIcon
+    from unittest.mock import Mock
+    import sound_mixer.overlay.icons as icons
+
+    icons.clear_caches()
+    monkeypatch.setattr(icons, "APP_ICON_CACHE_LIMIT", 2)
+    extract = Mock(side_effect=lambda path: QIcon())
+    monkeypatch.setattr(icons, "_extract_app_icon", extract)
+    try:
+        first = icons.load_app_icon("first.exe")
+        icons.load_app_icon("second.exe")
+        assert icons.load_app_icon("first.exe") is first
+        icons.load_app_icon("third.exe")
+        assert len(icons._app_icon_cache) == 2
+        icons.load_app_icon("second.exe")
+        assert extract.call_count == 4
+        assert "first.exe" not in icons._app_icon_cache
+    finally:
+        icons.clear_caches()

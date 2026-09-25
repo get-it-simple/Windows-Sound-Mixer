@@ -5,6 +5,7 @@ from typing import Protocol, runtime_checkable
 class AudioSession(Protocol):
     pid: int
     pids: tuple[int, ...]
+    member_ids: tuple[str, ...]
     key: str
     process_name: str
     display_name: str
@@ -12,13 +13,17 @@ class AudioSession(Protocol):
     volume: float
     muted: bool
 
-    def set_volume(self, level: float) -> None: ...
+    def set_volume(self, level: float, member_ids: set[str] | None = None) -> None: ...
 
-    def set_muted(self, muted: bool) -> None: ...
+    def set_muted(self, muted: bool, member_ids: set[str] | None = None) -> None: ...
 
 
 @runtime_checkable
 class AudioBackend(Protocol):
+    def get_master_state(self) -> tuple[float, bool] | None: ...
+
+    def invalidate_master_endpoint(self) -> None: ...
+
     def enumerate_sessions(self) -> list[AudioSession]: ...
 
     def get_master_volume(self) -> float: ...

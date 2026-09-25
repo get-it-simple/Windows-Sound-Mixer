@@ -1,10 +1,15 @@
+import ctypes
 import os
 import time
+from math import isclose
+from collections import OrderedDict
 
 import psutil
+from comtypes import GUID
 from pycaw.pycaw import AudioUtilities
 
 from sound_mixer.app_key import normalize_app_key
+from sound_mixer.audio.events import VOLUME_EVENT_CONTEXT
 from sound_mixer.audio.win_names import get_exe_friendly_name, get_window_titles_by_pid
 from sound_mixer.volume import clamp_volume
 
@@ -15,6 +20,8 @@ ENDPOINT_TTL_S = 5.0
 DYNAMIC_TITLE_SEPARATORS = (" - ", " | ", " — ", " – ")
 RELATIVE_DEPTH = 4
 RELATIVE_CANDIDATE_LIMIT = 64
+NAME_CACHE_LIMIT = 256
+_EVENT_CONTEXT = GUID(VOLUME_EVENT_CONTEXT)
 
 FINAL = "final"
 PROVISIONAL = "provisional"
@@ -178,6 +185,18 @@ class _ProcessNameCache:
         self._dynamic: set[str] = set()
         self._next_retry: dict[str, float] = {}
         self._retry_interval: dict[str, float] = {}
+        self._recent = OrderedDict()
+
+    def _touch(self, key: str) -> None:
+        self._recent[key] = None
+        self._recent.move_to_end(key)
+        while len(self._recent) > NAME_CACHE_LIMIT:
+            oldest, _ = self._recent.popitem(last=False)
+            for values in (self._exe_info_checked, self._final, self._dynamic):
+                values.discard(oldest)
+            for values in (self._descriptions, self._names, self._provisional, self._attempts,
+                           self._next_retry, self._retry_interval):
+                values.pop(oldest, None)
 
     def wants_titles(self, key: str) -> bool:
         if key in self._final:
@@ -185,6 +204,7 @@ class _ProcessNameCache:
         return key not in self._next_retry or self._now() >= self._next_retry[key]
 
     def resolve(self, key: str, exe_path: str, pids: list[int], titles=None) -> None:
+        self._touch(key)
         if key in self._final:
             return
         if key not in self._exe_info_checked:
@@ -225,7 +245,13 @@ class _ProcessNameCache:
         self._schedule_retry(key)
 
     def get(self, key: str) -> str:
+        if key in self._recent:
+            self._recent.move_to_end(key)
         return self._names.get(key, "")
+
+    def next_retry(self, keys) -> float | None:
+        times = [self._next_retry.get(key, self._now()) for key in keys if key not in self._final]
+        return max(0.0, min(times) - self._now()) if times else None
 
     def _enter_dynamic(self, key: str, name: str) -> None:
         self._names[key] = name
@@ -268,6 +294,7 @@ class PycawAudioSession:
         self.pid = controls[0].ProcessId
         self.pids = tuple(dict.fromkeys(control.ProcessId for control in controls))
         self._controls = controls
+        self.member_ids = tuple(control.InstanceIdentifier for control in controls)
 
     @property
     def volume(self) -> float:
@@ -277,18 +304,24 @@ class PycawAudioSession:
     def muted(self) -> bool:
         return bool(self._controls[0].SimpleAudioVolume.GetMute())
 
-    def set_volume(self, level: float) -> None:
+    def set_volume(self, level: float, member_ids: set[str] | None = None) -> None:
         level = clamp_volume(level)
-        for control in self._controls:
+        for identity, control in zip(self.member_ids, self._controls):
+            if member_ids is not None and identity not in member_ids:
+                continue
             try:
-                control.SimpleAudioVolume.SetMasterVolume(level, None)
+                if not isclose(control.SimpleAudioVolume.GetMasterVolume(), level, abs_tol=1e-6):
+                    control.SimpleAudioVolume.SetMasterVolume(level, _EVENT_CONTEXT)
             except Exception:
                 pass
 
-    def set_muted(self, muted: bool) -> None:
-        for control in self._controls:
+    def set_muted(self, muted: bool, member_ids: set[str] | None = None) -> None:
+        for identity, control in zip(self.member_ids, self._controls):
+            if member_ids is not None and identity not in member_ids:
+                continue
             try:
-                control.SimpleAudioVolume.SetMute(bool(muted), None)
+                if bool(control.SimpleAudioVolume.GetMute()) != bool(muted):
+                    control.SimpleAudioVolume.SetMute(bool(muted), _EVENT_CONTEXT)
             except Exception:
                 pass
 
@@ -297,6 +330,9 @@ class PycawAudioBackend:
     def __init__(self) -> None:
         self._sessions: list[PycawAudioSession] = []
         self._exe_paths: dict[int, str] = {}
+        self._pid_sessions: dict[int, set[str]] = {}
+        self._excluded_ids: set[str] = set()
+        self._names_visible = True
         self._name_cache = _ProcessNameCache()
         self._endpoint = _EndpointVolumeCache(lambda: AudioUtilities.GetSpeakers().EndpointVolume)
 
@@ -304,21 +340,35 @@ class PycawAudioBackend:
         try:
             sessions = AudioUtilities.GetAllSessions()
         except Exception:
+            self._sessions = []
+            self._exe_paths.clear()
+            self._pid_sessions.clear()
             return
         grouped: dict[str, list] = {}
         pids: dict[str, list[int]] = {}
         process_names: dict[str, str] = {}
         exe_paths: dict[str, str] = {}
         live_pids: set[int] = set()
+        observed_ids: set[str] = set()
+        pid_sessions: dict[int, set[str]] = {}
         for session in sessions:
-            process = session.Process
-            if process is None:
-                continue
             try:
+                if session.State == 2:
+                    continue
+                process = session.Process
+                if process is None:
+                    continue
+                identity = session.InstanceIdentifier
+                observed_ids.add(identity)
+                if identity in self._excluded_ids:
+                    continue
                 process_name = process.name()
-            except psutil.Error:
+            except Exception:
                 continue
             live_pids.add(process.pid)
+            pid_sessions.setdefault(process.pid, set()).add(identity)
+            if identity not in self._pid_sessions.get(process.pid, set()):
+                self._exe_paths.pop(process.pid, None)
             exe_path = self._exe_path(process)
             key = normalize_app_key(exe_path) if exe_path else process_name.lower()
             grouped.setdefault(key, []).append(session)
@@ -327,6 +377,8 @@ class PycawAudioBackend:
             exe_paths.setdefault(key, exe_path)
 
         self._exe_paths = {pid: path for pid, path in self._exe_paths.items() if pid in live_pids}
+        self._pid_sessions = pid_sessions
+        self._excluded_ids.intersection_update(observed_ids)
 
         titles = self._window_titles(pids)
         for key, key_pids in pids.items():
@@ -344,6 +396,8 @@ class PycawAudioBackend:
         ]
 
     def _window_titles(self, pids: dict[str, list[int]]) -> dict[int, str]:
+        if not self._names_visible:
+            return {}
         if not any(self._name_cache.wants_titles(key) for key in pids):
             return {}
         return get_window_titles_by_pid()
@@ -359,15 +413,50 @@ class PycawAudioBackend:
     def enumerate_sessions(self) -> list[PycawAudioSession]:
         return list(self._sessions)
 
+    def exclude_session(self, identity: str) -> None:
+        self._excluded_ids.add(identity)
+
+    def reset_sessions(self) -> None:
+        self._sessions.clear()
+        self._exe_paths.clear()
+        self._pid_sessions.clear()
+        self._excluded_ids.clear()
+
+    def set_names_visible(self, visible: bool) -> None:
+        self._names_visible = visible
+
+    def refresh_names(self) -> bool:
+        pids = {session.key: list(session.pids) for session in self._sessions}
+        titles = self._window_titles(pids)
+        changed = False
+        for session in self._sessions:
+            self._name_cache.resolve(session.key, session.icon_path, list(session.pids), titles)
+            name = self._name_cache.get(session.key) or session.display_name
+            changed |= name != session.display_name
+            session.display_name = name
+        return changed
+
+    def name_retry_delay(self) -> float | None:
+        return self._name_cache.next_retry(session.key for session in self._sessions)
+
     def get_master_volume(self) -> float:
         try:
             return self._endpoint.call(lambda ep: ep.GetMasterVolumeLevelScalar())
         except Exception:
             return 1.0
 
+    def get_master_state(self) -> tuple[float, bool] | None:
+        try:
+            return self._endpoint.call(lambda ep: (ep.GetMasterVolumeLevelScalar(), bool(ep.GetMute())))
+        except Exception:
+            return None
+
+    def invalidate_master_endpoint(self) -> None:
+        self._endpoint.invalidate()
+
     def set_master_volume(self, level: float) -> None:
         try:
-            self._endpoint.call(lambda ep: ep.SetMasterVolumeLevelScalar(clamp_volume(level), None))
+            self._endpoint.call(lambda ep: ep.SetMasterVolumeLevelScalar(clamp_volume(level), ctypes.byref(_EVENT_CONTEXT)))
         except Exception:
             pass
 
@@ -379,6 +468,6 @@ class PycawAudioBackend:
 
     def set_master_mute(self, muted: bool) -> None:
         try:
-            self._endpoint.call(lambda ep: ep.SetMute(bool(muted), None))
+            self._endpoint.call(lambda ep: ep.SetMute(bool(muted), ctypes.byref(_EVENT_CONTEXT)))
         except Exception:
             pass

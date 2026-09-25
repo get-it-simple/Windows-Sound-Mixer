@@ -148,6 +148,83 @@ def test_mini_entry_centers_percentage_and_icon(mini):
     assert entry._muted_icon_label.alignment() == Qt.AlignmentFlag.AlignCenter
 
 
+def test_mini_starts_without_selection_highlight(mini):
+    assert mini.selected_key == "aurora.exe"
+    assert all("border: 1px solid transparent;" in entry.styleSheet() for entry in mini._entries.values())
+
+
+@pytest.mark.parametrize("action", ["focus", "wheel", "hotkey", "model", "mute"])
+def test_selection_highlight_expires_without_losing_selection(qapp, mini, action):
+    mini._selection_timer.setInterval(100)
+    if action == "focus":
+        mini.move_selection(1)
+    elif action == "wheel":
+        qapp.sendEvent(mini._entries["aurora.exe"], wheel_event(-1))
+    elif action == "hotkey":
+        mini.adjust_selected_volume(-1)
+    elif action == "model":
+        mini._model.focus_key("aurora.exe")
+        mini._model.set_volume(0.5)
+        mini.refresh_view()
+    else:
+        QTest.mouseClick(mini._entries["aurora.exe"], Qt.MouseButton.LeftButton)
+    selected_key = mini.selected_key
+    entry = mini._entries[selected_key]
+    assert "border: 1px solid transparent;" not in entry.styleSheet()
+    assert all("border: 1px solid transparent;" in other.styleSheet()
+               for key, other in mini._entries.items() if key != selected_key)
+    volume_text = entry._volume_label.text()
+    icon_opacity = entry._icon_effect.opacity()
+
+    wait_until(lambda: "border: 1px solid transparent;" in entry.styleSheet())
+    mini.refresh_view()
+    assert all("border: 1px solid transparent;" in other.styleSheet() for other in mini._entries.values())
+    assert mini.selected_key == selected_key
+    assert entry._volume_label.text() == volume_text
+    assert entry._icon_effect.opacity() == icon_opacity
+
+    mini.adjust_selected_volume(-1)
+    assert mini.selected_key == selected_key
+    assert "border: 1px solid transparent;" not in entry.styleSheet()
+    assert entry._volume_label.text() != volume_text
+
+
+def test_volume_change_restarts_selection_highlight(mini):
+    mini._selection_timer.setInterval(500)
+    mini.move_selection(1)
+    entry = mini._entries["lumen.exe"]
+    QTest.qWait(300)
+    mini.adjust_selected_volume(-1)
+    QTest.qWait(300)
+    assert "border: 1px solid transparent;" not in entry.styleSheet()
+    wait_until(lambda: "border: 1px solid transparent;" in entry.styleSheet())
+
+
+def test_refresh_does_not_extend_selection_highlight(mini):
+    mini._selection_timer.setInterval(100)
+    mini.move_selection(1)
+    for _ in range(15):
+        mini.refresh_view()
+        QTest.qWait(20)
+    assert all("border: 1px solid transparent;" in entry.styleSheet() for entry in mini._entries.values())
+
+
+@pytest.mark.parametrize("action", ["hide", "stop", "remove"])
+def test_selection_highlight_clears_when_hidden_stopped_or_removed(mini, fake_backend, action):
+    mini.move_selection(1)
+    if action == "remove":
+        fake_backend.remove_session("lumen.exe")
+        mini._model.refresh()
+        mini.refresh_view()
+        assert mini.selected_key == "aurora.exe"
+    else:
+        getattr(mini, action)()
+    assert all("border: 1px solid transparent;" in entry.styleSheet() for entry in mini._entries.values())
+    assert not mini._selection_timer.isActive()
+    mini.set_enabled(True)
+    assert all("border: 1px solid transparent;" in entry.styleSheet() for entry in mini._entries.values())
+
+
 def test_mini_widget_keeps_all_entries_and_wraps_to_rows(qapp, fake_backend, settings):
     for index in range(80):
         fake_backend.add_session(
@@ -435,6 +512,22 @@ def test_optional_master_is_first_and_controls_system_volume(qapp, mini, setting
     mini.sync_from_settings()
     assert mini._grid.itemAtPosition(0, 0).widget().key == "aurora.exe"
     assert "master" not in mini._entries
+
+
+@pytest.mark.parametrize("muted", [True, False])
+def test_zero_master_volume_shows_muted_icon(mini, settings, muted):
+    settings.set_mini_widget_show_master(True)
+    mini.sync_from_settings()
+    master = mini._entries["master"]
+
+    for volume in (0.5, 0.0, 0.01, 0.0):
+        mini._model.apply_master_state(volume, muted)
+        mini.sync_from_settings()
+        show_muted = muted or volume == 0
+        assert master._muted_icon_label.isVisible() is show_muted
+        assert master._icon_effect.opacity() == (MUTED_OPACITY if show_muted else 1.0)
+        assert master._volume_label.text() == f"{round(volume * 100)}%"
+        assert mini._model.entries[0].muted is muted
 
 
 def test_master_can_be_shown_without_app_sessions(qapp, settings):

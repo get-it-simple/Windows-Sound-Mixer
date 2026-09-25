@@ -134,6 +134,7 @@ def test_retranslate_updates_the_title_icon_tooltip(qapp, fake_backend, settings
     overlay.retranslate()
 
     assert overlay._title_icon_label.toolTip() == f"Локалізований мікшер\nv{__version__}"
+    assert overlay._title_name_label.text() == "Локалізований мікшер"
 
 
 def test_vertical_minimum_height_fits_the_whole_title_column(qapp, fake_backend, settings):

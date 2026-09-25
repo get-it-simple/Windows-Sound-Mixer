@@ -1,17 +1,20 @@
+from collections import OrderedDict
+
 from PySide6.QtCore import QEvent, QFileInfo, QPoint, QTimer
 from PySide6.QtGui import QIcon, QTransform
 from PySide6.QtWidgets import QFileIconProvider, QToolButton, QToolTip
 
 from sound_mixer.paths import resource_path
 
-ICON_NAMES = ("volume", "muted", "settings", "help", "pin", "close", "toggle_on", "toggle_off", "app", "logo", "hide", "arrow_up", "dropdown_arrow", "trash", "drag")
+ICON_NAMES = ("volume", "muted", "settings", "help", "pin", "close", "toggle_on", "toggle_off", "app", "logo", "hide", "arrow_up", "dropdown_arrow", "trash", "drag", "plus", "redirect")
 
 ROTATED_ICON_PX = 64
 TOGGLE_SWITCH_WIDTH_PX = 36
 TOGGLE_SWITCH_HEIGHT_PX = 20
 
 _icon_cache: dict[tuple[str, int], QIcon] = {}
-_app_icon_cache: dict[str, QIcon] = {}
+APP_ICON_CACHE_LIMIT = 256
+_app_icon_cache: OrderedDict[str, QIcon] = OrderedDict()
 _icon_provider: QFileIconProvider | None = None
 
 
@@ -47,6 +50,9 @@ def _provider() -> QFileIconProvider:
 def load_app_icon(exe_path: str) -> QIcon:
     if exe_path not in _app_icon_cache:
         _app_icon_cache[exe_path] = _extract_app_icon(exe_path)
+        while len(_app_icon_cache) > APP_ICON_CACHE_LIMIT:
+            _app_icon_cache.popitem(last=False)
+    _app_icon_cache.move_to_end(exe_path)
     return _app_icon_cache[exe_path]
 
 

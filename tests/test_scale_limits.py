@@ -24,7 +24,6 @@ def windows(qapp, fake_backend, settings):
     mini.stop()
     mini.close()
     overlay.close()
-    overlay._session_listener.stop()
     for window in (dialog, mini, overlay):
         window.deleteLater()
         qapp.sendPostedEvents(window, QEvent.Type.DeferredDelete)
@@ -62,7 +61,6 @@ def test_saved_scale_is_limited_on_startup(qapp, fake_backend, settings, monkeyp
         mini.stop()
         mini.close()
         overlay.close()
-        overlay._session_listener.stop()
         for window in (dialog, mini, overlay):
             window.deleteLater()
             qapp.sendPostedEvents(window, QEvent.Type.DeferredDelete)

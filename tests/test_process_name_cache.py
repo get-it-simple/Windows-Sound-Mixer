@@ -50,6 +50,29 @@ def test_get_returns_empty_for_unknown_key():
     assert cache.get(_KEY) == ""
 
 
+def test_name_cache_evicts_least_recently_used_and_reloads_all_metadata(monkeypatch):
+    import sound_mixer.audio.pycaw_backend as backend_module
+
+    monkeypatch.setattr(backend_module, "NAME_CACHE_LIMIT", 2)
+    cache = _ProcessNameCache()
+    with patch(_PATCH_EXE, return_value="Original") as description:
+        cache.resolve("first", "C:/first.exe", [1], {1: "Page - Original"})
+        cache.resolve("second", "C:/second.exe", [2], {2: "Page - Original"})
+        assert cache.get("first") == "Original"
+        cache.resolve("third", "C:/third.exe", [3], {3: "Page - Original"})
+        assert cache.get("second") == ""
+        assert cache.get("first") == "Original"
+        description.return_value = "Reloaded"
+        cache.resolve("second", "C:/second.exe", [2], {2: "Page - Reloaded"})
+        assert cache.get("second") == "Reloaded"
+        assert description.call_count == 4
+        assert len(cache._recent) == 2
+        for records in (cache._names, cache._descriptions, cache._exe_info_checked,
+                        cache._final, cache._dynamic, cache._provisional, cache._attempts,
+                        cache._next_retry, cache._retry_interval):
+            assert set(records) <= set(cache._recent)
+
+
 def test_description_is_used_until_a_window_title_appears():
     cache = _ProcessNameCache()
 

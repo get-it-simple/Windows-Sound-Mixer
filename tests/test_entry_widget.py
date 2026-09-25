@@ -346,6 +346,26 @@ def test_set_entry_reflects_external_mute_change(qapp):
     assert widget._mute_button.icon().cacheKey() != unmuted_key
 
 
+@pytest.mark.parametrize("is_master", [True, False])
+@pytest.mark.parametrize("muted", [True, False])
+def test_zero_master_volume_shows_muted_icon(qapp, is_master, muted):
+    from sound_mixer.overlay.icons import load_icon
+
+    widget = EntryWidget()
+    entry = MixerEntry(key="master" if is_master else "player.exe", display_name="Volume",
+                       volume=0.5, muted=muted, is_master=is_master)
+    try:
+        for volume in (0.5, 0.0, 0.01, 0.0):
+            entry.volume = volume
+            widget.set_entry(entry, focused=False)
+            icon_name = "muted" if muted or (is_master and volume == 0) else "volume"
+            assert widget._mute_button.icon().cacheKey() == load_icon(icon_name).cacheKey()
+            assert widget._volume_spinbox.value() == round(volume * 100)
+            assert entry.muted is muted
+    finally:
+        widget.close()
+
+
 def test_set_entry_focus_change_updates_property(qapp):
     widget = EntryWidget()
 

@@ -1,5 +1,8 @@
+import pytest
 from PySide6.QtWidgets import QSystemTrayIcon
 
+from sound_mixer.audio.fake_backend import FakeAudioBackend
+from sound_mixer.mixer.model import MixerModel
 from sound_mixer.overlay.icons import load_icon
 from sound_mixer.tray.tray_icon import TrayIcon
 
@@ -121,3 +124,30 @@ def test_set_muted_switches_icon(qapp):
 
     tray.set_muted(False)
     assert tray.icon().cacheKey() == load_icon("volume").cacheKey()
+
+
+def test_zero_master_volume_on_start_shows_muted_icon(qapp, settings):
+    model = MixerModel(FakeAudioBackend(master_volume=0.0), settings)
+    tray, _ = make_tray(qapp, muted=model.is_master_muted())
+
+    assert tray.icon().cacheKey() == load_icon("muted").cacheKey()
+
+
+@pytest.mark.parametrize("source", ["local", "external"])
+@pytest.mark.parametrize("muted", [False, True])
+def test_tray_icon_tracks_zero_master_volume(qapp, settings, source, muted):
+    backend = FakeAudioBackend(master_volume=0.5, master_muted=muted)
+    model = MixerModel(backend, settings)
+    tray, _ = make_tray(qapp, muted=model.is_master_muted())
+    model.set_master_mute_listener(tray.set_muted)
+
+    for volume in (0.0, 0.01, 0.0, 0.5):
+        if source == "local":
+            model.set_volume(volume, index=0)
+        else:
+            backend.set_master_volume(volume)
+            model.refresh_master()
+        icon_name = "muted" if muted or volume == 0 else "volume"
+        assert tray.icon().cacheKey() == load_icon(icon_name).cacheKey()
+        assert backend.get_master_mute() is muted
+        assert model.entries[0].muted is muted

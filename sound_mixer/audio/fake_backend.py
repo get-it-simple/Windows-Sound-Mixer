@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from uuid import uuid4
 
 from sound_mixer.app_key import normalize_app_key
 from sound_mixer.volume import clamp_volume
@@ -13,6 +14,7 @@ class FakeAudioSession:
     volume: float = 1.0
     muted: bool = False
     key: str = ""
+    instance_id: str = field(default_factory=lambda: str(uuid4()))
 
     def __post_init__(self) -> None:
         self.key = normalize_app_key(self.key or self.process_name)
@@ -21,11 +23,17 @@ class FakeAudioSession:
     def pids(self) -> tuple[int, ...]:
         return (self.pid,)
 
-    def set_volume(self, level: float) -> None:
-        self.volume = clamp_volume(level)
+    @property
+    def member_ids(self) -> tuple[str, ...]:
+        return (self.instance_id,)
 
-    def set_muted(self, muted: bool) -> None:
-        self.muted = bool(muted)
+    def set_volume(self, level: float, member_ids: set[str] | None = None) -> None:
+        if member_ids is None or self.instance_id in member_ids:
+            self.volume = clamp_volume(level)
+
+    def set_muted(self, muted: bool, member_ids: set[str] | None = None) -> None:
+        if member_ids is None or self.instance_id in member_ids:
+            self.muted = bool(muted)
 
 
 class FakeAudioBackend:
@@ -46,6 +54,12 @@ class FakeAudioBackend:
 
     def get_master_volume(self) -> float:
         return self._master_volume
+
+    def get_master_state(self) -> tuple[float, bool] | None:
+        return self.get_master_volume(), self.get_master_mute()
+
+    def invalidate_master_endpoint(self) -> None:
+        pass
 
     def set_master_volume(self, level: float) -> None:
         self._master_volume = clamp_volume(level)

@@ -66,6 +66,20 @@ MOD_ALT = 0x0001
 MOD_CONTROL = 0x0002
 MOD_SHIFT = 0x0004
 MOD_WIN = 0x0008
+MOD_NOREPEAT = 0x4000
+
+
+def validate_bindings(bindings: list[dict]) -> None:
+    from sound_mixer.i18n import t
+
+    used = set()
+    for binding in bindings:
+        if not binding["enabled"] or not binding["combo"]:
+            continue
+        key = combo_to_hotkey(binding["combo"])
+        if key in used:
+            raise ValueError(t("hotkey_conflict").format(combo=binding["combo"]))
+        used.add(key)
 
 _MODIFIER_FLAGS = {
     "alt": MOD_ALT,

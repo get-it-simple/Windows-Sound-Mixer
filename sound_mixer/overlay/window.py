@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QFrame,
     QLabel,
+    QMenu,
     QScrollArea,
     QSizePolicy,
     QVBoxLayout,
@@ -17,7 +18,6 @@ from PySide6.QtWidgets import (
 )
 
 from sound_mixer import __version__
-from sound_mixer.audio.session_listener import AudioSessionListener
 from sound_mixer.i18n import t
 from sound_mixer.mixer.model import MixerModel
 from sound_mixer.mixer.subprocess_manager import SubprocessManager
@@ -38,7 +38,6 @@ from sound_mixer.overlay.win_effects import WM_DWMCOLORIZATIONCOLORCHANGED, appl
 from sound_mixer.settings.schema import LAYOUT_HORIZONTAL, LAYOUT_VERTICAL
 from sound_mixer.settings.store import SettingsStore
 
-REFRESH_INTERVAL_MS = 1000
 GEOMETRY_SAVE_DELAY_MS = 300
 WARM_UP_HIDE_DELAY_MS = 150
 WARM_UP_RESHOW_DELAY_MS = 50
@@ -272,11 +271,16 @@ class OverlayWindow(QWidget):
         settings: SettingsStore,
         subprocess_manager: Optional[SubprocessManager] = None,
         parent=None,
+        request_refresh=None,
     ) -> None:
         super().__init__(parent)
         self._model = model
         self._settings = settings
         self._subprocess_manager = subprocess_manager
+        self._request_refresh = request_refresh
+        self._updates_paused = False
+        self._view_dirty = True
+        self._entry_states = {}
         self._entry_widgets: list[EntryWidget] = []
         self._ignored_widgets: list[EntryWidget] = []
         self._ignored_expanded = False
@@ -308,13 +312,8 @@ class OverlayWindow(QWidget):
         self._ensure_on_screen()
         apply_acrylic_effect(self, self._settings.get_transparency_enabled())
 
-        self._refresh_timer = QTimer(self)
-        self._refresh_timer.timeout.connect(self._refresh)
-
-        self._session_listener = AudioSessionListener(self._on_new_session)
-
         self.sync_subprocess_management_toggle()
-        self._sync_entry_widgets()
+        self._sync_entry_widgets(force=True)
 
         if sys.platform == "win32":
             self._warm_up_acrylic()
@@ -429,15 +428,11 @@ class OverlayWindow(QWidget):
         self._ensure_on_screen()
         super().showEvent(event)
         self._refresh_accent_color()
-        self._session_listener.stop()
         self._refresh()
-        self._refresh_timer.start(REFRESH_INTERVAL_MS)
         self.visibility_changed.emit(True)
 
     def hideEvent(self, event) -> None:
         super().hideEvent(event)
-        self._refresh_timer.stop()
-        self._session_listener.start()
         self.visibility_changed.emit(False)
 
     def _build_title_bar(self, parent: QWidget) -> QWidget:
@@ -472,6 +467,15 @@ class OverlayWindow(QWidget):
         subprocess_management_toggle.toggled.connect(self._on_subprocess_management_toggled)
         self._subprocess_management_toggle = subprocess_management_toggle
 
+        self._preset_indicator = DelayedTooltipButton(title_bar)
+        self._preset_indicator.setObjectName("presetIndicator")
+        self._preset_indicator.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self._preset_indicator.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._preset_menu = QMenu(self)
+        self._preset_menu.setToolTipsVisible(True)
+        self._preset_indicator.clicked.connect(self._show_preset_menu)
+        self._sync_preset_indicator()
+
         settings_button = DelayedTooltipButton(title_bar)
         settings_button.setIcon(load_icon("settings"))
         settings_button.setToolTip(t("settings_tooltip"))
@@ -497,6 +501,7 @@ class OverlayWindow(QWidget):
         layout.addWidget(icon_label)
         layout.addLayout(title_text_layout)
         layout.addStretch(1)
+        layout.addWidget(self._preset_indicator)
         layout.addWidget(subprocess_management_toggle)
         layout.addWidget(settings_button)
         layout.addWidget(guide_button)
@@ -639,28 +644,72 @@ class OverlayWindow(QWidget):
             self.setFixedHeight(target_height)
 
     def _on_new_session(self) -> None:
+        if self._request_refresh is not None:
+            self._request_refresh()
+            return
         try:
-            self._model.refresh()
+            self._model.refresh(include_master=False)
+            self._model.refresh_master_after_app_event()
         except Exception:
             return
         self.model_changed.emit()
 
     def _refresh(self) -> None:
+        if self._request_refresh is not None:
+            self._request_refresh()
+            self.refresh_view()
+            return
         try:
-            self._model.refresh()
+            self._model.refresh(include_master=False)
         except Exception:
             return
         self._sync_entry_widgets()
         self.model_changed.emit()
 
     def _pause_refresh(self) -> None:
-        self._refresh_timer.stop()
+        self._updates_paused = True
 
     def _resume_refresh(self) -> None:
-        self._refresh_timer.start(REFRESH_INTERVAL_MS)
+        self._updates_paused = False
+        self.refresh_view()
 
     def refresh_view(self) -> None:
+        self._sync_preset_indicator()
         self._sync_entry_widgets()
+
+    def _sync_preset_indicator(self) -> None:
+        preset = next(
+            ((index, preset) for index, preset in enumerate(self._settings.get_presets(), 1)
+             if preset["id"] == self._model.active_preset_id),
+            None,
+        )
+        self._preset_indicator.setText(f"P{preset[0]}" if preset else "")
+        self._preset_indicator.setIcon(load_icon(f"preset_{preset[0]}" if preset else "preset_1"))
+        self._preset_indicator.setToolTip(preset[1]["name"] if preset else "")
+        self._preset_indicator.set_tooltip_delay_ms(self._settings.get_tooltip_delay_ms())
+        self._preset_indicator.setVisible(preset is not None)
+
+    def _show_preset_menu(self) -> None:
+        self._preset_menu.clear()
+        profiles = [(None, t("default_mode"), t("default_mode"))]
+        profiles.extend(
+            (preset["id"], f"P{index}", preset["name"])
+            for index, preset in enumerate(self._settings.get_presets(), 1)
+        )
+        for preset_id, label, tooltip in profiles:
+            action = self._preset_menu.addAction(label)
+            action.setToolTip(tooltip)
+            action.setCheckable(True)
+            action.setChecked(preset_id == self._model.active_preset_id)
+            action.triggered.connect(lambda checked=False, pid=preset_id: self._select_preset(pid))
+        rect = self._preset_indicator.rect()
+        position = rect.topRight() if self._vertical else rect.bottomLeft()
+        self._preset_menu.popup(self._preset_indicator.mapToGlobal(position))
+
+    def _select_preset(self, preset_id: str | None) -> None:
+        self._model.activate_preset(preset_id)
+        self.refresh_view()
+        self.model_changed.emit()
 
     def _apply_layout_mode(self) -> None:
         vertical = self._vertical
@@ -703,6 +752,7 @@ class OverlayWindow(QWidget):
         alignment = Qt.AlignmentFlag.AlignHCenter if vertical else Qt.AlignmentFlag.AlignVCenter
         for widget in (
             self._title_icon_label,
+            self._preset_indicator,
             self._subprocess_management_toggle,
             self._settings_button,
             self._guide_button,
@@ -767,6 +817,7 @@ class OverlayWindow(QWidget):
         icon_px = round(BASE_ICON_PX * scale)
         logo_px = round(BASE_TITLE_LOGO_PX * scale)
         self._title_icon_label.setPixmap(load_icon("logo").pixmap(logo_px, logo_px))
+        self._preset_indicator.setIconSize(QSize(icon_px, icon_px))
         self._settings_button.setIconSize(QSize(icon_px, icon_px))
         self._guide_button.setIconSize(QSize(icon_px, icon_px))
         self._close_button.setIconSize(QSize(icon_px, icon_px))
@@ -820,9 +871,18 @@ class OverlayWindow(QWidget):
         widget.apply_scale(self.scale_limit.constrain(self._settings.get_ui_scale()), self._accent_color)
         return widget
 
-    def _sync_entry_widgets(self) -> None:
+    def _sync_entry_widgets(self, force=False) -> None:
+        if not force and (not self.isVisible() or self._updates_paused):
+            self._view_dirty = True
+            return
+        self._view_dirty = False
         active_entries = self._model.entries
         ignored_entries = self._model.ignored_entries
+        layout_state = (tuple((entry.key, entry.display_name) for entry in active_entries),
+                        tuple((entry.key, entry.display_name) for entry in ignored_entries),
+                        self._ignored_expanded, not self._preset_indicator.isHidden())
+        layout_changed = layout_state != getattr(self, "_entry_layout_state", None)
+        self._entry_layout_state = layout_state
 
         while len(self._entry_widgets) < len(active_entries):
             widget = self._make_active_widget()
@@ -843,10 +903,14 @@ class OverlayWindow(QWidget):
             widget.deleteLater()
 
         for index, (entry, widget) in enumerate(zip(active_entries, self._entry_widgets)):
-            widget.set_entry(entry, focused=(index == self._model.focused_index))
+            self._update_entry(widget, entry, index == self._model.focused_index)
 
         for entry, widget in zip(ignored_entries, self._ignored_widgets):
-            widget.set_entry(entry, focused=False)
+            self._update_entry(widget, entry, False)
+
+        current_widgets = set(self._entry_widgets + self._ignored_widgets)
+        self._entry_states = {widget: state for widget, state in self._entry_states.items()
+                              if widget in current_widgets}
 
         has_ignored = bool(self._ignored_widgets)
         self._expand_button.setVisible(has_ignored and not self._ignored_expanded)
@@ -854,7 +918,14 @@ class OverlayWindow(QWidget):
         self._ignored_container.setVisible(has_ignored and self._ignored_expanded)
         self._collapse_button.setVisible(has_ignored and self._ignored_expanded)
 
-        self._update_window_size()
+        if layout_changed:
+            self._update_window_size()
+
+    def _update_entry(self, widget, entry, focused):
+        state = (entry.key, entry.display_name, entry.volume, entry.muted, entry.icon_path, focused, entry.volume_locked)
+        if self._entry_states.get(widget) != state:
+            widget.set_entry(entry, focused=focused)
+            self._entry_states[widget] = state
 
     def _on_volume_changed(self, widget: EntryWidget, value: float) -> None:
         index = self._entry_widgets.index(widget)
@@ -952,6 +1023,7 @@ class OverlayWindow(QWidget):
         self.setWindowTitle(t("sound_mixer_title"))
         self._title_name_label.setText(t("sound_mixer_title"))
         self._title_icon_label.setToolTip(f"{t('sound_mixer_title')}\nv{__version__}")
+        self._sync_preset_indicator()
         self._expand_button.setToolTip(t("show_ignored"))
         self._collapse_button.setToolTip(t("hide_ignored"))
         self._settings_button.setToolTip(t("settings_tooltip"))

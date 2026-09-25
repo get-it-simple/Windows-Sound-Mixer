@@ -96,6 +96,12 @@ non-Windows platforms.
   application, with app icons and readable display names.
 - Persistent per-application levels, mute states, hotkeys, overlay layout, and
   other preferences in a human-editable JSON file.
+- Named volume presets with separate application and system volume/mute levels,
+  global toggle shortcuts, and optional single-application isolation.
+- Event-driven application volume and mute synchronization, including changes
+  made in the Windows mixer. External changes are saved and shared across the
+  application's sessions. Each newly created session receives its saved state,
+  including additional sessions within an already running process.
 - Compact always-on-top overlay with optional Windows 11 acrylic transparency,
   accent-colored focus, and automatic recovery from off-screen positions.
 - Horizontal and vertical layouts with independent saved size and position.
@@ -122,12 +128,93 @@ non-Windows platforms.
 - Optional background scanning for audio child processes created by selected
   launchers, sandboxes, and other host applications.
 
+Application audio subscriptions stay active with either widget shown or hidden.
+Session events are batched in 50 ms windows; changing volume does not require a
+full session scan. When subscriptions are healthy and optional launcher scanning
+is off, idle audio synchronization does not periodically scan sessions or processes.
+If subscriptions fail, session polling runs every 5 seconds with a visible widget
+or every 30 seconds with both hidden. Subscription retries back off from 5 to 30
+seconds, and polling stops after recovery. Changing the default output or restoring
+the audio service reconnects subscriptions and refreshes application sessions.
+
+Optional launcher scanning checks full executable paths. While no configured
+launcher is running, its interval doubles up to 30 seconds (or the configured
+interval when that is already longer). Detection can therefore take up to that
+interval. Finding a launcher restores the configured interval. Disabling scanning
+stops its timer and resets the backoff.
+
+Hidden main-widget updates are deferred until it is shown. Volume-only changes
+reuse the mini widget's layout. Application name and icon caches each retain at
+most 256 recently used entries, with no cleanup timer. Window-title retries run
+only while a widget is visible.
+
 </details>
 
 <details>
 <summary>Extra details</summary>
 
 ## Settings file (`settings.json`)
+
+Schema version 14 adds `presets`, `active_preset_id` (null for normal mode), and
+`isolation_restore` (saved application states temporarily overridden by isolation).
+Each preset has an immutable `id`, a `name`, an `apps` map keyed by normalized
+executable path with `volume`/`muted` values, `master_volume`, `master_muted`,
+an optional `isolated_app`, and a `hotkey` with `combo`/`enabled` fields.
+Normal levels remain in `app_volumes`, `master_volume`, and `master_muted`.
+The `default_mode` hotkey returns to normal mode. Existing settings migrate automatically.
+
+### Using presets
+
+Open Settings > Presets and use the plus button to create a preset. Rename it,
+drop local `.exe` files or application shortcuts into its card, and set application
+and system volume/mute levels. The arrow button opens that preset's shortcut row.
+Use the card's activation button or the Normal mode button to select a mode.
+These edits take effect only after OK; Cancel discards the preset draft.
+
+Up to nine presets are supported. The overlay keeps the Sound Mixer title and
+shows P1–P9 beside the monitoring toggle (or Settings when the toggle is hidden),
+in both layouts. Numbers follow the preset list order; hover over the indicator
+to see its name. Click the indicator to choose another profile or normal mode
+from a popup menu; the active profile is checked and profile names appear on hover.
+Normal mode has no indicator. Settings files with more than
+nine presets load only the first nine unique profiles; if the active profile is
+outside that limit, normal mode is selected.
+Volume changes arriving while Settings is open are preserved for fields you did
+not edit, including applications automatically added in the background.
+
+Assign each preset an optional global shortcut under Hotkeys. Press it once to
+activate the preset and again to return to normal mode. The separate Normal mode
+shortcut always restores normal levels. Shortcuts pause while Settings is open.
+Duplicate enabled shortcuts are rejected, and holding a preset shortcut does not
+toggle it repeatedly. The last active mode is restored when Sound Mixer starts.
+
+While a preset is active, changes from either widget, hotkeys, or the Windows
+mixer update that preset. An allowed application is automatically added on its
+first volume or mute change. Applications absent from the preset use their normal
+levels. Whitelist rules limit ordinary preset control; excluded entries remain
+saved. The overlay shows the mode name, also available in the mini widget tooltip.
+
+Each application row has an isolation switch. Only one can be selected per preset;
+selecting another transfers isolation. All other applications are held at 0%,
+including hidden applications, applications outside the whitelist, and newly
+created audio sessions. Their saved levels are preserved and their controls are
+disabled. Removing the isolated application or excluding it from the whitelist
+clears isolation. A temporarily closed isolated application does not clear it.
+
+An external attempt to change an isolated-out application's volume or mute is
+reverted and triggers a Windows system notification explaining the active preset
+and isolated application. Notifications are limited to one every 10 seconds across
+all applications and presets, without a delayed queue. External changes made by
+an application itself are handled the same way. Windows notification preferences
+may hide messages; audio isolation still works. Sound Mixer's own audio writes,
+initial sessions, and unchanged or obsolete events do not trigger messages.
+
+Switching presets applies the destination preset's levels and normal levels for
+applications absent from it. Returning to normal mode restores normal application
+and system levels. Deleting the active preset returns to normal mode. Closing
+Sound Mixer leaves the current Windows audio levels in place.
+
+### Settings location and fields
 
 Source runs keep `settings.json` next to the source tree. A packaged executable
 uses `%LOCALAPPDATA%\GetItSimple\SoundMixer\settings.json` unless it is started
@@ -160,6 +247,9 @@ removes settings and rotating logs for that user.
 | `master_muted`         | bool            | System master mute state.                                                                                                                                       |
 | `app_volumes`          | object          | Per-application volume/mute, keyed by the lowercase executable path with forward slashes (e.g. `"d:/games/mygame/game.exe"`), so two apps that share a file name keep separate settings. Each value is `{ "volume": float, "muted": bool }`. A bare executable name (e.g. `"chrome.exe"`) is still read as a legacy key and applies to any app with that file name. |
 | `hotkeys`              | array           | Global hotkey bindings. Each entry is `{ "action": string, "combo": string, "enabled": bool }`.                                                                 |
+| `presets`              | array           | Up to nine named profiles containing application and system volume/mute, an optional isolated application, and a shortcut. |
+| `active_preset_id`     | string or null  | Last active preset ID; null selects normal mode. |
+| `isolation_restore`    | object          | Normal application states preserved before temporary isolation, including apps without an explicit normal entry. |
 | `autostart_enabled`    | bool            | Whether the app starts automatically on Windows login.                                                                                                          |
 | `overlay`              | object          | Overlay window state: `"layout_mode"` (`"horizontal"` or `"vertical"`), `"visible_on_start"` (bool), and one `{ "x", "y", "width", "height" }` (pixels) block per layout mode under `"horizontal"` and `"vertical"`, so each mode keeps its own position and size. |
 | `tooltip_delay_ms`     | integer         | Delay, in milliseconds, before action button tooltips appear.                                                                                                   |
@@ -168,7 +258,7 @@ removes settings and rotating logs for that user.
 | `default_app_volume`   | float (0.0-1.0) | Initial volume applied to apps the first time they appear, if not already in `app_volumes`.                                                                     |
 | `transparency_enabled` | bool            | Whether the overlay background uses the translucent acrylic effect. If disabled, the overlay has a solid background.                                            |
 | `ignored_apps`         | array of string | Lowercase executable paths (e.g. `"d:/games/mygame/game.exe"`) hidden from the main entry list. Legacy bare executable names (e.g. `"discord.exe"`) still hide every app with that file name. Ignored entries can be revealed via the expand button. |
-| `language`             | string          | UI language code (`"en"`, `"uk"`) or `"system"` to follow the Windows locale. Defaults to `"system"`. Changes take effect immediately when saved from Settings. |
+| `language`             | string          | Windows language code discovered from `sound_mixer/i18n/<code>/strings.json`, or `"system"` to follow the Windows locale. Defaults to `"system"`. Changes take effect immediately when saved from Settings. Missing translations fall back to English. |
 | `subprocess_management` | object          | `{ "interval_seconds": int, "apps": [{ "path": string, "enabled": bool }] }` - shared polling interval and the list of host executables (e.g. sandbox/launcher apps) whose child processes need active background scanning because they don't trigger the normal session-created event. The scan itself is also gated by a session-only on/off switch in the overlay (not persisted - always starts off). |
 | `whitelist`             | object          | `{ "enabled": bool, "apps": [{ "path": string, "enabled": bool }] }` - optional display filter for both the main overlay and mini widget. Hold the left mouse button on a row's drag handle in Settings and drag vertically within the list to reorder it; enabled apps follow that order in both widgets, with unlisted apps afterward when filtering is off. Full normalized paths distinguish same-named apps; bare session names fall back to matching an enabled path's file name. |
 | `mini_widget`           | object          | `{ "enabled": bool, "x": int, "y": int, "dock_edge": string, "scale": float, "background_transparency": float, "show_master": bool, "show_above_taskbar": bool }` - mini widget visibility, position, independent 0.5-3.0 scale, app tile background transparency (0 = opaque, 1 = transparent; default 0.8), optional master volume in first position (default false), and display above the taskbar (default false). Enabling display above the taskbar allows placement across the full screen, including the taskbar area, and maintains window stacking without taking keyboard focus. Disabling it moves the widget back into the work area. `dock_edge` is `""` (free, the default), `"left"`, `"right"`, `"top"`, or `"bottom"`; docking survives restarts, scale changes, and session updates. Side docking uses a vertical app list with non-interactive volume indicators, wrapping into additional columns when needed. Settings schema 12 adds docking without changing existing positions or preferences. |
@@ -181,6 +271,8 @@ volume visibility shortcuts. Migration preserves existing shortcut assignments.
 | Action               | Default combo   | Effect                                                 |
 | -------------------- | --------------- | ------------------------------------------------------ |
 | `toggle_overlay`     | `ctrl+alt+num5` | Show/hide the overlay.                                 |
+| `default_mode`       | (none)          | Return to normal mode and restore its volume/mute levels. |
+| `preset:<id>`        | (none)          | Toggle the identified preset; generated from its `hotkey` field in `presets`. |
 | `toggle_mini_widget` | (none)          | Show/hide the mini volume widget and persist the state.|
 | `mini_focus_next`    | (none)          | Select the next mini widget entry, wrapping to the first. |
 | `mini_focus_prev`    | (none)          | Select the previous mini widget entry, wrapping to the last. |
@@ -224,8 +316,9 @@ are unassigned and disabled by default. Configure them in Settings > Hotkeys.
 - Global hotkeys are subject to Windows UIPI: an elevated foreground
   application will not receive hotkeys from a non-elevated Sound Mixer, and
   vice versa.
-- Newly started applications may take a second or two to appear in the
-  overlay, as sessions are picked up on a periodic refresh.
+- Newly started applications appear through audio-session notifications. When
+  notifications are unavailable, detection follows the fallback polling interval
+  described above. Optional launcher scanning uses its separate adaptive interval.
 - An application with multiple audio sessions is shown as a single entry;
   volume and mute changes apply to all of its sessions.
 - "System Sounds" has no dedicated entry; use the master volume entry to
@@ -240,43 +333,58 @@ it.
 
 ## Supported languages
 
-| Language               | Code | Added by |
-| ---------------------- | ---- | -------- |
-| English                | `en` | author   |
-| Українська (Ukrainian) | `uk` | author   |
+The application includes 24 languages:
+
+| Language | Windows language code |
+| --- | --- |
+| Bulgarian | `bg` |
+| Chinese (Simplified, mainland China) | `zh-CN` |
+| Croatian | `hr` |
+| Czech | `cs` |
+| Danish | `da` |
+| Dutch | `nl` |
+| English | `en` |
+| Finnish | `fi` |
+| French | `fr` |
+| German | `de` |
+| Greek | `el` |
+| Hungarian | `hu` |
+| Italian | `it` |
+| Japanese | `ja` |
+| Korean | `ko` |
+| Norwegian Bokmål | `nb` |
+| Polish | `pl` |
+| Portuguese (Portugal) | `pt-PT` |
+| Romanian | `ro` |
+| Slovak | `sk` |
+| Spanish (wording for Spain) | `es` |
+| Swedish | `sv` |
+| Turkish | `tr` |
+| Ukrainian | `uk` |
+
+Languages are discovered automatically from `sound_mixer/i18n/<language-code>/strings.json`
+and included in each build. English (`en`) is the base language; missing translated keys
+use the English text. Display names come from Windows. System language detection prefers
+an exact locale match, then its parent language, then English.
 
 <details>
 <summary>How to add a new translation</summary>
 
-1. **Create the language file.** Copy `sound_mixer/i18n/en.py` to a new file named after the
-   [ISO 639-1](https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes) code of the language
-   (e.g. `sound_mixer/i18n/de.py` for German). Translate every string value; do not change
-   the keys.
+1. **Add one file.** Copy `sound_mixer/i18n/en/strings.json` to
+   `sound_mixer/i18n/<language-code>/strings.json`. Use a Windows locale code for the
+   directory name, such as `de` or `pt-BR`.
+2. **Translate the values.** Keep the JSON keys unchanged and save the file as UTF-8.
+   A partial translation is supported: omitted keys use English automatically.
+3. **Build.** Run `python build.py`. The new language appears in Settings automatically;
+   no language registry, loader branch, or language-specific tests are needed.
+   Version bumps follow the normal project release rules.
 
-2. **Register the language in the i18n module.** Open `sound_mixer/i18n/__init__.py` and make
-   two additions:
-    - Add the code to `AVAILABLE_LANGUAGES`:
-        ```python
-        AVAILABLE_LANGUAGES: list[str] = ["en", "uk", "de"]
-        ```
-    - Add a branch in `_load_language_strings()` to import the new module:
-        ```python
-        def _load_language_strings(language: str) -> dict[str, str]:
-            if language == "uk":
-                from sound_mixer.i18n.uk import STRINGS
-                return STRINGS
-            if language == "de":
-                from sound_mixer.i18n.de import STRINGS
-                return STRINGS
-            return {}
-        ```
+The **Missing your language?** button below the language selector opens a short guide.
+To share a translation, submit its JSON file to this project on GitHub.
 
-3. **Add tests.** In `tests/test_i18n.py`, add a test that calls `i18n.setup("de")` and
-   asserts at least one translated string is returned correctly.
-
-4. **Update this table** in `README.md` with the new language and your name.
-
-5. **Bump the version** in `sound_mixer/__init__.py` (required for every source change).
+When adding, changing, or removing UI strings, update the English catalog and every
+existing language catalog, including languages contributed later. Translation-content
+and UI tests use English; generic tests cover language discovery and fallback.
 
 </details>
 

@@ -1,11 +1,13 @@
 import logging
 import sys
+from functools import partial
+from typing import Callable
 from ctypes import wintypes
 
 from PySide6.QtCore import QAbstractNativeEventFilter, QObject, Signal
 from PySide6.QtWidgets import QApplication
 
-from sound_mixer.hotkeys.binding import combo_to_hotkey
+from sound_mixer.hotkeys.binding import MOD_NOREPEAT, combo_to_hotkey
 from sound_mixer.settings.store import SettingsStore
 
 logger = logging.getLogger(__name__)
@@ -25,6 +27,8 @@ else:
 
 
 class HotkeyManager(QObject, QAbstractNativeEventFilter):
+    preset_toggled = Signal(str)
+    default_mode = Signal()
     toggle_overlay = Signal()
     toggle_mini_widget = Signal()
     mini_focus_next = Signal()
@@ -42,7 +46,7 @@ class HotkeyManager(QObject, QAbstractNativeEventFilter):
         QObject.__init__(self, parent)
         QAbstractNativeEventFilter.__init__(self)
         self._settings = settings
-        self._hotkey_ids: dict[int, Signal] = {}
+        self._hotkey_ids: dict[int, Callable] = {}
         self._next_id = 1
         self._filter_installed = False
 
@@ -51,14 +55,21 @@ class HotkeyManager(QObject, QAbstractNativeEventFilter):
             logger.warning("Global hotkeys require Windows; hotkeys disabled")
             return
 
-        for hotkey in self._settings.get_hotkeys():
+        if self._hotkey_ids:
+            self.stop()
+        used = set()
+        for hotkey in self._settings.get_all_hotkeys():
             if not hotkey["enabled"] or not hotkey["combo"]:
                 continue
 
-            signal = getattr(self, hotkey["action"], None)
-            if signal is None:
+            action = hotkey["action"]
+            is_preset = action.startswith("preset:")
+            signal = getattr(self, action, None)
+            if not is_preset and signal is None:
                 logger.warning("Unknown hotkey action: %s", hotkey["action"])
                 continue
+
+            callback = partial(self.preset_toggled.emit, action.removeprefix("preset:")) if is_preset else signal.emit
 
             try:
                 modifiers, vk = combo_to_hotkey(hotkey["combo"])
@@ -66,10 +77,17 @@ class HotkeyManager(QObject, QAbstractNativeEventFilter):
                 logger.warning("Invalid hotkey combo for %s: %s", hotkey["action"], hotkey["combo"])
                 continue
 
+            if (modifiers, vk) in used:
+                logger.warning("Conflicting hotkey for %s: %s", action, hotkey["combo"])
+                continue
+            used.add((modifiers, vk))
+            if is_preset or action == "default_mode":
+                modifiers |= MOD_NOREPEAT
+
             hotkey_id = self._next_id
             self._next_id += 1
             if user32.RegisterHotKey(None, hotkey_id, modifiers, vk):
-                self._hotkey_ids[hotkey_id] = signal
+                self._hotkey_ids[hotkey_id] = callback
             else:
                 logger.warning("Failed to register hotkey for %s: %s", hotkey["action"], hotkey["combo"])
 
@@ -98,9 +116,9 @@ class HotkeyManager(QObject, QAbstractNativeEventFilter):
         self.start()
 
     def _handle_hotkey(self, hotkey_id: int) -> None:
-        signal = self._hotkey_ids.get(hotkey_id)
-        if signal is not None:
-            signal.emit()
+        callback = self._hotkey_ids.get(hotkey_id)
+        if callback is not None:
+            callback()
 
     def nativeEventFilter(self, event_type, message):
         if event_type != b"windows_generic_MSG":

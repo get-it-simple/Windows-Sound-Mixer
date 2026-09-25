@@ -8,6 +8,7 @@ from typing import Callable, Optional
 from sound_mixer.app_key import legacy_app_key, normalize_app_key
 from sound_mixer.executable_path import InvalidExecutablePathError, resolve_local_executable
 from sound_mixer.settings.migrations import migrate
+from sound_mixer.settings.presets import PresetSettings
 from sound_mixer.settings.schema import (
     DEFAULT_SETTINGS,
     LAYOUT_HORIZONTAL,
@@ -21,7 +22,7 @@ from sound_mixer.volume import clamp_volume
 logger = logging.getLogger(__name__)
 
 
-class SettingsStore:
+class SettingsStore(PresetSettings):
     def __init__(self, path: Path):
         self.path = Path(path)
         self.data = copy.deepcopy(DEFAULT_SETTINGS)
@@ -65,6 +66,7 @@ class SettingsStore:
         )
         self.data["whitelist"]["apps"] = self._dedupe_apps(self.data["whitelist"].get("apps", []))
         self._clamp()
+        self.set_presets(self.data["presets"], persist=False)
         return self.data
 
     def _backup_corrupt_file(self) -> None:
@@ -108,8 +110,11 @@ class SettingsStore:
 
     def set_app_volume(self, exe: str, level: float) -> None:
         exe = normalize_app_key(exe)
+        level = clamp_volume(level)
+        if exe in self.data["app_volumes"] and self.get_app_volume(exe) == level:
+            return
         entry = self.data["app_volumes"].setdefault(exe, {"volume": 1.0, "muted": False})
-        entry["volume"] = clamp_volume(level)
+        entry["volume"] = level
         self._request_save()
 
     def get_app_muted(self, exe: str) -> bool:
@@ -117,6 +122,8 @@ class SettingsStore:
 
     def set_app_muted(self, exe: str, muted: bool) -> None:
         exe = normalize_app_key(exe)
+        if exe in self.data["app_volumes"] and self.get_app_muted(exe) == bool(muted):
+            return
         entry = self.data["app_volumes"].setdefault(exe, {"volume": 1.0, "muted": False})
         entry["muted"] = bool(muted)
         self._request_save()
@@ -139,6 +146,13 @@ class SettingsStore:
         return self.data["hotkeys"]
 
     def set_hotkey(self, action: str, combo: str, enabled: bool = True) -> None:
+        if action.startswith("preset:"):
+            preset_id = action.removeprefix("preset:")
+            for preset in self.data["presets"]:
+                if preset["id"] == preset_id:
+                    preset["hotkey"] = {"combo": combo, "enabled": bool(enabled)}
+                    self._request_save()
+                    return
         for hotkey in self.data["hotkeys"]:
             if hotkey["action"] == action:
                 hotkey["combo"] = combo

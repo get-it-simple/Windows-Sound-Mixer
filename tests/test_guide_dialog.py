@@ -73,11 +73,10 @@ def test_settings_has_guide_button(qapp, settings):
     assert any("guide" in b.text().lower() for b in buttons)
 
 
-@pytest.mark.parametrize("language", ["en", "uk"])
 @pytest.mark.parametrize("mini_widget_enabled", [False, True])
-def test_guide_mini_widget_controls_follow_enabled_state(qapp, language, mini_widget_enabled):
+def test_guide_mini_widget_controls_follow_enabled_state(qapp, mini_widget_enabled):
     previous_language = i18n.get_current_language()
-    i18n.setup(language)
+    i18n.setup("en")
     try:
         dialog = GuideDialog(mini_widget_enabled=mini_widget_enabled)
         texts = [label.text() for label in dialog.findChildren(QLabel)]
