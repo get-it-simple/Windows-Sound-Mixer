@@ -170,6 +170,15 @@ drop local `.exe` files or application shortcuts into its card, and set applicat
 and system volume/mute levels. The arrow button opens that preset's shortcut row.
 Use the card's activation button or the Normal mode button to select a mode.
 These edits take effect only after OK; Cancel discards the preset draft.
+
+Up to nine presets are supported. The overlay keeps the Sound Mixer title and
+shows P1–P9 beside the monitoring toggle (or Settings when the toggle is hidden),
+in both layouts. Numbers follow the preset list order; hover over the indicator
+to see its name. Click the indicator to choose another profile or normal mode
+from a popup menu; the active profile is checked and profile names appear on hover.
+Normal mode has no indicator. Settings files with more than
+nine presets load only the first nine unique profiles; if the active profile is
+outside that limit, normal mode is selected.
 Volume changes arriving while Settings is open are preserved for fields you did
 not edit, including applications automatically added in the background.
 
@@ -238,7 +247,7 @@ removes settings and rotating logs for that user.
 | `master_muted`         | bool            | System master mute state.                                                                                                                                       |
 | `app_volumes`          | object          | Per-application volume/mute, keyed by the lowercase executable path with forward slashes (e.g. `"d:/games/mygame/game.exe"`), so two apps that share a file name keep separate settings. Each value is `{ "volume": float, "muted": bool }`. A bare executable name (e.g. `"chrome.exe"`) is still read as a legacy key and applies to any app with that file name. |
 | `hotkeys`              | array           | Global hotkey bindings. Each entry is `{ "action": string, "combo": string, "enabled": bool }`.                                                                 |
-| `presets`              | array           | Named profiles containing application and system volume/mute, an optional isolated application, and a shortcut. |
+| `presets`              | array           | Up to nine named profiles containing application and system volume/mute, an optional isolated application, and a shortcut. |
 | `active_preset_id`     | string or null  | Last active preset ID; null selects normal mode. |
 | `isolation_restore`    | object          | Normal application states preserved before temporary isolation, including apps without an explicit normal entry. |
 | `autostart_enabled`    | bool            | Whether the app starts automatically on Windows login.                                                                                                          |

@@ -4,6 +4,8 @@ from uuid import uuid4
 from sound_mixer.app_key import normalize_app_key
 from sound_mixer.volume import clamp_volume
 
+MAX_PRESETS = 9
+
 
 def audio_state(volume, muted=False):
     return {"volume": clamp_volume(float(volume)), "muted": bool(muted)}
@@ -48,6 +50,10 @@ class PresetSettings:
             preset_id = str(preset.get("id") or uuid4().hex)
             if preset_id in seen:
                 continue
+            if len(normalized) == MAX_PRESETS:
+                if persist:
+                    raise ValueError(f"At most {MAX_PRESETS} presets are allowed")
+                break
             seen.add(preset_id)
             apps = {
                 normalize_app_key(key): audio_state(value.get("volume", 1), value.get("muted", False))

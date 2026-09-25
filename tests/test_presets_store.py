@@ -1,5 +1,7 @@
 from copy import deepcopy
 
+import pytest
+
 from sound_mixer.settings.migrations import migrate
 from sound_mixer.settings.store import SettingsStore
 
@@ -57,3 +59,35 @@ def test_whitelist_prevents_auto_add(settings):
     settings.set_profile_app_state("a.exe", .3, False)
     assert settings.get_preset(preset["id"])["apps"] == {}
     assert settings.get_app_volume("a.exe") == .3
+
+
+def test_preset_limit_rejects_creation_and_bulk_updates_atomically(settings):
+    for index in range(9):
+        settings.create_preset(f"Preset {index + 1}", .5)
+    settings.set_active_preset_id(settings.get_presets()[-1]["id"])
+    before = deepcopy(settings.data)
+    saved = settings.path.read_bytes()
+    with pytest.raises(ValueError, match="9 presets"):
+        settings.create_preset("Extra", .5)
+    with pytest.raises(ValueError, match="9 presets"):
+        settings.set_presets([*settings.get_presets(), {"id": "extra"}])
+    assert settings.data == before
+    assert settings.path.read_bytes() == saved
+    settings.delete_preset(settings.get_presets()[0]["id"])
+    assert settings.create_preset("Replacement", .5) in settings.get_presets()
+    assert len(settings.get_presets()) == 9
+
+
+@pytest.mark.parametrize("active_id, expected_id", [("10", None), ("9", "9")])
+def test_load_limits_legacy_presets_and_validates_active_id(settings, active_id, expected_id):
+    settings.data["presets"] = [{"id": str(index), "name": f"Profile {index}"} for index in range(1, 12)]
+    settings.data["active_preset_id"] = active_id
+    settings.save()
+    settings.load()
+    assert [preset["id"] for preset in settings.get_presets()] == [str(index) for index in range(1, 10)]
+    assert settings.get_active_preset_id() == expected_id
+    settings.save()
+    loaded = SettingsStore(settings.path)
+    loaded.load()
+    assert loaded.get_presets() == settings.get_presets()
+    assert loaded.get_active_preset_id() == expected_id

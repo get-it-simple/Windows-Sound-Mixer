@@ -171,7 +171,9 @@ def test_widgets_show_mode_and_lock_other_volume_controls(qapp, settings, fake_b
         overlay.show()
         overlay.refresh_view()
         mini.set_enabled(True)
-        assert overlay._title_name_label.text() == "Game"
+        assert overlay._title_name_label.text() == "Sound Mixer"
+        assert overlay._preset_indicator.text() == "P1"
+        assert overlay._preset_indicator.toolTip() == "Game"
         assert mini.toolTip() == "Game"
         assert not overlay._entry_widgets[2]._slider.isEnabled()
         assert not overlay._entry_widgets[2]._mute_button.isEnabled()
@@ -181,7 +183,8 @@ def test_widgets_show_mode_and_lock_other_volume_controls(qapp, settings, fake_b
         mini.refresh_view()
         assert overlay._entry_widgets[2]._slider.isEnabled()
         assert mini._entries["lumen.exe"].isEnabled()
-        assert overlay._title_name_label.text() == "Normal mode"
+        assert overlay._title_name_label.text() == "Sound Mixer"
+        assert overlay._preset_indicator.isHidden()
     finally:
         mini.stop()
         mini.close()
@@ -189,3 +192,22 @@ def test_widgets_show_mode_and_lock_other_volume_controls(qapp, settings, fake_b
         mini.deleteLater()
         overlay.deleteLater()
         qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def test_preset_limit_disables_add_and_removal_restores_it(windows, settings):
+    window = windows()
+    editor = window._presets_editor
+    for _ in range(9):
+        editor.add_button.click()
+    assert len(editor.presets()) == 9
+    assert not editor.add_button.isEnabled()
+    editor.add_button.click()
+    assert editor.add_preset() is None
+    assert len(editor.presets()) == 9
+    editor.cards[0].remove.click()
+    assert editor.add_button.isEnabled()
+    editor.add_button.click()
+    assert len(editor.presets()) == 9
+    window.accept()
+    assert len(settings.get_presets()) == 9
+    assert not windows()._presets_editor.add_button.isEnabled()

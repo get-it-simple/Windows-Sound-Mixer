@@ -8,6 +8,7 @@ from sound_mixer.app_key import normalize_app_key
 from sound_mixer.executable_path import InvalidExecutablePathError, resolve_application_path
 from sound_mixer.i18n import t
 from sound_mixer.overlay.icons import DelayedTooltipButton, load_icon
+from sound_mixer.settings.presets import MAX_PRESETS
 from sound_mixer.settings_window.managed_apps_editor import AppDropZone, ManagedAppRow
 
 
@@ -225,6 +226,8 @@ class PresetsEditor(QWidget):
         return self.settings.get_app_volume(key), self.settings.get_app_muted(key)
 
     def add_preset(self):
+        if len(self.cards) >= MAX_PRESETS:
+            return None
         if self.model is not None:
             entry = self.model.entries[0]
             volume, muted = entry.volume, entry.muted
@@ -243,10 +246,12 @@ class PresetsEditor(QWidget):
         card = PresetCard(preset, self)
         self.cards.append(card)
         self.cards_layout.addWidget(card)
+        self.add_button.setEnabled(len(self.cards) < MAX_PRESETS)
         return card
 
     def remove_card(self, card):
         self.cards.remove(card)
+        self.add_button.setEnabled(len(self.cards) < MAX_PRESETS)
         self.cards_layout.removeWidget(card)
         card.deleteLater()
         if self.active_id == card.preset_id:
