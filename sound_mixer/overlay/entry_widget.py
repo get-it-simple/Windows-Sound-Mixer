@@ -231,6 +231,9 @@ class EntryWidget(QFrame):
         return hint
 
     def set_entry(self, entry: MixerEntry, focused: bool) -> None:
+        self._slider.setEnabled(not entry.volume_locked)
+        self._volume_spinbox.setEnabled(not entry.volume_locked)
+        self._mute_button.setEnabled(not entry.volume_locked)
         show_muted = entry.muted or (entry.is_master and entry.volume == 0)
         if show_muted != self._last_muted:
             self._mute_button.setIcon(load_icon("muted" if show_muted else "volume"))

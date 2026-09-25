@@ -1,3 +1,4 @@
+import ctypes
 import os
 import time
 from math import isclose
@@ -455,7 +456,7 @@ class PycawAudioBackend:
 
     def set_master_volume(self, level: float) -> None:
         try:
-            self._endpoint.call(lambda ep: ep.SetMasterVolumeLevelScalar(clamp_volume(level), None))
+            self._endpoint.call(lambda ep: ep.SetMasterVolumeLevelScalar(clamp_volume(level), ctypes.byref(_EVENT_CONTEXT)))
         except Exception:
             pass
 
@@ -467,6 +468,6 @@ class PycawAudioBackend:
 
     def set_master_mute(self, muted: bool) -> None:
         try:
-            self._endpoint.call(lambda ep: ep.SetMute(bool(muted), None))
+            self._endpoint.call(lambda ep: ep.SetMute(bool(muted), ctypes.byref(_EVENT_CONTEXT)))
         except Exception:
             pass

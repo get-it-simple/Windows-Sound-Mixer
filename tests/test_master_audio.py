@@ -1,3 +1,4 @@
+import gc
 import threading
 from ctypes import pointer
 from types import SimpleNamespace
@@ -107,6 +108,7 @@ def devices(monkeypatch):
 
 @pytest.fixture
 def listener(qapp, devices):
+    gc.collect()
     listener = MasterAudioListener()
     yield listener
     listener.stop()
@@ -235,6 +237,44 @@ def test_failed_master_read_preserves_last_known_state(devices, settings):
     assert model.refresh_master() is False
     assert model.entries[0].volume == 0.25
     assert model.entries[0].muted is False
+
+
+def test_master_callback_ignores_own_writes_and_timestamps_external_events():
+    import queue
+    from time import perf_counter
+    from comtypes import GUID
+    from sound_mixer.audio.events import VOLUME_EVENT_CONTEXT
+
+    events = queue.Queue()
+    callback = master_listener._VolumeCallback(events, 1)
+    before = perf_counter()
+    callback.on_notify(.4, True, pointer(GUID(VOLUME_EVENT_CONTEXT)), 1, [.4])
+    assert events.empty()
+    callback.on_notify(.6, False, None, 1, [.6])
+    kind, generation, volume, muted, timestamp = events.get_nowait()
+    assert (kind, generation, volume, muted) == ("volume", 1, .6, False)
+    assert before <= timestamp <= perf_counter()
+
+
+def test_active_preset_survives_endpoint_change_without_saving_initial_snapshot(qapp, devices, settings, listener):
+    preset = settings.create_preset("Game", .36, True)
+    settings.set_active_preset_id(preset["id"])
+    backend = PycawAudioBackend()
+    model = MixerModel(backend, settings)
+    sync = MasterAudioSync(model, backend, lambda: None, lambda: model.refresh(include_master=False), listener=listener)
+    try:
+        sync.start()
+        wait_until(lambda: bool(devices.first.EndpointVolume.callbacks))
+        devices.switch(devices.second)
+        wait_until(lambda: devices.second.EndpointVolume.volume == .36)
+        QTest.qWait(600)
+        assert model.entries[0].volume == pytest.approx(.36)
+        assert settings.get_profile_master_state()[0] == pytest.approx(.36)
+        assert devices.second.EndpointVolume.muted
+    finally:
+        sync.stop()
+        sync.deleteLater()
+        qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
 def test_unavailable_output_does_not_repeatedly_restart_session_listener(qapp, devices, listener, monkeypatch):

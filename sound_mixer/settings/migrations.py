@@ -137,6 +137,19 @@ def _migrate_12_to_13(data: dict) -> dict:
     return data
 
 
+def _migrate_13_to_14(data: dict) -> dict:
+    data = dict(data)
+    data.setdefault("presets", [])
+    data.setdefault("active_preset_id", None)
+    data.setdefault("isolation_restore", {})
+    hotkeys = list(data.get("hotkeys") or [])
+    if not any(item.get("action") == "default_mode" for item in hotkeys):
+        hotkeys.append({"action": "default_mode", "combo": "", "enabled": False})
+    data["hotkeys"] = hotkeys
+    data["version"] = 14
+    return data
+
+
 MIGRATIONS = {
     0: _migrate_0_to_1,
     1: _migrate_1_to_2,
@@ -151,6 +164,7 @@ MIGRATIONS = {
     10: _migrate_10_to_11,
     11: _migrate_11_to_12,
     12: _migrate_12_to_13,
+    13: _migrate_13_to_14,
 }
 
 

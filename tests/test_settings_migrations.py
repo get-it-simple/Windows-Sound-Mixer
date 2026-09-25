@@ -276,7 +276,7 @@ def test_migrates_v12_adds_unassigned_mini_actions_and_preserves_bindings():
     before = deepcopy(original)
     migrated = migrate(original)
     assert original == before
-    assert migrated["version"] == 13
+    assert migrated["version"] == CURRENT_VERSION
     assert migrated["hotkeys"][:3] == original["hotkeys"]
     actions = {binding["action"]: binding for binding in migrated["hotkeys"]}
     assert len(actions) == len(migrated["hotkeys"])

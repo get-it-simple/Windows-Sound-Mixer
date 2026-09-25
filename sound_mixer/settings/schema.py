@@ -1,4 +1,4 @@
-CURRENT_VERSION = 13
+CURRENT_VERSION = 14
 
 MIN_UI_SCALE = 0.5
 MAX_UI_SCALE = 3.0
@@ -21,6 +21,7 @@ DEFAULT_HOTKEYS = [
     {"action": "focus_next", "combo": "", "enabled": False},
     {"action": "focus_prev", "combo": "", "enabled": False},
     {"action": "mute_toggle", "combo": "", "enabled": False},
+    {"action": "default_mode", "combo": "", "enabled": False},
 ]
 
 DEFAULT_SETTINGS = {
@@ -28,6 +29,9 @@ DEFAULT_SETTINGS = {
     "master_volume": 0.8,
     "master_muted": False,
     "app_volumes": {},
+    "presets": [],
+    "active_preset_id": None,
+    "isolation_restore": {},
     "hotkeys": DEFAULT_HOTKEYS,
     "autostart_enabled": False,
     "overlay": {

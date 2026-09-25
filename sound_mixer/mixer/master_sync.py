@@ -1,3 +1,5 @@
+from time import perf_counter
+
 from PySide6.QtCore import QObject, QTimer, Qt, Slot
 
 from sound_mixer.audio.master_listener import MasterAudioListener
@@ -18,7 +20,7 @@ class MasterAudioSync(QObject):
         self._pending_state = None
         self._read_requested = False
         self._listener = listener if listener is not None else MasterAudioListener(self)
-        self._listener.state_changed.connect(self._queue_state)
+        getattr(self._listener, "state_observed", self._listener.state_changed).connect(self._queue_state)
         self._listener.device_changed.connect(self._device_changed)
         self._listener.availability_changed.connect(self._set_available)
         self._timer = QTimer(self)
@@ -59,8 +61,9 @@ class MasterAudioSync(QObject):
             self._timer.stop()
 
     @Slot(float, bool)
-    def _queue_state(self, volume: float, muted: bool) -> None:
-        self._pending_state = (volume, muted)
+    @Slot(float, bool, float)
+    def _queue_state(self, volume: float, muted: bool, timestamp: float | None = None) -> None:
+        self._pending_state = (volume, muted, perf_counter() if timestamp is None else timestamp)
         self._update_timer.start()
 
     def _request_read(self) -> None:
@@ -78,13 +81,14 @@ class MasterAudioSync(QObject):
         self._cancel_update()
         if read_requested and self._model.refresh_master():
             self._refresh_views()
-        elif state is not None and self._model.apply_master_state(*state):
+        elif state is not None and self._model.observe_master_state(*state):
             self._refresh_views()
 
     @Slot()
     def _device_changed(self) -> None:
         self._cancel_update()
         self._backend.invalidate_master_endpoint()
+        self._model.restore_master_profile()
         self._on_device_changed()
 
     @Slot()

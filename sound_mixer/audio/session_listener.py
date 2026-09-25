@@ -92,7 +92,7 @@ class AudioSessionListener(QObject):
         self._stop_event.set()
         self._messages.put("stop")
         if self._thread is not None:
-            self._thread.join(timeout=2)
+            self._thread.join()
 
     def _reconcile(self, manager, sessions, generation, removed):
         enumerator = manager.GetSessionEnumerator()

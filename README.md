@@ -96,6 +96,8 @@ non-Windows platforms.
   application, with app icons and readable display names.
 - Persistent per-application levels, mute states, hotkeys, overlay layout, and
   other preferences in a human-editable JSON file.
+- Named volume presets with separate application and system volume/mute levels,
+  global toggle shortcuts, and optional single-application isolation.
 - Event-driven application volume and mute synchronization, including changes
   made in the Windows mixer. External changes are saved and shared across the
   application's sessions. Each newly created session receives its saved state,
@@ -153,6 +155,58 @@ only while a widget is visible.
 
 ## Settings file (`settings.json`)
 
+Schema version 14 adds `presets`, `active_preset_id` (null for normal mode), and
+`isolation_restore` (saved application states temporarily overridden by isolation).
+Each preset has an immutable `id`, a `name`, an `apps` map keyed by normalized
+executable path with `volume`/`muted` values, `master_volume`, `master_muted`,
+an optional `isolated_app`, and a `hotkey` with `combo`/`enabled` fields.
+Normal levels remain in `app_volumes`, `master_volume`, and `master_muted`.
+The `default_mode` hotkey returns to normal mode. Existing settings migrate automatically.
+
+### Using presets
+
+Open Settings > Presets and use the plus button to create a preset. Rename it,
+drop local `.exe` files or application shortcuts into its card, and set application
+and system volume/mute levels. The arrow button opens that preset's shortcut row.
+Use the card's activation button or the Normal mode button to select a mode.
+These edits take effect only after OK; Cancel discards the preset draft.
+Volume changes arriving while Settings is open are preserved for fields you did
+not edit, including applications automatically added in the background.
+
+Assign each preset an optional global shortcut under Hotkeys. Press it once to
+activate the preset and again to return to normal mode. The separate Normal mode
+shortcut always restores normal levels. Shortcuts pause while Settings is open.
+Duplicate enabled shortcuts are rejected, and holding a preset shortcut does not
+toggle it repeatedly. The last active mode is restored when Sound Mixer starts.
+
+While a preset is active, changes from either widget, hotkeys, or the Windows
+mixer update that preset. An allowed application is automatically added on its
+first volume or mute change. Applications absent from the preset use their normal
+levels. Whitelist rules limit ordinary preset control; excluded entries remain
+saved. The overlay shows the mode name, also available in the mini widget tooltip.
+
+Each application row has an isolation switch. Only one can be selected per preset;
+selecting another transfers isolation. All other applications are held at 0%,
+including hidden applications, applications outside the whitelist, and newly
+created audio sessions. Their saved levels are preserved and their controls are
+disabled. Removing the isolated application or excluding it from the whitelist
+clears isolation. A temporarily closed isolated application does not clear it.
+
+An external attempt to change an isolated-out application's volume or mute is
+reverted and triggers a Windows system notification explaining the active preset
+and isolated application. Notifications are limited to one every 10 seconds across
+all applications and presets, without a delayed queue. External changes made by
+an application itself are handled the same way. Windows notification preferences
+may hide messages; audio isolation still works. Sound Mixer's own audio writes,
+initial sessions, and unchanged or obsolete events do not trigger messages.
+
+Switching presets applies the destination preset's levels and normal levels for
+applications absent from it. Returning to normal mode restores normal application
+and system levels. Deleting the active preset returns to normal mode. Closing
+Sound Mixer leaves the current Windows audio levels in place.
+
+### Settings location and fields
+
 Source runs keep `settings.json` next to the source tree. A packaged executable
 uses `%LOCALAPPDATA%\GetItSimple\SoundMixer\settings.json` unless it is started
 with `--portable`. Portable mode keeps settings next to the executable when
@@ -184,6 +238,9 @@ removes settings and rotating logs for that user.
 | `master_muted`         | bool            | System master mute state.                                                                                                                                       |
 | `app_volumes`          | object          | Per-application volume/mute, keyed by the lowercase executable path with forward slashes (e.g. `"d:/games/mygame/game.exe"`), so two apps that share a file name keep separate settings. Each value is `{ "volume": float, "muted": bool }`. A bare executable name (e.g. `"chrome.exe"`) is still read as a legacy key and applies to any app with that file name. |
 | `hotkeys`              | array           | Global hotkey bindings. Each entry is `{ "action": string, "combo": string, "enabled": bool }`.                                                                 |
+| `presets`              | array           | Named profiles containing application and system volume/mute, an optional isolated application, and a shortcut. |
+| `active_preset_id`     | string or null  | Last active preset ID; null selects normal mode. |
+| `isolation_restore`    | object          | Normal application states preserved before temporary isolation, including apps without an explicit normal entry. |
 | `autostart_enabled`    | bool            | Whether the app starts automatically on Windows login.                                                                                                          |
 | `overlay`              | object          | Overlay window state: `"layout_mode"` (`"horizontal"` or `"vertical"`), `"visible_on_start"` (bool), and one `{ "x", "y", "width", "height" }` (pixels) block per layout mode under `"horizontal"` and `"vertical"`, so each mode keeps its own position and size. |
 | `tooltip_delay_ms`     | integer         | Delay, in milliseconds, before action button tooltips appear.                                                                                                   |
@@ -205,6 +262,8 @@ volume visibility shortcuts. Migration preserves existing shortcut assignments.
 | Action               | Default combo   | Effect                                                 |
 | -------------------- | --------------- | ------------------------------------------------------ |
 | `toggle_overlay`     | `ctrl+alt+num5` | Show/hide the overlay.                                 |
+| `default_mode`       | (none)          | Return to normal mode and restore its volume/mute levels. |
+| `preset:<id>`        | (none)          | Toggle the identified preset; generated from its `hotkey` field in `presets`. |
 | `toggle_mini_widget` | (none)          | Show/hide the mini volume widget and persist the state.|
 | `mini_focus_next`    | (none)          | Select the next mini widget entry, wrapping to the first. |
 | `mini_focus_prev`    | (none)          | Select the previous mini widget entry, wrapping to the last. |

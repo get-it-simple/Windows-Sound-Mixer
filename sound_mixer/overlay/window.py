@@ -663,6 +663,8 @@ class OverlayWindow(QWidget):
         self.refresh_view()
 
     def refresh_view(self) -> None:
+        self._title_name_label.setText(self._model.mode_name)
+        self._title_icon_label.setToolTip(f"{t('sound_mixer_title')}\nv{__version__}\n{self._model.mode_name}")
         self._sync_entry_widgets()
 
     def _apply_layout_mode(self) -> None:
@@ -874,7 +876,7 @@ class OverlayWindow(QWidget):
             self._update_window_size()
 
     def _update_entry(self, widget, entry, focused):
-        state = (entry.key, entry.display_name, entry.volume, entry.muted, entry.icon_path, focused)
+        state = (entry.key, entry.display_name, entry.volume, entry.muted, entry.icon_path, focused, entry.volume_locked)
         if self._entry_states.get(widget) != state:
             widget.set_entry(entry, focused=focused)
             self._entry_states[widget] = state
@@ -973,8 +975,8 @@ class OverlayWindow(QWidget):
 
     def retranslate(self) -> None:
         self.setWindowTitle(t("sound_mixer_title"))
-        self._title_name_label.setText(t("sound_mixer_title"))
-        self._title_icon_label.setToolTip(f"{t('sound_mixer_title')}\nv{__version__}")
+        self._title_name_label.setText(self._model.mode_name)
+        self._title_icon_label.setToolTip(f"{t('sound_mixer_title')}\nv{__version__}\n{self._model.mode_name}")
         self._expand_button.setToolTip(t("show_ignored"))
         self._collapse_button.setToolTip(t("hide_ignored"))
         self._settings_button.setToolTip(t("settings_tooltip"))

@@ -187,6 +187,30 @@ def test_targeted_restore_writes_only_the_new_member():
     assert new.SimpleAudioVolume.muted
 
 
+def test_isolated_preset_covers_all_session_members_and_restores(settings):
+    from sound_mixer.mixer.model import MixerModel
+
+    first = StubSession(StubProcess(11, "voidrunner.exe", _GAME_PATH))
+    first.SimpleAudioVolume = StubVolume()
+    sessions = [first]
+    preset = settings.create_preset("Only music", .5)
+    preset["apps"] = {"music.exe": {"volume": .4, "muted": False}}
+    preset["isolated_app"] = "music.exe"
+    settings.set_presets([preset])
+    settings.set_app_volume(_GAME_KEY, .61)
+    with patch(_PATCH_SESSIONS, return_value=sessions), patch(_PATCH_TITLES, return_value={}), patch(_PATCH_EXE, return_value="Game"), patch(_PATCH_SPEAKERS, return_value=StubSpeakers(StubEndpointVolume())):
+        model = MixerModel(PycawAudioBackend(), settings)
+        model.activate_preset(preset["id"])
+        for pid in (11, 22):
+            added = StubSession(StubProcess(pid, "voidrunner.exe", _GAME_PATH))
+            added.SimpleAudioVolume = StubVolume()
+            sessions.append(added)
+            model.refresh(include_master=False)
+        assert all(session.SimpleAudioVolume.volume == 0 for session in sessions)
+        model.activate_preset(None)
+        assert all(session.SimpleAudioVolume.volume == .61 for session in sessions)
+
+
 def test_reused_pid_reads_new_executable_path():
     first = StubSession(StubProcess(11, "game.exe", "C:/First/game.exe"))
     second = StubSession(StubProcess(11, "game.exe", "D:/Other/game.exe"))

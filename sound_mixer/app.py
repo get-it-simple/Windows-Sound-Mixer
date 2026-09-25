@@ -18,6 +18,7 @@ from sound_mixer.paths import default_settings_path
 from sound_mixer.settings.store import SettingsStore
 from sound_mixer.settings_window.window import SettingsWindow
 from sound_mixer.tray.tray_icon import TrayIcon
+from sound_mixer.tray.isolation_notifications import IsolationNotifications
 
 SETTINGS_SAVE_DELAY_MS = 500
 
@@ -61,6 +62,8 @@ class SoundMixerApp:
         self.mini_widget.set_enabled(self.settings.get_mini_widget_enabled(), persist=False)
 
         self.hotkeys = HotkeyManager(self.settings)
+        self.hotkeys.preset_toggled.connect(self._on_preset_hotkey)
+        self.hotkeys.default_mode.connect(self._on_default_mode_hotkey)
         self.hotkeys.toggle_overlay.connect(self._on_toggle_overlay_hotkey)
         self.hotkeys.toggle_mini_widget.connect(self._on_toggle_mini_widget_hotkey)
         self.hotkeys.mini_focus_next.connect(self._on_mini_focus_next_hotkey)
@@ -88,6 +91,8 @@ class SoundMixerApp:
             muted=self.model.is_master_muted(),
         )
         self.tray.show()
+        self.isolation_notifications = IsolationNotifications(self.tray, self.settings, self.model)
+        self.model.isolation.on_blocked = self.isolation_notifications.show_blocked
         self.model.set_master_mute_listener(self.tray.set_muted)
 
         self.master_sync = MasterAudioSync(
@@ -163,6 +168,14 @@ class SoundMixerApp:
 
     def _on_toggle_overlay_hotkey(self) -> None:
         self.tray.toggle_overlay_action.trigger()
+
+    def _on_preset_hotkey(self, preset_id: str) -> None:
+        self.model.toggle_preset(preset_id)
+        self._refresh_views()
+
+    def _on_default_mode_hotkey(self) -> None:
+        self.model.activate_preset(None)
+        self._refresh_views()
 
     def _on_toggle_mini_widget_hotkey(self) -> None:
         self.mini_widget.set_enabled(not self.mini_widget.is_enabled())

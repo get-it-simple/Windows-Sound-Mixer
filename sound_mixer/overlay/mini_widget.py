@@ -193,7 +193,7 @@ class MiniEntryWidget(QFrame):
             self._apply_background(round(BASE_ENTRY_RADIUS_PX * self._scale))
 
     def set_entry(self, entry: MixerEntry) -> None:
-        state = (entry.key, entry.display_name, entry.volume, entry.muted, entry.icon_path, entry.is_master)
+        state = (entry.key, entry.display_name, entry.volume, entry.muted, entry.icon_path, entry.is_master, entry.volume_locked)
         if state == getattr(self, "_entry_state", None):
             self._entry = entry
             return
@@ -201,6 +201,7 @@ class MiniEntryWidget(QFrame):
         self._entry_state = state
         self._entry = entry
         self.key = entry.key
+        self.setEnabled(not entry.volume_locked)
         self._volume_label.setText(f"{round(entry.volume * 100)}%")
         self._slider.setValue(round(entry.volume * 100))
         show_muted = entry.muted or (entry.is_master and entry.volume == 0)
@@ -412,6 +413,8 @@ class MiniWidget(QWidget):
         self._save_position()
 
     def refresh_view(self) -> None:
+        self.setToolTip(self._model.mode_name)
+        self._pin_button.setToolTip(self._model.mode_name)
         entries = self._available_entries()
         keys = [entry.key for entry in entries]
         if self._selected_key not in keys:

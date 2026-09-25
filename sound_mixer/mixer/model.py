@@ -1,13 +1,20 @@
 from dataclasses import dataclass
+from math import isclose
 from typing import Callable, Optional
 from time import perf_counter
 
 from sound_mixer.audio.interface import AudioBackend
+from sound_mixer.mixer.isolation import IsolationPolicy
+from sound_mixer.i18n import t
 from sound_mixer.settings.store import SettingsStore
 from sound_mixer.volume import clamp_volume
 
 MASTER_KEY = "master"
 MASTER_DISPLAY_NAME = "System"
+
+
+def states_equal(first, second) -> bool:
+    return first is not None and first[1] == second[1] and isclose(first[0], second[0], abs_tol=1e-6)
 
 
 @dataclass
@@ -19,25 +26,81 @@ class MixerEntry:
     is_master: bool = False
     icon_path: str = ""
     pids: tuple[int, ...] = ()
+    volume_locked: bool = False
 
 
 class MixerModel:
     def __init__(self, backend: AudioBackend, settings: SettingsStore):
         self._backend = backend
         self._settings = settings
+        self.isolation = IsolationPolicy(settings)
         self._known_ids: set[str] = set()
         self._sessions_by_id = {}
         self._sessions_by_key = {}
         self._ready_at = {}
         self._last_change = {}
         self._observed_states = {}
+        self._master_changed_at = 0.0
         self.entries: list[MixerEntry] = []
         self.ignored_entries: list[MixerEntry] = []
         self.focused_index = 0
         self._on_master_mute_changed: Optional[Callable[[bool], None]] = None
         self._last_master_muted: Optional[bool] = None
         self._master_refresh_scheduler: Optional[Callable[[], None]] = None
+        self.refresh(include_master=False)
+        if self._settings.get_active_preset_id() is not None:
+            self._apply_master_profile()
+        else:
+            self.refresh_master()
+
+    @property
+    def active_preset_id(self) -> str | None:
+        return self._settings.get_active_preset_id()
+
+    @property
+    def mode_name(self) -> str:
+        preset = self._settings.get_preset(self.active_preset_id)
+        return preset["name"] if preset else t("default_mode")
+
+    def activate_preset(self, preset_id: str | None) -> None:
+        if preset_id is not None and self._settings.get_preset(preset_id) is None:
+            return
+        if preset_id == self.active_preset_id:
+            return
         self.refresh()
+        self._settings.set_active_preset_id(preset_id)
+        self.apply_profile()
+
+    def toggle_preset(self, preset_id: str) -> None:
+        self.activate_preset(None if preset_id == self.active_preset_id else preset_id)
+
+    def apply_profile(self) -> None:
+        self.isolation.sync()
+        for key in self._sessions_by_key:
+            volume, muted = self.isolation.effective_state(key)
+            self._set_session_volume(key, volume)
+            self._set_session_muted(key, muted)
+        self._apply_master_profile()
+        self.refresh(include_master=False)
+
+    def _apply_master_profile(self) -> None:
+        volume, muted = self._settings.get_profile_master_state()
+        self._master_changed_at = perf_counter()
+        self._backend.set_master_volume(volume)
+        self._backend.set_master_mute(muted)
+        self.apply_master_state(volume, muted)
+
+    def observe_master_state(self, volume: float, muted: bool, timestamp: float) -> bool:
+        if timestamp < self._master_changed_at:
+            return False
+        changed = self.apply_master_state(volume, muted)
+        if changed:
+            self._settings.set_profile_master_state(volume, muted)
+        return changed
+
+    def restore_master_profile(self) -> None:
+        if self.active_preset_id is not None:
+            self._apply_master_profile()
 
     def set_master_mute_listener(self, callback: Callable[[bool], None]) -> None:
         self._on_master_mute_changed = callback
@@ -56,7 +119,7 @@ class MixerModel:
     def apply_master_state(self, volume: float, muted: bool) -> bool:
         entry = self.entries[0]
         state = (clamp_volume(volume), bool(muted))
-        changed = (entry.volume, entry.muted) != state
+        changed = not states_equal((entry.volume, entry.muted), state)
         entry.volume, entry.muted = state
         self._notify_master_mute()
         return changed
@@ -65,7 +128,7 @@ class MixerModel:
         state = self._backend.get_master_state()
         if state is None:
             return False
-        self.apply_master_state(*state)
+        self.observe_master_state(*state, perf_counter())
         return True
 
     def refresh_master_after_app_event(self) -> None:
@@ -79,6 +142,11 @@ class MixerModel:
         self._master_refresh_scheduler = callback
 
     def refresh(self, *, include_master: bool = True) -> None:
+        if self.isolation.sync():
+            for key in self._sessions_by_key:
+                volume, muted = self.isolation.effective_state(key)
+                self._set_session_volume(key, volume)
+                self._set_session_muted(key, muted)
         self._backend.refresh()
 
         master_entry = next((entry for entry in self.entries if entry.is_master), None) or MixerEntry(
@@ -101,8 +169,9 @@ class MixerModel:
             current_ids.update(identities)
             new_ids = identities - self._known_ids
             if new_ids:
-                session.set_volume(self._settings.get_app_volume(exe), new_ids)
-                session.set_muted(self._settings.get_app_muted(exe), new_ids)
+                initial_volume, initial_muted = self.isolation.effective_state(exe)
+                session.set_volume(initial_volume, new_ids)
+                session.set_muted(initial_muted, new_ids)
                 self._ready_at.update({identity: perf_counter() for identity in new_ids})
             self._sessions_by_key[exe] = session
             self._sessions_by_id.update({identity: session for identity in identities})
@@ -113,11 +182,18 @@ class MixerModel:
                 continue
             state = (volume, muted)
             previous = self._observed_states.get(exe)
-            if previous is not None and identities & self._known_ids and previous != state:
+            if previous is not None and identities & self._known_ids and not states_equal(previous, state):
+                blocked = self.isolation.is_blocked(exe)
+                if blocked:
+                    volume, muted = self.isolation.effective_state(exe)
                 session.set_volume(volume)
                 session.set_muted(muted)
-                self._settings.set_app_volume(exe, volume)
-                self._settings.set_app_muted(exe, muted)
+                if blocked:
+                    self._last_change[exe] = perf_counter()
+                    self.isolation.notify_blocked(exe)
+                else:
+                    self._settings.set_profile_app_state(exe, volume, muted)
+                state = (volume, muted)
             observed_states[exe] = state
 
             entry = MixerEntry(
@@ -127,6 +203,7 @@ class MixerModel:
                 muted=muted,
                 icon_path=session.icon_path,
                 pids=session.pids,
+                volume_locked=self.isolation.is_blocked(exe),
             )
 
             if not self._settings.is_app_whitelisted(exe):
@@ -172,13 +249,25 @@ class MixerModel:
             return False
         key = session.key
         if event.timestamp < max(self._ready_at.get(event.session_id, 0), self._last_change.get(key, 0)):
+            if self.isolation.is_blocked(key):
+                volume, muted = self.isolation.effective_state(key)
+                self._set_session_volume(key, volume)
+                self._set_session_muted(key, muted)
             return False
         self._last_change[key] = event.timestamp
         volume, muted = clamp_volume(event.volume), bool(event.muted)
+        if self.isolation.is_blocked(key):
+            effective = self.isolation.effective_state(key)
+            attempted = (volume, muted) != effective
+            self._set_session_volume(key, effective[0])
+            self._set_session_muted(key, effective[1])
+            if attempted:
+                self.isolation.notify_blocked(key)
+            return False
         session.set_volume(volume)
         session.set_muted(muted)
-        self._settings.set_app_volume(key, volume)
-        self._settings.set_app_muted(key, muted)
+        if not states_equal(self._observed_states.get(key), (volume, muted)):
+            self._settings.set_profile_app_state(key, volume, muted)
         self._observed_states[key] = (volume, muted)
         changed = False
         for entry in self.entries + self.ignored_entries:
@@ -208,16 +297,19 @@ class MixerModel:
     def set_volume(self, level: float, index: Optional[int] = None) -> float:
         index = self.focused_index if index is None else index
         entry = self.entries[index]
+        if self.isolation.is_blocked(entry.key):
+            return entry.volume
         level = clamp_volume(level)
         entry.volume = level
 
         if entry.is_master:
+            self._master_changed_at = perf_counter()
             self._backend.set_master_volume(level)
-            self._settings.set_master_volume(level)
+            self._settings.set_profile_master_state(level, entry.muted)
             self._notify_master_mute()
         else:
             self._set_session_volume(entry.key, level)
-            self._settings.set_app_volume(entry.key, level)
+            self._settings.set_profile_app_state(entry.key, level, entry.muted)
             self.refresh_master_after_app_event()
 
         return level
@@ -230,15 +322,18 @@ class MixerModel:
     def toggle_mute(self, index: Optional[int] = None) -> bool:
         index = self.focused_index if index is None else index
         entry = self.entries[index]
+        if self.isolation.is_blocked(entry.key):
+            return entry.muted
         muted = not entry.muted
         entry.muted = muted
 
         if entry.is_master:
+            self._master_changed_at = perf_counter()
             self._backend.set_master_mute(muted)
-            self._settings.set_master_muted(muted)
+            self._settings.set_profile_master_state(entry.volume, muted)
         else:
             self._set_session_muted(entry.key, muted)
-            self._settings.set_app_muted(entry.key, muted)
+            self._settings.set_profile_app_state(entry.key, entry.volume, muted)
             self.refresh_master_after_app_event()
 
         self._notify_master_mute()
@@ -276,10 +371,12 @@ class MixerModel:
     def set_ignored_volume(self, key: str, level: float) -> float:
         for entry in self.ignored_entries:
             if entry.key == key:
+                if self.isolation.is_blocked(key):
+                    return entry.volume
                 level = clamp_volume(level)
                 entry.volume = level
                 self._set_session_volume(key, level)
-                self._settings.set_app_volume(key, level)
+                self._settings.set_profile_app_state(key, level, entry.muted)
                 self.refresh_master_after_app_event()
                 return level
         return level
@@ -293,10 +390,12 @@ class MixerModel:
     def toggle_ignored_mute(self, key: str) -> bool:
         for entry in self.ignored_entries:
             if entry.key == key:
+                if self.isolation.is_blocked(key):
+                    return entry.muted
                 muted = not entry.muted
                 entry.muted = muted
                 self._set_session_muted(key, muted)
-                self._settings.set_app_muted(key, muted)
+                self._settings.set_profile_app_state(key, entry.volume, muted)
                 self.refresh_master_after_app_event()
                 return muted
         return False

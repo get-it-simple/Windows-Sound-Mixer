@@ -21,8 +21,9 @@ from PySide6.QtWidgets import (
 )
 
 from sound_mixer import __version__
+from sound_mixer.app_key import legacy_app_key, normalize_app_key
 from sound_mixer.autostart.registry import AutostartManager, AutostartUnavailableError
-from sound_mixer.hotkeys.binding import normalize_combo, parse_combo
+from sound_mixer.hotkeys.binding import normalize_combo, parse_combo, validate_bindings
 from sound_mixer.hotkeys.manager import HotkeyManager
 from sound_mixer.i18n import AVAILABLE_LANGUAGES, language_display_name, t
 from sound_mixer.mixer.subprocess_manager import SubprocessManager
@@ -37,6 +38,7 @@ from sound_mixer.settings.schema import (
 )
 from sound_mixer.settings.store import SettingsStore
 from sound_mixer.settings_window.managed_apps_editor import AppListEditor, ManagedAppRow
+from sound_mixer.settings_window.presets_editor import PresetsEditor, merge_preset_edits
 
 MODIFIER_OPTIONS = [
     ("", "Select"),
@@ -315,6 +317,8 @@ class SettingsWindow(QDialog):
         self._overlay = overlay
         self._mini_widget = mini_widget
         self._subprocess_manager = subprocess_manager
+        self._model = getattr(overlay, '_model', None)
+        self._hotkey_fields = {}
         self._hotkey_rows: list[tuple[str, HotkeyComboEditor, QCheckBox]] = []
         self._managed_app_rows: list[ManagedAppRow] = []
         self.scale_limit = ScaleLimit(self)
@@ -327,9 +331,15 @@ class SettingsWindow(QDialog):
         layout = QVBoxLayout(self)
 
         tabs = QTabWidget(self)
+        self._tabs = tabs
         tabs.addTab(self._build_general_tab(), t("tab_general"))
         tabs.addTab(self._build_hotkeys_tab(), t("tab_hotkeys"))
         tabs.addTab(self._build_whitelist_tab(), t("tab_whitelist"))
+        self._presets_editor = PresetsEditor(settings, self._model, self._preset_app_allowed, self)
+        self._presets_editor.structure_changed.connect(self._sync_preset_hotkeys)
+        self._presets_editor.shortcut_requested.connect(self._open_preset_hotkey)
+        tabs.addTab(self._presets_editor, t("tab_presets"))
+        tabs.currentChanged.connect(lambda: self._presets_editor.refresh_whitelist())
         tabs.addTab(self._build_subprocess_management_tab(), t("tab_subprocess_management"))
         tabs.addTab(self._build_about_tab(), t("tab_about"))
         layout.addWidget(tabs)
@@ -530,34 +540,69 @@ class SettingsWindow(QDialog):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         tab = QWidget(scroll)
-        layout = QVBoxLayout(tab)
-
+        self._hotkeys_scroll = scroll
+        self._hotkeys_tab = tab
+        self._hotkeys_layout = QVBoxLayout(tab)
+        self._hotkeys_layout.addStretch(1)
         labels = _action_labels()
-        for hotkey in self._settings.get_hotkeys():
+        labels["default_mode"] = t("default_mode")
+        labels.update({"preset:" + p["id"]: p["name"] for p in self._settings.get_presets()})
+        for hotkey in self._settings.get_all_hotkeys():
             action = hotkey["action"]
-            label = labels.get(action, action)
-
-            row = QWidget(tab)
-            row_layout = QHBoxLayout(row)
-            row_layout.setContentsMargins(0, 0, 0, 0)
-            row_layout.setSpacing(8)
-
-            combo_edit = HotkeyComboEditor(hotkey["combo"], row)
-
-            enabled_checkbox = QCheckBox(row)
-            enabled_checkbox.setObjectName(f"{action}HotkeyToggle")
-            enabled_checkbox.setStyleSheet(toggle_switch_style(f"{action}HotkeyToggle"))
-            enabled_checkbox.setChecked(hotkey["enabled"])
-
-            row_layout.addWidget(enabled_checkbox)
-            row_layout.addWidget(combo_edit, 1)
-
-            layout.addWidget(self._field(label, row, tab))
-            self._hotkey_rows.append((action, combo_edit, enabled_checkbox))
-
-        layout.addStretch(1)
+            self._add_hotkey_row(action, labels.get(action, action), hotkey)
         scroll.setWidget(tab)
         return scroll
+
+    def _add_hotkey_row(self, action, label, hotkey):
+        row = QWidget(self._hotkeys_tab)
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(8)
+        combo_edit = HotkeyComboEditor(hotkey["combo"], row)
+        enabled = QCheckBox(row)
+        object_name = f"{action.replace(':', '_')}HotkeyToggle"
+        enabled.setObjectName(object_name)
+        enabled.setStyleSheet(toggle_switch_style(object_name))
+        enabled.setChecked(hotkey["enabled"])
+        row_layout.addWidget(enabled)
+        row_layout.addWidget(combo_edit, 1)
+        field = self._field(label, row, self._hotkeys_tab)
+        self._hotkeys_layout.insertWidget(self._hotkeys_layout.count() - 1, field)
+        self._hotkey_fields[action] = field
+        self._hotkey_rows.append((action, combo_edit, enabled))
+
+    def _sync_preset_hotkeys(self):
+        presets = {"preset:" + p["id"]: p for p in self._presets_editor.presets()}
+        for action in list(self._hotkey_fields):
+            if action.startswith("preset:") and action not in presets:
+                field = self._hotkey_fields.pop(action)
+                self._hotkeys_layout.removeWidget(field)
+                field.deleteLater()
+                self._hotkey_rows = [row for row in self._hotkey_rows if row[0] != action]
+        for action, preset in presets.items():
+            if action not in self._hotkey_fields:
+                self._add_hotkey_row(action, preset["name"], preset["hotkey"])
+            else:
+                self._hotkey_fields[action].layout().itemAt(0).widget().setText(preset["name"])
+
+    def _open_preset_hotkey(self, preset_id):
+        self._sync_preset_hotkeys()
+        self._tabs.setCurrentWidget(self._hotkeys_scroll)
+        action = "preset:" + preset_id
+        self._hotkeys_scroll.ensureWidgetVisible(self._hotkey_fields[action])
+        for key, editor, enabled in self._hotkey_rows:
+            if key == action:
+                editor.setFocus()
+
+    def _preset_app_allowed(self, key):
+        if not self._whitelist_checkbox.isChecked():
+            return True
+        key = normalize_app_key(key)
+        return any(
+            app["enabled"] and (normalize_app_key(app["path"]) == key or
+                                ("/" not in key and legacy_app_key(app["path"]) == key))
+            for app in self._whitelist_editor.apps()
+        )
 
     def _build_subprocess_management_tab(self) -> QWidget:
         tab = QWidget(self)
@@ -649,6 +694,10 @@ class SettingsWindow(QDialog):
                 combo = normalize_combo(combo_edit.combo())
                 parse_combo(combo)
                 hotkey_updates.append((action, combo, enabled_checkbox.isChecked()))
+            validate_bindings([
+                {"action": action, "combo": combo, "enabled": enabled}
+                for action, combo, enabled in hotkey_updates
+            ])
         except ValueError as exc:
             self._error_label.setText(str(exc))
             self._error_label.show()
@@ -657,6 +706,12 @@ class SettingsWindow(QDialog):
         self._error_label.hide()
 
         autostart_enabled = self._autostart_checkbox.isChecked()
+        if self._model is not None:
+            self._model.refresh()
+        self._presets_editor.refresh_whitelist()
+        presets = merge_preset_edits(
+            self._presets_editor.initial_presets, self._presets_editor.presets(), self._settings.get_presets(),
+        )
         self._settings.set_autostart_enabled(autostart_enabled)
         self._settings.set_visible_on_start(self._start_opened_checkbox.isChecked())
         self._settings.set_transparency_enabled(self._transparency_checkbox.isChecked())
@@ -673,9 +728,17 @@ class SettingsWindow(QDialog):
         self._settings.set_managed_apps(self._managed_apps_editor.apps())
         self._settings.set_whitelist_enabled(self._whitelist_checkbox.isChecked())
         self._settings.set_whitelist_apps(self._whitelist_editor.apps())
+        self._settings.set_presets(presets)
+        self._settings.set_active_preset_id(self._presets_editor.active_id)
 
         for action, combo, enabled in hotkey_updates:
             self._settings.set_hotkey(action, combo, enabled)
+
+        if self._model is not None:
+            self._model.apply_profile()
+            self._overlay.refresh_view()
+            if self._mini_widget is not None:
+                self._mini_widget.refresh_view()
 
         if self._autostart is not None:
             try:

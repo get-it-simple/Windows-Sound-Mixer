@@ -8,6 +8,8 @@ from pycaw.callbacks import AudioEndpointVolumeCallback, MMNotificationClient
 from pycaw.pycaw import AudioUtilities
 from PySide6.QtCore import QObject, Qt, Signal, Slot
 
+from sound_mixer.audio.events import VOLUME_EVENT_CONTEXT
+
 RETRY_INTERVAL_S = 5.0
 _logger = logging.getLogger(__name__)
 
@@ -19,7 +21,9 @@ class _VolumeCallback(AudioEndpointVolumeCallback):
         self._generation = generation
 
     def on_notify(self, new_volume, new_mute, event_context, channels, channel_volumes):
-        self._messages.put(("volume", self._generation, float(new_volume), bool(new_mute)))
+        if event_context and str(event_context.contents).upper() == VOLUME_EVENT_CONTEXT:
+            return
+        self._messages.put(("volume", self._generation, float(new_volume), bool(new_mute), time.perf_counter()))
 
 
 class _DeviceCallback(MMNotificationClient):
@@ -43,6 +47,7 @@ class _DeviceCallback(MMNotificationClient):
 
 class MasterAudioListener(QObject):
     state_changed = Signal(float, bool)
+    state_observed = Signal(float, bool, float)
     device_changed = Signal()
     availability_changed = Signal(bool)
     _message = Signal(object)
@@ -80,7 +85,8 @@ class MasterAudioListener(QObject):
         if self._stop_event.is_set() or generation != self._generation:
             return
         if kind == "state":
-            self.state_changed.emit(*values)
+            self.state_changed.emit(*values[:2])
+            self.state_observed.emit(*values)
         elif kind == "device":
             self.device_changed.emit()
         elif kind == "available":
@@ -117,7 +123,7 @@ class MasterAudioListener(QObject):
         muted = bool(self._endpoint.GetMute())
         self._unavailable_reported = False
         self._post("device")
-        self._post("state", volume, muted)
+        self._post("state", volume, muted, time.perf_counter())
         self._post("available", True)
 
     def _report_unavailable(self) -> None:
