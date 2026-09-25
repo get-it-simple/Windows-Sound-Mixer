@@ -231,8 +231,9 @@ class EntryWidget(QFrame):
         return hint
 
     def set_entry(self, entry: MixerEntry, focused: bool) -> None:
-        if entry.muted != self._last_muted:
-            self._mute_button.setIcon(load_icon("muted" if entry.muted else "volume"))
+        show_muted = entry.muted or (entry.is_master and entry.volume == 0)
+        if show_muted != self._last_muted:
+            self._mute_button.setIcon(load_icon("muted" if show_muted else "volume"))
 
         master_changed = entry.is_master != self._is_master
         self._is_master = entry.is_master
@@ -271,7 +272,7 @@ class EntryWidget(QFrame):
             self.style().unpolish(self)
             self.style().polish(self)
 
-        self._last_muted = entry.muted
+        self._last_muted = show_muted
         self._last_icon_path = entry.icon_path
         self._last_display_name = entry.display_name
 

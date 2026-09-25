@@ -203,8 +203,9 @@ class MiniEntryWidget(QFrame):
         self.key = entry.key
         self._volume_label.setText(f"{round(entry.volume * 100)}%")
         self._slider.setValue(round(entry.volume * 100))
-        self._icon_effect.setOpacity(MUTED_OPACITY if entry.muted else 1.0)
-        self._muted_icon_label.setVisible(entry.muted)
+        show_muted = entry.muted or (entry.is_master and entry.volume == 0)
+        self._icon_effect.setOpacity(MUTED_OPACITY if show_muted else 1.0)
+        self._muted_icon_label.setVisible(show_muted)
         self.setToolTip(entry.display_name)
         self._volume_label.setToolTip(entry.display_name)
         self._icon_label.setToolTip(entry.display_name)

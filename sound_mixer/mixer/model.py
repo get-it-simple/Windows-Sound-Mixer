@@ -44,7 +44,7 @@ class MixerModel:
         callback(self.is_master_muted())
 
     def is_master_muted(self) -> bool:
-        return bool(self.entries and self.entries[0].muted)
+        return bool(self.entries and (self.entries[0].muted or self.entries[0].volume == 0))
 
     def _notify_master_mute(self) -> None:
         muted = self.is_master_muted()
@@ -214,6 +214,7 @@ class MixerModel:
         if entry.is_master:
             self._backend.set_master_volume(level)
             self._settings.set_master_volume(level)
+            self._notify_master_mute()
         else:
             self._set_session_volume(entry.key, level)
             self._settings.set_app_volume(entry.key, level)

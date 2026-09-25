@@ -514,6 +514,22 @@ def test_optional_master_is_first_and_controls_system_volume(qapp, mini, setting
     assert "master" not in mini._entries
 
 
+@pytest.mark.parametrize("muted", [True, False])
+def test_zero_master_volume_shows_muted_icon(mini, settings, muted):
+    settings.set_mini_widget_show_master(True)
+    mini.sync_from_settings()
+    master = mini._entries["master"]
+
+    for volume in (0.5, 0.0, 0.01, 0.0):
+        mini._model.apply_master_state(volume, muted)
+        mini.sync_from_settings()
+        show_muted = muted or volume == 0
+        assert master._muted_icon_label.isVisible() is show_muted
+        assert master._icon_effect.opacity() == (MUTED_OPACITY if show_muted else 1.0)
+        assert master._volume_label.text() == f"{round(volume * 100)}%"
+        assert mini._model.entries[0].muted is muted
+
+
 def test_master_can_be_shown_without_app_sessions(qapp, settings):
     settings.set_mini_widget_show_master(True)
     mini = MiniWidget(MixerModel(FakeAudioBackend(), settings), settings)
