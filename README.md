@@ -104,6 +104,8 @@ non-Windows platforms.
   including additional sessions within an already running process.
 - Compact always-on-top overlay with optional Windows 11 acrylic transparency,
   accent-colored focus, and automatic recovery from off-screen positions.
+- Automatic Windows 11 Efficiency mode for the Sound Mixer process, combining
+  EcoQoS with low process priority to minimize CPU power and resource usage.
 - Horizontal and vertical layouts with independent saved size and position.
 - Mouse, scroll wheel, and layout-aware arrow-key controls.
 - Long application names scroll back and forth on row hover, using the same
