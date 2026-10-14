@@ -1,4 +1,8 @@
 {
+  "output_device_switching": "오디오 출력 전환 중…",
+  "output_device_select": "오디오 출력 선택",
+  "output_device_empty": "활성 오디오 출력 없음",
+  "output_device_error": "오디오 출력을 전환할 수 없습니다. 장치를 더 이상 사용할 수 없을 수 있습니다.",
   "tab_presets": "프리셋",
   "isolate_app": "이 앱 격리",
   "preset_volume": "볼륨",

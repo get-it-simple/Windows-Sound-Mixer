@@ -1,4 +1,8 @@
 {
+  "output_device_switching": "Ses çıkışı değiştiriliyor…",
+  "output_device_select": "Ses çıkışını seç",
+  "output_device_empty": "Etkin ses çıkışı yok",
+  "output_device_error": "Ses çıkışı değiştirilemedi. Cihaz artık kullanılamıyor olabilir.",
   "tab_presets": "Ön ayarlar",
   "isolate_app": "Bu uygulamayı yalıt",
   "preset_volume": "Ses düzeyi",

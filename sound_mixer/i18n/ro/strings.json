@@ -1,4 +1,8 @@
 {
+  "output_device_switching": "Se schimbă ieșirea audio…",
+  "output_device_select": "Selectează ieșirea audio",
+  "output_device_empty": "Nu există ieșiri audio active",
+  "output_device_error": "Nu s-a putut schimba ieșirea audio. Este posibil ca dispozitivul să nu mai fie disponibil.",
   "tab_presets": "Presetări",
   "isolate_app": "Izolează această aplicație",
   "preset_volume": "Volum",

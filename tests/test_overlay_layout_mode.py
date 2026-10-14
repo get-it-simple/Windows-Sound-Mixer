@@ -288,12 +288,12 @@ def test_vertical_resize_handle_starts_after_the_title_column(qapp, fake_backend
 def test_each_layout_mode_keeps_its_own_geometry(qapp, fake_backend, settings):
     overlay = make_overlay(qapp, fake_backend, settings)
 
-    overlay.resize(400, overlay.height())
+    overlay.resize(600, overlay.height())
     overlay.set_layout_mode("vertical")
     overlay.resize(overlay.width(), 500)
     overlay.set_layout_mode("horizontal")
 
-    assert overlay.width() == 400
+    assert overlay.width() == 600
 
     overlay.set_layout_mode("vertical")
 

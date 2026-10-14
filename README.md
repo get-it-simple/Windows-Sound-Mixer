@@ -107,6 +107,14 @@ non-Windows platforms.
 - Automatic Windows 11 Efficiency mode for the Sound Mixer process, combining
   EcoQoS with low process priority to minimize CPU power and resource usage.
 - Horizontal and vertical layouts with independent saved size and position.
+- Audio output selection in the main overlay, using active Windows playback
+  devices. The horizontal selector shows up to 16 characters and scrolls its
+  name on hover; narrow windows and the vertical layout use a device icon with
+  an arrow. The list updates at startup and on system device events without
+  periodic scanning. Selection changes the Windows console and multimedia
+  output; the communications default is preserved. A moving indicator replaces
+  the device name or icon while switching, and further selection is blocked
+  until Windows confirms the requested output or the operation fails.
 - Mouse, scroll wheel, and layout-aware arrow-key controls.
 - Long application names scroll back and forth on row hover, using the same
   animation as the controls guide.

@@ -1,4 +1,8 @@
 {
+  "output_device_switching": "Hangkimenet váltása…",
+  "output_device_select": "Hangkimenet kiválasztása",
+  "output_device_empty": "Nincs aktív hangkimenet",
+  "output_device_error": "Nem sikerült váltani a hangkimenetet. Lehet, hogy az eszköz már nem érhető el.",
   "tab_presets": "Profilok",
   "isolate_app": "Alkalmazás elkülönítése",
   "preset_volume": "Hangerő",

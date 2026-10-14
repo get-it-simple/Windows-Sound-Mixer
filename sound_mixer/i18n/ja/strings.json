@@ -1,4 +1,8 @@
 {
+  "output_device_switching": "音声出力を切り替え中…",
+  "output_device_select": "音声出力を選択",
+  "output_device_empty": "有効な音声出力がありません",
+  "output_device_error": "音声出力を切り替えられませんでした。デバイスが利用できなくなった可能性があります。",
   "tab_presets": "プリセット",
   "isolate_app": "このアプリを分離",
   "preset_volume": "音量",

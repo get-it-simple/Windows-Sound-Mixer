@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QLabel,
     QMenu,
+    QMessageBox,
     QScrollArea,
     QSizePolicy,
     QVBoxLayout,
@@ -26,6 +27,7 @@ from sound_mixer.overlay.entry_widget import (
     VALUE_TEXT_PADDING_PX,
     EntryWidget,
 )
+from sound_mixer.overlay.device_button import DeviceButton
 from sound_mixer.overlay.icons import (
     TOGGLE_SWITCH_HEIGHT_PX,
     TOGGLE_SWITCH_WIDTH_PX,
@@ -264,6 +266,7 @@ class OverlayWindow(QWidget):
     visibility_changed = Signal(bool)
     settings_requested = Signal()
     model_changed = Signal()
+    output_device_selected = Signal(str)
 
     def __init__(
         self,
@@ -476,6 +479,9 @@ class OverlayWindow(QWidget):
         self._preset_indicator.clicked.connect(self._show_preset_menu)
         self._sync_preset_indicator()
 
+        self._device_button = DeviceButton(title_bar)
+        self._device_button.menu.triggered.connect(self._on_output_selected)
+
         settings_button = DelayedTooltipButton(title_bar)
         settings_button.setIcon(load_icon("settings"))
         settings_button.setToolTip(t("settings_tooltip"))
@@ -503,10 +509,34 @@ class OverlayWindow(QWidget):
         layout.addStretch(1)
         layout.addWidget(self._preset_indicator)
         layout.addWidget(subprocess_management_toggle)
+        layout.addWidget(self._device_button)
         layout.addWidget(settings_button)
         layout.addWidget(guide_button)
         layout.addWidget(close_button)
         return title_bar
+
+    def set_output_devices(self, devices, current_id: str) -> None:
+        self._device_button.set_devices(devices, current_id)
+        self._update_device_button()
+
+    def _on_output_selected(self, action) -> None:
+        device_id = action.data()
+        if device_id and self._device_button.begin_selection(device_id):
+            self.output_device_selected.emit(device_id)
+        self._device_button.retranslate()
+
+    def show_output_selection_error(self) -> None:
+        self._device_button.finish_selection()
+        QMessageBox.warning(self, t("output_device_select"), t("output_device_error"))
+
+    def _update_device_button(self) -> None:
+        button = self._device_button
+        layout = self._title_bar.layout()
+        other_width = layout.sizeHint().width() - button.sizeHint().width()
+        available = self.width() - 2 * BACKGROUND_BORDER_PX - other_width
+        button.set_compact(self._vertical or available < button.expanded_width())
+        if not self._vertical:
+            self.setMinimumWidth(max(MIN_OVERLAY_WIDTH, layout.minimumSize().width() + 2 * BACKGROUND_BORDER_PX))
 
     def _restore_geometry(self) -> None:
         geometry = self._settings.get_overlay_geometry()
@@ -549,6 +579,7 @@ class OverlayWindow(QWidget):
         super().moveEvent(event)
 
     def resizeEvent(self, event) -> None:
+        self._update_device_button()
         if self._vertical:
             title_bar_width = self._title_bar.width()
             self._resize_handle.setGeometry(
@@ -575,7 +606,7 @@ class OverlayWindow(QWidget):
         return hint.width() if self._vertical else hint.height()
 
     def _widget_extent(self, widget: QWidget) -> int:
-        hint = widget.sizeHint()
+        hint = widget.sizeHint().expandedTo(widget.minimumSize()).boundedTo(widget.maximumSize())
         return hint.width() if self._vertical else hint.height()
 
     def _apply_minimum_height(self) -> None:
@@ -598,7 +629,12 @@ class OverlayWindow(QWidget):
             self.setMinimumHeight(target_height)
 
     def _update_window_size(self) -> None:
-        self._update_horizontal_scrollbar_policy()
+        for widget in reversed(self._background.findChildren(QWidget)):
+            if widget.layout() is not None:
+                widget.layout().invalidate()
+        self._background_layout.invalidate()
+        self._update_device_button()
+        self._update_scrollbar_policy()
         self._apply_minimum_height()
 
         all_ref_widgets = self._entry_widgets or self._ignored_widgets
@@ -608,10 +644,10 @@ class OverlayWindow(QWidget):
         entry_extent = max(self._entry_extent(w) for w in all_ref_widgets)
         spacing = self._container_layout.spacing()
         margins = self._container_layout.contentsMargins()
-
         active_count = len(self._entry_widgets)
         ignored_visible = len(self._ignored_widgets) if self._ignored_expanded else 0
         total_entries = min(active_count + ignored_visible, MAX_VISIBLE_ENTRIES)
+        overflow_extent = max(0, active_count + ignored_visible - total_entries) * (entry_extent + spacing)
 
         entries_extent = total_entries * entry_extent + max(0, total_entries - 1) * spacing
 
@@ -630,6 +666,7 @@ class OverlayWindow(QWidget):
 
         if self._vertical:
             container_width = margins.left() + margins.right() + entries_extent + extra_extent
+            self._scroll_area.widget().setMinimumSize(container_width + overflow_extent, 0)
             target_width = (
                 self._title_bar.sizeHint().width() + container_width + 2 * BACKGROUND_BORDER_PX
             )
@@ -638,6 +675,7 @@ class OverlayWindow(QWidget):
             return
 
         container_height = margins.top() + margins.bottom() + entries_extent + extra_extent
+        self._scroll_area.widget().setMinimumSize(0, container_height + overflow_extent)
         title_bar_height = self._title_bar.sizeHint().height()
         target_height = title_bar_height + container_height + 2 * BACKGROUND_BORDER_PX
         if self.height() != target_height or self.minimumHeight() != target_height:
@@ -725,10 +763,7 @@ class OverlayWindow(QWidget):
         self._expand_button.setIcon(load_icon("dropdown_arrow", rotation))
         self._collapse_button.setIcon(load_icon("arrow_up", rotation))
 
-        self._update_horizontal_scrollbar_policy()
-        self._scroll_area.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff if vertical else Qt.ScrollBarPolicy.ScrollBarAsNeeded
-        )
+        self._update_scrollbar_policy()
         self._resize_handle.set_vertical(vertical)
 
         if vertical:
@@ -754,6 +789,7 @@ class OverlayWindow(QWidget):
             self._title_icon_label,
             self._preset_indicator,
             self._subprocess_management_toggle,
+            self._device_button,
             self._settings_button,
             self._guide_button,
             self._close_button,
@@ -763,6 +799,7 @@ class OverlayWindow(QWidget):
 
         self._title_name_label.setVisible(not vertical)
         self._title_version_label.setVisible(not vertical)
+        self._update_device_button()
 
         self._title_bar.setSizePolicy(
             QSizePolicy.Policy.Maximum if vertical else QSizePolicy.Policy.Preferred,
@@ -797,17 +834,22 @@ class OverlayWindow(QWidget):
                 button.setMinimumWidth(0)
                 button.setMaximumWidth(MAX_WIDGET_SIZE)
 
-    def _update_horizontal_scrollbar_policy(self) -> None:
+    def _update_scrollbar_policy(self) -> None:
         visible_entries = len(self._entry_widgets)
         if self._ignored_expanded:
             visible_entries += len(self._ignored_widgets)
-        show_scrollbar = self._vertical and visible_entries > MAX_VISIBLE_ENTRIES
+        show_scrollbar = visible_entries > MAX_VISIBLE_ENTRIES
         policy = (
             Qt.ScrollBarPolicy.ScrollBarAlwaysOn
             if show_scrollbar
             else Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
-        self._scroll_area.setHorizontalScrollBarPolicy(policy)
+        self._scroll_area.setHorizontalScrollBarPolicy(
+            policy if self._vertical else Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self._scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff if self._vertical else policy
+        )
 
     def apply_scale(self) -> None:
         scale = self.scale_limit.constrain(self._settings.get_ui_scale())
@@ -821,6 +863,8 @@ class OverlayWindow(QWidget):
         self._settings_button.setIconSize(QSize(icon_px, icon_px))
         self._guide_button.setIconSize(QSize(icon_px, icon_px))
         self._close_button.setIconSize(QSize(icon_px, icon_px))
+        self._device_button.apply_scale(scale)
+        self._device_button.set_tooltip_delay_ms(self._settings.get_tooltip_delay_ms())
         self._expand_button.setIconSize(QSize(icon_px, icon_px))
         self._collapse_button.setIconSize(QSize(icon_px, icon_px))
         self._apply_ignored_button_thickness()
@@ -1020,6 +1064,7 @@ class OverlayWindow(QWidget):
             self._subprocess_manager.set_active(checked)
 
     def retranslate(self) -> None:
+        self._device_button.retranslate()
         self.setWindowTitle(t("sound_mixer_title"))
         self._title_name_label.setText(t("sound_mixer_title"))
         self._title_icon_label.setToolTip(f"{t('sound_mixer_title')}\nv{__version__}")
@@ -1030,6 +1075,7 @@ class OverlayWindow(QWidget):
         self._guide_button.setToolTip(t("controls_guide_tooltip"))
         self._close_button.setToolTip(t("close_tooltip"))
         self._subprocess_management_toggle.setToolTip(t("subprocess_management_toggle_tooltip"))
+        self._update_device_button()
         for widget in self._entry_widgets:
             widget.retranslate()
         for widget in self._ignored_widgets:

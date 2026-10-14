@@ -1,4 +1,8 @@
 {
+  "output_device_switching": "Switching audio output…",
+  "output_device_select": "Select audio output",
+  "output_device_empty": "No active audio outputs",
+  "output_device_error": "Could not switch the audio output. The device may no longer be available.",
   "tab_presets": "Presets",
   "isolate_app": "Isolate this application",
   "preset_volume": "Volume",
