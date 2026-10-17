@@ -35,6 +35,9 @@ python -m sound_mixer
 
 </details>
 
+<details>
+<summary>Features</summary>
+
 ## Everyday controls
 
 - Press **Ctrl+Alt+NumPad 5** to show or hide the overlay. You can change this
@@ -64,8 +67,7 @@ python -m sound_mixer
 - Optional background scanning for audio applications started through selected
   launchers or sandboxes. Enable it when these applications do not appear normally.
 
-<details>
-<summary>Mini widget and display scaling</summary>
+### Mini widget and display scaling
 
 Enable the mini widget in Settings. Scroll over an application to adjust its
 volume and click it to toggle mute. Drag its pin close to a screen edge and
@@ -86,6 +88,9 @@ scaling. At 200% Windows scaling, each widget allows up to 150%. Your preferred
 scale is saved and adjusted to the current screen when needed.
 
 </details>
+
+<details>
+<summary>Extra details</summary>
 
 ## Volume presets
 
@@ -164,7 +169,10 @@ also removes launch-at-login registration for the user running the uninstaller.
 - If you move `SoundMixer.exe` after enabling launch at login, re-enable that
   option in Settings to update its location.
 
-## Supported languages
+</details>
+
+<details>
+<summary>Supported languages</summary>
 
 The application includes 24 languages:
 
@@ -197,6 +205,8 @@ The application includes 24 languages:
 
 Choose a language in Settings, or use **System** to follow your Windows
 language. Missing translations appear in English.
+
+</details>
 
 <details>
 <summary>Contribute a translation</summary>
