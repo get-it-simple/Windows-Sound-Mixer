@@ -578,6 +578,39 @@ def test_horizontal_value_box_keeps_its_own_width(qapp):
     assert widget._volume_spinbox.font().pixelSize() == BASE_FONT_PX
 
 
+@pytest.mark.parametrize("scale", [0.5, 1.0, 1.5, 2.0, 3.0])
+@pytest.mark.parametrize("vertical", [False, True])
+def test_styled_volume_value_is_visible(qapp, scale, vertical):
+    from PySide6.QtWidgets import QFrame, QVBoxLayout
+
+    from sound_mixer.overlay.window import background_style
+
+    background = QFrame()
+    background.setObjectName("background")
+    background.setStyleSheet(background_style(scale, "#3a96dd", True, vertical))
+    widget = EntryWidget(background)
+    QVBoxLayout(background).addWidget(widget)
+    widget.set_layout_mode("vertical" if vertical else "horizontal")
+    widget.apply_scale(scale)
+    background.show()
+    qapp.processEvents()
+    try:
+        spinbox = widget._volume_spinbox
+        editor = spinbox.lineEdit()
+        for volume in (0.0, 0.3, 1.0):
+            widget.set_entry(make_entry(volume=volume), focused=False)
+            editor.deselect()
+            assert spinbox.text() == str(round(volume * 100))
+            rendered_value = spinbox.grab().toImage()
+            editor.clear()
+            rendered_blank = spinbox.grab().toImage()
+            assert rendered_value != rendered_blank, (
+                spinbox.size(), editor.geometry(), editor.fontMetrics().height()
+            )
+    finally:
+        background.close()
+
+
 def test_vertical_mode_centers_every_element(qapp):
     from PySide6.QtCore import Qt
 
