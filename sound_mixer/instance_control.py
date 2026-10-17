@@ -57,10 +57,14 @@ def send_command(command: str, timeout_ms: int = 3000, name: Optional[str] = Non
         time.sleep(min(0.05, remaining))
 
     socket.write((command + "\n").encode("utf-8"))
-    if socket.bytesToWrite() and not socket.waitForBytesWritten(timeout_ms):
-        socket.abort()
-        return CommandResult.FAILED
-    if not socket.bytesAvailable() and not socket.waitForReadyRead(timeout_ms):
+    if socket.bytesToWrite():
+        socket.waitForBytesWritten(timeout_ms)
+        if socket.bytesToWrite():
+            socket.abort()
+            return CommandResult.FAILED
+    if not socket.bytesAvailable():
+        socket.waitForReadyRead(timeout_ms)
+    if not socket.bytesAvailable():
         socket.abort()
         return CommandResult.FAILED
 
