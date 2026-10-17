@@ -1,4 +1,8 @@
 {
+  "output_device_switching": "Bytter lydutgang…",
+  "output_device_select": "Velg lydutgang",
+  "output_device_empty": "Ingen aktive lydutganger",
+  "output_device_error": "Kunne ikke bytte lydutgang. Enheten er kanskje ikke lenger tilgjengelig.",
   "tab_presets": "Forhåndsinnstillinger",
   "isolate_app": "Isoler dette programmet",
   "preset_volume": "Volum",

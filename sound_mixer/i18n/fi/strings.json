@@ -1,4 +1,8 @@
 {
+  "output_device_switching": "Vaihdetaan äänilähtöä…",
+  "output_device_select": "Valitse äänilähtö",
+  "output_device_empty": "Ei aktiivisia äänilähtöjä",
+  "output_device_error": "Äänilähtöä ei voitu vaihtaa. Laite ei ehkä ole enää käytettävissä.",
   "tab_presets": "Esiasetukset",
   "isolate_app": "Eristä tämä sovellus",
   "preset_volume": "Äänenvoimakkuus",

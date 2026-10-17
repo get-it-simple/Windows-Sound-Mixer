@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QApplication
 
 import sound_mixer.i18n as i18n
 from sound_mixer.audio import create_backend
+from sound_mixer.audio.master_listener import MasterAudioListener
 from sound_mixer.autostart.registry import AutostartManager, AutostartUnavailableError
 from sound_mixer.hotkeys.manager import HotkeyManager
 from sound_mixer.instance_control import InstanceController
@@ -95,8 +96,13 @@ class SoundMixerApp:
         self.model.isolation.on_blocked = self.isolation_notifications.show_blocked
         self.model.set_master_mute_listener(self.tray.set_muted)
 
+        master_listener = MasterAudioListener(self.qt_app, monitor_outputs=True)
+        master_listener.output_devices_changed.connect(self.overlay.set_output_devices)
+        master_listener.output_selection_failed.connect(self.overlay.show_output_selection_error)
+        self.overlay.output_device_selected.connect(master_listener.select_output)
         self.master_sync = MasterAudioSync(
-            self.model, self.backend, self._refresh_views, self.session_sync.device_changed, self.qt_app
+            self.model, self.backend, self._refresh_views, self.session_sync.device_changed, self.qt_app,
+            listener=master_listener,
         )
         self.overlay.visibility_changed.connect(self.master_sync.set_overlay_visible)
         self.master_sync.set_overlay_visible(self.overlay.isVisible())

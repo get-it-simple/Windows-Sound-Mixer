@@ -4,6 +4,7 @@ from PySide6.QtCore import QCoreApplication
 
 from sound_mixer import __version__
 from sound_mixer.instance_control import CommandResult, send_command
+from sound_mixer.power_efficiency import enable_efficiency_mode
 
 
 def main() -> int:
@@ -20,6 +21,7 @@ def main() -> int:
     from sound_mixer.logging_setup import configure_logging
 
     configure_logging()
+    enable_efficiency_mode()
 
     from sound_mixer.app import SoundMixerApp
 

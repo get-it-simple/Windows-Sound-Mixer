@@ -1,8 +1,12 @@
+import json
+import os
 import re
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +27,168 @@ def _function_body(source: str, name: str) -> str:
     )
     assert match is not None
     return match.group("body")
+
+
+@pytest.fixture(params=("powershell", "pwsh"))
+def installer_build(tmp_path, request):
+    shell = shutil.which(request.param)
+    if shell is None:
+        pytest.skip(f"{request.param} is not installed")
+
+    root = tmp_path / "project with spaces"
+    scripts = root / "scripts"
+    scripts.mkdir(parents=True)
+    shutil.copy2(BUILD_INSTALLERS_SOURCE, scripts)
+    version_file = root / "sound_mixer" / "__init__.py"
+    version_file.parent.mkdir()
+    version_file.write_text('__version__ = "2.3.4"\n', encoding="utf-8")
+    app = root / "dist" / "SoundMixer.exe"
+    app.parent.mkdir()
+    app.write_bytes(b"test application")
+    compiler = scripts / "record-nsis.ps1"
+    compiler.write_text(
+        'ConvertTo-Json -InputObject @($args) -Compress | Add-Content '
+        '-LiteralPath (Join-Path $PSScriptRoot "nsis-arguments.jsonl") -Encoding UTF8\n'
+        '$global:LASTEXITCODE = 0\n',
+        encoding="utf-8",
+    )
+    python = scripts / "record-build.ps1"
+    python.write_text(
+        '$root = Split-Path -Parent $PSScriptRoot\n'
+        'ConvertTo-Json -InputObject @($args) -Compress | Set-Content '
+        '-LiteralPath (Join-Path $root "build-arguments.json") -Encoding UTF8\n'
+        '$failurePath = Join-Path $root "build-failure.txt"\n'
+        'if (Test-Path -LiteralPath $failurePath) {\n'
+        '    $global:LASTEXITCODE = [int](Get-Content -LiteralPath $failurePath)\n'
+        '    return\n'
+        '}\n'
+        '[System.IO.File]::WriteAllBytes((Join-Path $root "dist\\SoundMixer.exe"), '
+        '[System.Text.Encoding]::UTF8.GetBytes("new test application"))\n'
+        '$global:LASTEXITCODE = 0\n',
+        encoding="utf-8",
+    )
+    environment = os.environ.copy()
+    for name in (
+        "WINDOWS_SIGNING_CERTIFICATE_BASE64",
+        "WINDOWS_SIGNING_CERTIFICATE_PASSWORD",
+        "WINDOWS_TIMESTAMP_URL",
+    ):
+        environment.pop(name, None)
+
+    def build(*parameters):
+        result = subprocess.run(
+            [
+                shell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                "-File", str(scripts / BUILD_INSTALLERS_SOURCE.name),
+                "-MakeNsis", str(compiler), "-Python", str(python), *parameters,
+            ],
+            cwd=tmp_path,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        log = scripts / "nsis-arguments.jsonl"
+        invocations = (
+            [json.loads(line) for line in log.read_text(encoding="utf-8-sig").splitlines()]
+            if log.exists() else []
+        )
+        return result, invocations
+
+    return root, build
+
+
+@pytest.mark.parametrize("override", (None, "9.8.7"))
+def test_installer_version_defaults_to_source_and_allows_override(installer_build, override):
+    root, build = installer_build
+    parameters = [] if override is None else ["-Version", override]
+
+    result, invocations = build(*parameters)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    version = override or "2.3.4"
+    assert len(invocations) == 2
+    for arguments, scope in zip(invocations, ("user", "machine")):
+        assert f"/DAPP_VERSION={version}" in arguments
+        assert f"/DINSTALL_SCOPE={scope}" in arguments
+        assert f"/DAPP_EXE={root / 'dist' / 'SoundMixer.exe'}" in arguments
+        target = root / "dist" / "installers" / f"SoundMixer-{version}-x64-{scope}-setup.exe"
+        assert f"/DOUTPUT_FILE={target}" in arguments
+    assert (root / "dist" / "installers").is_dir()
+    assert (root / "sound_mixer" / "__init__.py").read_text(encoding="utf-8") == '__version__ = "2.3.4"\n'
+    assert (root / "dist" / "SoundMixer.exe").read_bytes() == b"test application"
+    assert not (root / "build-arguments.json").exists()
+
+
+@pytest.mark.parametrize("override", (None, "9.8.7"))
+def test_installer_build_creates_application_before_packaging(installer_build, override):
+    root, build = installer_build
+    app = root / "dist" / "SoundMixer.exe"
+    app.unlink()
+    parameters = [] if override is None else ["-Version", override]
+
+    result, invocations = build("-Build", *parameters)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert app.read_bytes() == b"new test application"
+    arguments = json.loads((root / "build-arguments.json").read_text(encoding="utf-8-sig"))
+    assert arguments == [str(root / "build.py")]
+    assert len(invocations) == 2
+    assert all(f"/DAPP_VERSION={override or '2.3.4'}" in arguments for arguments in invocations)
+
+
+def test_failed_application_build_stops_packaging_even_with_existing_executable(installer_build):
+    root, build = installer_build
+    (root / "build-failure.txt").write_text("7", encoding="utf-8")
+
+    result, invocations = build("-Build")
+
+    assert result.returncode != 0
+    assert "Application build failed with exit code 7" in result.stdout + result.stderr
+    assert (root / "build-arguments.json").exists()
+    assert (root / "dist" / "SoundMixer.exe").read_bytes() == b"test application"
+    assert invocations == []
+    assert not (root / "dist" / "installers").exists()
+
+
+def test_installer_version_override_works_without_source_version(installer_build):
+    root, build = installer_build
+    (root / "sound_mixer" / "__init__.py").unlink()
+
+    result, invocations = build("-Version", "9.8.7")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert len(invocations) == 2
+    assert all("/DAPP_VERSION=9.8.7" in arguments for arguments in invocations)
+
+
+@pytest.mark.parametrize("missing", (False, True))
+def test_installer_build_rejects_unreadable_source_version(installer_build, missing):
+    root, build = installer_build
+    version_file = root / "sound_mixer" / "__init__.py"
+    if missing:
+        version_file.unlink()
+    else:
+        version_file.write_text('__version__ = "invalid"\n', encoding="utf-8")
+
+    result, invocations = build()
+
+    assert result.returncode != 0
+    assert "__init__.py" in result.stdout + result.stderr
+    assert invocations == []
+    assert not (root / "dist" / "installers").exists()
+
+
+@pytest.mark.parametrize("version", ("invalid", "1.2"))
+def test_installer_build_rejects_invalid_version_override(installer_build, version):
+    root, build = installer_build
+
+    result, invocations = build("-Version", version)
+
+    assert result.returncode != 0
+    assert "Version" in result.stdout + result.stderr
+    assert invocations == []
+    assert not (root / "dist" / "installers").exists()
 
 
 def test_finish_option_launches_without_waiting_for_the_application():

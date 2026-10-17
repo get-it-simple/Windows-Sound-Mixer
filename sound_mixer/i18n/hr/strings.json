@@ -1,4 +1,8 @@
 {
+  "output_device_switching": "Promjena audioizlaza…",
+  "output_device_select": "Odaberi audioizlaz",
+  "output_device_empty": "Nema aktivnih audioizlaza",
+  "output_device_error": "Nije moguće promijeniti audioizlaz. Uređaj možda više nije dostupan.",
   "tab_presets": "Profili",
   "isolate_app": "Izoliraj ovu aplikaciju",
   "preset_volume": "Glasnoća",

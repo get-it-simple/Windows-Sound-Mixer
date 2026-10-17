@@ -1,4 +1,8 @@
 {
+  "output_device_switching": "Skifter lydudgang…",
+  "output_device_select": "Vælg lydudgang",
+  "output_device_empty": "Ingen aktive lydudgange",
+  "output_device_error": "Kunne ikke skifte lydudgang. Enheden er muligvis ikke længere tilgængelig.",
   "tab_presets": "Forudindstillinger",
   "isolate_app": "Isoler dette program",
   "preset_volume": "Lydstyrke",

@@ -1,4 +1,8 @@
 {
+  "output_device_switching": "Audio-uitvoer wijzigen…",
+  "output_device_select": "Audio-uitvoer selecteren",
+  "output_device_empty": "Geen actieve audio-uitgangen",
+  "output_device_error": "Kan de audio-uitvoer niet wijzigen. Het apparaat is mogelijk niet meer beschikbaar.",
   "tab_presets": "Voorinstellingen",
   "isolate_app": "Deze toepassing isoleren",
   "preset_volume": "Volume",

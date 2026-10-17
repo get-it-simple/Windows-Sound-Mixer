@@ -1,4 +1,8 @@
 {
+  "output_device_switching": "正在切换音频输出…",
+  "output_device_select": "选择音频输出",
+  "output_device_empty": "没有活动的音频输出",
+  "output_device_error": "无法切换音频输出。设备可能已不可用。",
   "tab_presets": "预设",
   "isolate_app": "隔离此应用",
   "preset_volume": "音量",

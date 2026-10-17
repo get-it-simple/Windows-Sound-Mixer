@@ -1,4 +1,8 @@
 {
+  "output_device_switching": "Превключване на аудиоизхода…",
+  "output_device_select": "Избор на аудиоизход",
+  "output_device_empty": "Няма активни аудиоизходи",
+  "output_device_error": "Аудиоизходът не може да бъде сменен. Устройството може вече да не е налично.",
   "tab_presets": "Профили",
   "isolate_app": "Изолирай това приложение",
   "preset_volume": "Сила на звука",

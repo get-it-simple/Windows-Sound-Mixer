@@ -1,4 +1,8 @@
 {
+  "output_device_switching": "Přepínání zvukového výstupu…",
+  "output_device_select": "Vybrat zvukový výstup",
+  "output_device_empty": "Žádné aktivní zvukové výstupy",
+  "output_device_error": "Zvukový výstup se nepodařilo přepnout. Zařízení již nemusí být dostupné.",
   "tab_presets": "Předvolby",
   "isolate_app": "Izolovat tuto aplikaci",
   "preset_volume": "Hlasitost",

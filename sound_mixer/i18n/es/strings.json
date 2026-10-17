@@ -1,4 +1,8 @@
 {
+  "output_device_switching": "Cambiando salida de audio…",
+  "output_device_select": "Seleccionar salida de audio",
+  "output_device_empty": "No hay salidas de audio activas",
+  "output_device_error": "No se pudo cambiar la salida de audio. Es posible que el dispositivo ya no esté disponible.",
   "tab_presets": "Preajustes",
   "isolate_app": "Aislar esta aplicación",
   "preset_volume": "Volumen",

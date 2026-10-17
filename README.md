@@ -3,335 +3,176 @@
 [![WinGet version](https://img.shields.io/winget/v/GetItSimple.SoundMixer?label=WinGet)](https://github.com/microsoft/winget-pkgs/tree/master/manifests/g/GetItSimple/SoundMixer)
 
 A per-application volume mixer for Windows. Adjust the volume of any running
-program with an audio session (or the system master volume) from a small
-always-on-top overlay, the system tray, or global hotkeys.
+program with an audio session, or the system volume, from a small always-on-top
+overlay, the system tray, or global hotkeys.
 
 ![Sound Mixer overlay demo](assets/image.jpg)
 ![Sound Mixer overlay demo](assets/image-2.jpg)
 ![Sound Mixer overlay demo](assets/image-3.jpg)
 
-<details>
-<summary>Run, Build, Test details</summary>
+## Install
 
-## Install via WinGet
-
-Sound Mixer is available on WinGet as `GetItSimple.SoundMixer`:
+Install with WinGet:
 
 ```powershell
 winget install --id GetItSimple.SoundMixer --exact --source winget
 ```
 
-## Running from source
+You can also download an installer or standalone `SoundMixer.exe` from
+[GitHub Releases](https://github.com/get-it-simple/Windows-Sound-Mixer/releases).
+The user installer works without administrator permissions. The machine
+installer installs for all users and requests administrator approval.
 
-```
+<details>
+<summary>Running from source</summary>
+
+With Python installed, run these commands from the project directory:
+
+```powershell
 pip install -r requirements.txt
 python -m sound_mixer
 ```
-
-## Building a standalone executable
-
-```
-python build.py
-```
-
-`build.py` checks that all packages in `requirements.txt` are installed at
-the required versions. If anything is missing or outdated, it lists the
-packages and asks whether to install them with `pip` before continuing. It
-then runs PyInstaller and produces `dist/SoundMixer.exe`.
-
-## Building the NSIS installers
-
-NSIS 3.12 is required. Build the application first, then compile both x64
-installer scopes with warnings treated as errors:
-
-```powershell
-python build.py
-./scripts/build-installers.ps1 -Version 0.9.3 -MakeNsis "C:\Program Files (x86)\NSIS\makensis.exe"
-```
-
-The user installer writes to `%LOCALAPPDATA%\Programs\SoundMixer` without UAC.
-The machine installer writes to `%ProgramFiles%\SoundMixer` through an
-unelevated bootstrap and a controlled elevated file/registry phase. Both
-support normal interactive installation, `/S`, and `/SILENTWITHPROGRESS`. The
-user installer also supports the standard NSIS `/D=<absolute-path>` override;
-the machine installer rejects every directory other than `%ProgramFiles%\SoundMixer`.
-
-The WinGet manifest uses the machine installer, whose bootstrap requests
-elevation only for the protected file and registry phase. The user installer
-remains available as a release asset for direct installation without UAC.
-
-To prepare the five release assets, checksums, and the four WinGet 1.12
-manifests locally:
-
-```powershell
-./scripts/prepare-release.ps1 -Version 0.9.3
-winget validate --manifest dist/winget
-```
-
-GitHub Actions tests branch and pull-request builds, but publishes a GitHub
-Release only for a pre-existing `X.Y.Z` tag that exactly matches
-`sound_mixer.__version__`. Optional Authenticode signing requires all three
-repository secrets: `WINDOWS_SIGNING_CERTIFICATE_BASE64`,
-`WINDOWS_SIGNING_CERTIFICATE_PASSWORD`, and `WINDOWS_TIMESTAMP_URL`. With none
-configured, the same release is produced unsigned and verified by SHA-256.
-When signing is configured, `SoundMixer.exe` is signed before packaging, NSIS
-signs the embedded uninstaller, and the completed installers are signed last.
-
-## Running the tests
-
-```
-python -m pytest
-```
-
-Tests run in parallel via `pytest-xdist` (configured in `pytest.ini`). Tests
-that need real Windows APIs (audio devices, the registry) are skipped on
-non-Windows platforms.
 
 </details>
 
 <details>
 <summary>Features</summary>
 
-- Independent volume and mute controls for the system and every active audio
-  application, with app icons and readable display names.
-- Persistent per-application levels, mute states, hotkeys, overlay layout, and
-  other preferences in a human-editable JSON file.
-- Named volume presets with separate application and system volume/mute levels,
-  global toggle shortcuts, and optional single-application isolation.
-- Event-driven application volume and mute synchronization, including changes
-  made in the Windows mixer. External changes are saved and shared across the
-  application's sessions. Each newly created session receives its saved state,
-  including additional sessions within an already running process.
-- Compact always-on-top overlay with optional Windows 11 acrylic transparency,
-  accent-colored focus, and automatic recovery from off-screen positions.
-- Horizontal and vertical layouts with independent saved size and position.
-- Mouse, scroll wheel, and layout-aware arrow-key controls.
-- Long application names scroll back and forth on row hover, using the same
-  animation as the controls guide.
-- Configurable global hotkeys, including overlay and mini-widget toggles,
-  volume adjustment, focus navigation, and mute.
-- Optional transparent mini widget for quick volume and mute control. Drag its
-  pin within 24 pixels of a screen edge and release to dock. Left/right docking
-  stacks applications from top to bottom with display-only volume sliders;
-  scrolling adjusts volume and clicking toggles mute as before. Top/bottom
-  docking keeps the horizontal view. Drag away from the edge to undock.
-- The mini widget updates when a displayed application's process exits, using
-  Windows process notifications without background polling. Applications with
-  several audio processes remain listed while another audio process is running.
-- Settings grouped into Application, Volume, Main widget, and Mini widget
-  categories, with separate hotkey and application-list tabs.
-- Whitelist and ignored-app filters shared by the overlay and mini widget.
-- System tray controls, optional launch at Windows login, and a setting to show
-  the overlay immediately on startup.
-- Adjustable interface scale, volume steps, tooltip delay, and transparency.
-- Overlay and mini widget scaling is capped at 300% including the system display scale. At 200% system scaling, each widget allows up to 150%. Limits follow each window's display and update when its DPI changes. Saved scale preferences are preserved and automatically limited while displayed on a higher-DPI screen.
-- Optional background scanning for audio child processes created by selected
-  launchers, sandboxes, and other host applications.
+## Everyday controls
 
-Application audio subscriptions stay active with either widget shown or hidden.
-Session events are batched in 50 ms windows; changing volume does not require a
-full session scan. When subscriptions are healthy and optional launcher scanning
-is off, idle audio synchronization does not periodically scan sessions or processes.
-If subscriptions fail, session polling runs every 5 seconds with a visible widget
-or every 30 seconds with both hidden. Subscription retries back off from 5 to 30
-seconds, and polling stops after recovery. Changing the default output or restoring
-the audio service reconnects subscriptions and refreshes application sessions.
+- Press **Ctrl+Alt+NumPad 5** to show or hide the overlay. You can change this
+  shortcut in **Settings > Hotkeys**.
+- Adjust an application's slider or use the mouse wheel to change its volume.
+  Use its mute control to mute or unmute it.
+- Use the arrow keys to move between entries and adjust the selected volume;
+  their direction follows the horizontal or vertical layout.
+- Select an audio output in the overlay to change the Windows playback device.
+  Wait for switching to finish before choosing another device.
+- Open Settings from the overlay or system tray to change shortcuts, layout,
+  language, scaling, transparency, and startup behavior.
 
-Optional launcher scanning checks full executable paths. While no configured
-launcher is running, its interval doubles up to 30 seconds (or the configured
-interval when that is already longer). Detection can therefore take up to that
-interval. Finding a launcher restores the configured interval. Disabling scanning
-stops its timer and resets the backoff.
+## Features
 
-Hidden main-widget updates are deferred until it is shown. Volume-only changes
-reuse the mini widget's layout. Application name and icon caches each retain at
-most 256 recently used entries, with no cleanup timer. Window-title retries run
-only while a widget is visible.
+- Independent volume and mute controls for each application and the system.
+  Changes made in the Windows mixer are reflected in Sound Mixer.
+- Saved volume levels, shortcuts, window positions, and preferences.
+- Horizontal and vertical overlay layouts with separate sizes and positions.
+- A transparent mini widget with optional system volume and screen-edge docking.
+- Up to nine named volume presets, with optional shortcuts and application isolation.
+- Application lists for hiding apps, showing only selected apps, and arranging
+  their order in both widgets.
+- Adjustable interface scale, volume steps, tooltip delay, and transparency,
+  including acrylic blur on supported Windows versions.
+- Optional launch at Windows login and an option to show the overlay on startup.
+- Optional background scanning for audio applications started through selected
+  launchers or sandboxes. Enable it when these applications do not appear normally.
+
+### Mini widget and display scaling
+
+Enable the mini widget in Settings. Scroll over an application to adjust its
+volume and click it to toggle mute. Drag its pin close to a screen edge and
+release to dock it; drag away to undock. Left and right docking show a vertical
+application list, while top and bottom docking keep the horizontal view.
+
+The mini widget has its own selected entry, shown with a colored border.
+Configure its navigation, volume, visibility, and system-volume shortcuts in
+**Settings > Hotkeys**; they are unassigned by default. Navigation and volume
+shortcuts work while the mini widget is visible. Its selection is independent
+of the main overlay and resets when Sound Mixer restarts.
+
+The mini widget can optionally appear above the taskbar. Its position, docking,
+scale, transparency, and system-volume visibility are saved between runs.
+
+Overlay and mini widget scaling is capped at 300% including Windows display
+scaling. At 200% Windows scaling, each widget allows up to 150%. Your preferred
+scale is saved and adjusted to the current screen when needed.
 
 </details>
 
 <details>
 <summary>Extra details</summary>
 
-## Settings file (`settings.json`)
+## Volume presets
 
-Schema version 14 adds `presets`, `active_preset_id` (null for normal mode), and
-`isolation_restore` (saved application states temporarily overridden by isolation).
-Each preset has an immutable `id`, a `name`, an `apps` map keyed by normalized
-executable path with `volume`/`muted` values, `master_volume`, `master_muted`,
-an optional `isolated_app`, and a `hotkey` with `combo`/`enabled` fields.
-Normal levels remain in `app_volumes`, `master_volume`, and `master_muted`.
-The `default_mode` hotkey returns to normal mode. Existing settings migrate automatically.
+Open **Settings > Presets** and use the plus button to create a preset. Give it
+a name, drop local `.exe` files or application shortcuts into its card, and set
+application and system volume or mute levels. Select **OK** to save your edits;
+**Cancel** discards them.
 
-### Using presets
+Activate a preset from its card or the overlay's P1–P9 indicator. Hover over the
+indicator to see the preset name, or click it to choose another preset or
+**Normal mode**. You can also assign global shortcuts under **Hotkeys**:
+pressing a preset's shortcut again returns to normal mode. Shortcuts pause while
+Settings is open. The last active mode is restored on startup.
 
-Open Settings > Presets and use the plus button to create a preset. Rename it,
-drop local `.exe` files or application shortcuts into its card, and set application
-and system volume/mute levels. The arrow button opens that preset's shortcut row.
-Use the card's activation button or the Normal mode button to select a mode.
-These edits take effect only after OK; Cancel discards the preset draft.
+While a preset is active, volume changes update that preset. Applications not
+included in it use their normal levels. Returning to normal mode restores your
+normal application and system levels. Deleting an active preset also returns
+to normal mode. Closing Sound Mixer leaves the current Windows volume levels
+in place.
 
-Up to nine presets are supported. The overlay keeps the Sound Mixer title and
-shows P1–P9 beside the monitoring toggle (or Settings when the toggle is hidden),
-in both layouts. Numbers follow the preset list order; hover over the indicator
-to see its name. Click the indicator to choose another profile or normal mode
-from a popup menu; the active profile is checked and profile names appear on hover.
-Normal mode has no indicator. Settings files with more than
-nine presets load only the first nine unique profiles; if the active profile is
-outside that limit, normal mode is selected.
-Volume changes arriving while Settings is open are preserved for fields you did
-not edit, including applications automatically added in the background.
+Each preset can isolate one application. Other applications are held at 0%,
+including hidden apps and newly started audio sessions, while their saved levels
+are preserved. Their volume controls are disabled during isolation. Attempts
+to change their volume are reverted and may show a Windows notification.
+Removing the isolated application from the preset or excluding it from the
+allowed application list clears isolation; temporarily closing it does not.
 
-Assign each preset an optional global shortcut under Hotkeys. Press it once to
-activate the preset and again to return to normal mode. The separate Normal mode
-shortcut always restores normal levels. Shortcuts pause while Settings is open.
-Duplicate enabled shortcuts are rejected, and holding a preset shortcut does not
-toggle it repeatedly. The last active mode is restored when Sound Mixer starts.
+## Settings and saved data
 
-While a preset is active, changes from either widget, hotkeys, or the Windows
-mixer update that preset. An allowed application is automatically added on its
-first volume or mute change. Applications absent from the preset use their normal
-levels. Whitelist rules limit ordinary preset control; excluded entries remain
-saved. The overlay shows the mode name, also available in the mini widget tooltip.
+Settings are saved automatically in a human-editable `settings.json` file:
 
-Each application row has an isolation switch. Only one can be selected per preset;
-selecting another transfers isolation. All other applications are held at 0%,
-including hidden applications, applications outside the whitelist, and newly
-created audio sessions. Their saved levels are preserved and their controls are
-disabled. Removing the isolated application or excluding it from the whitelist
-clears isolation. A temporarily closed isolated application does not clear it.
+- **Installed or standalone executable:**
+  `%LOCALAPPDATA%\GetItSimple\SoundMixer\settings.json`.
+- **Portable mode:** launch `SoundMixer.exe --portable` to keep settings next to
+  the executable. If that folder is not writable, Sound Mixer uses the location
+  above instead.
+- **Running from source:** settings stay in the project directory.
 
-An external attempt to change an isolated-out application's volume or mute is
-reverted and triggers a Windows system notification explaining the active preset
-and isolated application. Notifications are limited to one every 10 seconds across
-all applications and presets, without a delayed queue. External changes made by
-an application itself are handled the same way. Windows notification preferences
-may hide messages; audio isolation still works. Sound Mixer's own audio writes,
-initial sessions, and unchanged or obsolete events do not trigger messages.
+Close Sound Mixer before editing the file by hand. Existing settings are
+migrated automatically when their format changes, including older settings
+stored beside the executable.
 
-Switching presets applies the destination preset's levels and normal levels for
-applications absent from it. Returning to normal mode restores normal application
-and system levels. Deleting the active preset returns to normal mode. Closing
-Sound Mixer leaves the current Windows audio levels in place.
+| Settings group | What it stores |
+| --- | --- |
+| `version` | Settings format version, updated automatically. |
+| `master_volume`, `master_muted`, `app_volumes` | Normal system and application volume/mute levels. |
+| `presets`, `active_preset_id`, `isolation_restore` | Presets, the selected mode, and levels preserved during isolation. |
+| `hotkeys`, `volume_step`, `default_app_volume` | Shortcuts, adjustment steps, and initial application volume. |
+| `overlay`, `ui_scale`, `transparency_enabled`, `tooltip_delay_ms` | Main overlay appearance, position, size, and behavior. |
+| `mini_widget` | Mini widget appearance, position, docking, and visibility. |
+| `whitelist`, `ignored_apps`, `subprocess_management` | Application lists and optional launcher scanning. |
+| `language`, `autostart_enabled` | Interface language and launch at Windows login. |
 
-### Settings location and fields
+Application lists accept local `.exe` files and Windows shortcuts pointing to
+them. Network locations, missing files, and broken shortcuts are not supported.
 
-Source runs keep `settings.json` next to the source tree. A packaged executable
-uses `%LOCALAPPDATA%\GetItSimple\SoundMixer\settings.json` unless it is started
-with `--portable`. Portable mode keeps settings next to the executable when
-that directory passes a real write check and otherwise falls back to
-LocalAppData. A legacy file beside an executable is migrated atomically only
-when the target file does not already exist. Migration and runtime warnings are
-written to the rotating
-`%LOCALAPPDATA%\GetItSimple\SoundMixer\logs\sound-mixer.log` file (1 MiB, two
-backups). The file is plain JSON and is safe to edit by hand while the app is
-not running. If the format changes in a future version, it is migrated
-automatically on load.
-
-The application lists accept dropped Windows shortcuts (`.lnk`) and resolve them to their target executables; duplicate shortcuts to the same application create only one entry. Broken shortcuts and shortcuts to non-executable targets display an error.
-
-Managed-app and whitelist entries must be absolute paths to existing local
-`.exe` files. UNC paths, Windows device paths, mapped network drives,
-directories, missing files, and other extensions are ignored before executable
-metadata is read.
-
-Uninstall always removes the current user's `SoundMixer` login Run value,
-independently of the setting-data purge option. A machine uninstaller can only
-remove that value for the user who launched it. Selecting the purge option also
-removes settings and rotating logs for that user.
-
-| Field                  | Type            | Description                                                                                                                                                     |
-| ---------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `version`              | integer         | Settings schema version, used for migrations.                                                                                                                   |
-| `master_volume`        | float (0.0-1.0) | System master volume level.                                                                                                                                     |
-| `master_muted`         | bool            | System master mute state.                                                                                                                                       |
-| `app_volumes`          | object          | Per-application volume/mute, keyed by the lowercase executable path with forward slashes (e.g. `"d:/games/mygame/game.exe"`), so two apps that share a file name keep separate settings. Each value is `{ "volume": float, "muted": bool }`. A bare executable name (e.g. `"chrome.exe"`) is still read as a legacy key and applies to any app with that file name. |
-| `hotkeys`              | array           | Global hotkey bindings. Each entry is `{ "action": string, "combo": string, "enabled": bool }`.                                                                 |
-| `presets`              | array           | Up to nine named profiles containing application and system volume/mute, an optional isolated application, and a shortcut. |
-| `active_preset_id`     | string or null  | Last active preset ID; null selects normal mode. |
-| `isolation_restore`    | object          | Normal application states preserved before temporary isolation, including apps without an explicit normal entry. |
-| `autostart_enabled`    | bool            | Whether the app starts automatically on Windows login.                                                                                                          |
-| `overlay`              | object          | Overlay window state: `"layout_mode"` (`"horizontal"` or `"vertical"`), `"visible_on_start"` (bool), and one `{ "x", "y", "width", "height" }` (pixels) block per layout mode under `"horizontal"` and `"vertical"`, so each mode keeps its own position and size. |
-| `tooltip_delay_ms`     | integer         | Delay, in milliseconds, before action button tooltips appear.                                                                                                   |
-| `volume_step`          | object          | `{ "arrow": float, "scroll": float }` - volume change per arrow-key press and per scroll wheel notch.                                                           |
-| `ui_scale`             | float (0.5-3.0) | Overlay interface scale factor (fonts, icons, sliders). 1.0 is 100%.                                                                                            |
-| `default_app_volume`   | float (0.0-1.0) | Initial volume applied to apps the first time they appear, if not already in `app_volumes`.                                                                     |
-| `transparency_enabled` | bool            | Whether the overlay background uses the translucent acrylic effect. If disabled, the overlay has a solid background.                                            |
-| `ignored_apps`         | array of string | Lowercase executable paths (e.g. `"d:/games/mygame/game.exe"`) hidden from the main entry list. Legacy bare executable names (e.g. `"discord.exe"`) still hide every app with that file name. Ignored entries can be revealed via the expand button. |
-| `language`             | string          | Windows language code discovered from `sound_mixer/i18n/<code>/strings.json`, or `"system"` to follow the Windows locale. Defaults to `"system"`. Changes take effect immediately when saved from Settings. Missing translations fall back to English. |
-| `subprocess_management` | object          | `{ "interval_seconds": int, "apps": [{ "path": string, "enabled": bool }] }` - shared polling interval and the list of host executables (e.g. sandbox/launcher apps) whose child processes need active background scanning because they don't trigger the normal session-created event. The scan itself is also gated by a session-only on/off switch in the overlay (not persisted - always starts off). |
-| `whitelist`             | object          | `{ "enabled": bool, "apps": [{ "path": string, "enabled": bool }] }` - optional display filter for both the main overlay and mini widget. Hold the left mouse button on a row's drag handle in Settings and drag vertically within the list to reorder it; enabled apps follow that order in both widgets, with unlisted apps afterward when filtering is off. Full normalized paths distinguish same-named apps; bare session names fall back to matching an enabled path's file name. |
-| `mini_widget`           | object          | `{ "enabled": bool, "x": int, "y": int, "dock_edge": string, "scale": float, "background_transparency": float, "show_master": bool, "show_above_taskbar": bool }` - mini widget visibility, position, independent 0.5-3.0 scale, app tile background transparency (0 = opaque, 1 = transparent; default 0.8), optional master volume in first position (default false), and display above the taskbar (default false). Enabling display above the taskbar allows placement across the full screen, including the taskbar area, and maintains window stacking without taking keyboard focus. Disabling it moves the widget back into the work area. `dock_edge` is `""` (free, the default), `"left"`, `"right"`, `"top"`, or `"bottom"`; docking survives restarts, scale changes, and session updates. Side docking uses a vertical app list with non-interactive volume indicators, wrapping into additional columns when needed. Settings schema 12 adds docking without changing existing positions or preferences. |
-
-### Hotkey actions
-
-Settings schema 13 adds unassigned mini widget navigation, volume, and system
-volume visibility shortcuts. Migration preserves existing shortcut assignments.
-
-| Action               | Default combo   | Effect                                                 |
-| -------------------- | --------------- | ------------------------------------------------------ |
-| `toggle_overlay`     | `ctrl+alt+num5` | Show/hide the overlay.                                 |
-| `default_mode`       | (none)          | Return to normal mode and restore its volume/mute levels. |
-| `preset:<id>`        | (none)          | Toggle the identified preset; generated from its `hotkey` field in `presets`. |
-| `toggle_mini_widget` | (none)          | Show/hide the mini volume widget and persist the state.|
-| `mini_focus_next`    | (none)          | Select the next mini widget entry, wrapping to the first. |
-| `mini_focus_prev`    | (none)          | Select the previous mini widget entry, wrapping to the last. |
-| `mini_volume_up`     | (none)          | Increase the selected mini widget entry's volume by the arrow step. |
-| `mini_volume_down`   | (none)          | Decrease the selected mini widget entry's volume by the arrow step. |
-| `toggle_mini_master` | (none)          | Show/hide system volume in the mini widget and persist the state. |
-| `volume_up`          | (none)          | Increase the focused entry's volume by the arrow step. |
-| `volume_down`        | (none)          | Decrease the focused entry's volume by the arrow step. |
-| `focus_next`         | (none)          | Move focus to the next entry.                          |
-| `focus_prev`         | (none)          | Move focus to the previous entry.                      |
-| `mute_toggle`        | (none)          | Toggle mute on the focused entry.                      |
-
-Hotkey combos are stored as `+`-separated key names, e.g. `ctrl+alt+num5`,
-`ctrl+shift+f9`, `win+s`. In Settings they are shown key
-names such as `Ctrl (Left)`, `Alt (Left)`, and `NumPad 5` as selectors inside
-the same shortcut input. Modifier keys: `ctrl`, `alt`, `shift`, `win`. Numpad
-digit keys are written as `num0`-`num9`.
-
-The mini widget keeps its own selected entry, marked with an accent-colored
-border. Clicking or scrolling an entry selects it without changing the main
-widget's selection. Navigation follows the displayed application order and
-includes system volume only when its display is enabled. Initially, or when the
-selected entry disappears, the first available entry is selected. Selection
-survives hiding and showing the mini widget but resets on application restart.
-Mini widget navigation and volume shortcuts only act while the widget is shown;
-both visibility toggles also work while it is hidden. All mini widget shortcuts
-are unassigned and disabled by default. Configure them in Settings > Hotkeys.
+Diagnostic logs are available at
+`%LOCALAPPDATA%\GetItSimple\SoundMixer\logs\sound-mixer.log`.
+During uninstall, you can choose to remove your settings and logs. Uninstalling
+also removes launch-at-login registration for the user running the uninstaller.
 
 ## Known limitations
 
-- True exclusive-fullscreen games (not borderless or "fullscreen windowed")
-  can render above the overlay; use borderless/windowed fullscreen mode for
-  the overlay to remain visible.
-- The acrylic blur effect requires Windows 11 22H2 or later; on older Windows
-  versions the overlay falls back to a plain semi-transparent background.
-- On startup, the overlay briefly flashes near its last position and then
-  hides again. This is required for the acrylic blur to render correctly once
-  the overlay is later shown via a hotkey or the tray. With "Start opened"
-  enabled the same flash still happens, and the overlay is reopened right
-  after it.
-- Global hotkeys are subject to Windows UIPI: an elevated foreground
-  application will not receive hotkeys from a non-elevated Sound Mixer, and
-  vice versa.
-- Newly started applications appear through audio-session notifications. When
-  notifications are unavailable, detection follows the fallback polling interval
-  described above. Optional launcher scanning uses its separate adaptive interval.
-- An application with multiple audio sessions is shown as a single entry;
-  volume and mute changes apply to all of its sessions.
-- "System Sounds" has no dedicated entry; use the master volume entry to
-  control it.
-- The overlay position is stored in raw pixel coordinates. If a monitor is
-  disconnected or resolution changes, the overlay may appear off-screen and
-  need to be dragged back manually.
-- If `SoundMixer.exe` is moved after enabling autostart, the registry entry
-still points at the old path; re-enable autostart from Settings to update
-it.
-  </details>
+- Exclusive-fullscreen games can cover the overlay. Use borderless or windowed
+  fullscreen mode to keep it visible.
+- Acrylic blur requires Windows 11 22H2 or later. Older Windows versions use a
+  plain semi-transparent background.
+- The overlay may briefly flash during startup while its background is prepared.
+- Global shortcuts may be affected when Sound Mixer and the active application
+  run with different administrator privileges.
+- Newly started applications can take longer to appear if Windows audio
+  notifications are unavailable or optional launcher scanning is needed.
+- Applications with multiple audio sessions appear as one entry; changes apply
+  to all of their sessions.
+- Use the system volume entry to control System Sounds.
+- If you move `SoundMixer.exe` after enabling launch at login, re-enable that
+  option in Settings to update its location.
 
-## Supported languages
+</details>
+
+<details>
+<summary>Supported languages</summary>
 
 The application includes 24 languages:
 
@@ -362,29 +203,20 @@ The application includes 24 languages:
 | Turkish | `tr` |
 | Ukrainian | `uk` |
 
-Languages are discovered automatically from `sound_mixer/i18n/<language-code>/strings.json`
-and included in each build. English (`en`) is the base language; missing translated keys
-use the English text. Display names come from Windows. System language detection prefers
-an exact locale match, then its parent language, then English.
+Choose a language in Settings, or use **System** to follow your Windows
+language. Missing translations appear in English.
+
+</details>
 
 <details>
-<summary>How to add a new translation</summary>
+<summary>Contribute a translation</summary>
 
-1. **Add one file.** Copy `sound_mixer/i18n/en/strings.json` to
-   `sound_mixer/i18n/<language-code>/strings.json`. Use a Windows locale code for the
-   directory name, such as `de` or `pt-BR`.
-2. **Translate the values.** Keep the JSON keys unchanged and save the file as UTF-8.
-   A partial translation is supported: omitted keys use English automatically.
-3. **Build.** Run `python build.py`. The new language appears in Settings automatically;
-   no language registry, loader branch, or language-specific tests are needed.
-   Version bumps follow the normal project release rules.
+Copy `sound_mixer/i18n/en/strings.json` into a new language directory, such as
+`sound_mixer/i18n/de/strings.json`. Translate the values, keep the keys unchanged,
+and save the file as UTF-8. Partial translations are welcome.
 
-The **Missing your language?** button below the language selector opens a short guide.
-To share a translation, submit its JSON file to this project on GitHub.
-
-When adding, changing, or removing UI strings, update the English catalog and every
-existing language catalog, including languages contributed later. Translation-content
-and UI tests use English; generic tests cover language discovery and fallback.
+Submit the JSON file to this project on GitHub. The **Missing your language?**
+button in Settings also opens a short guide.
 
 </details>
 

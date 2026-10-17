@@ -1,7 +1,6 @@
 from PySide6.QtCore import QEvent, QSize, Qt, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
-    QAbstractSpinBox,
     QBoxLayout,
     QFrame,
     QLabel,
@@ -141,7 +140,9 @@ class EntryWidget(QFrame):
 
         self._volume_spinbox = QSpinBox(self)
         self._volume_spinbox.setRange(0, 100)
-        self._volume_spinbox.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self._volume_spinbox.setStyleSheet(
+            "QSpinBox::up-button, QSpinBox::down-button { width: 0px; height: 0px; }"
+        )
         self._volume_spinbox.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self._volume_spinbox.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._volume_spinbox.valueChanged.connect(self._on_spinbox_changed)

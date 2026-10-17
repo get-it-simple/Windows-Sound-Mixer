@@ -1,4 +1,8 @@
 {
+  "output_device_switching": "Audioausgabe wird gewechselt…",
+  "output_device_select": "Audioausgabe auswählen",
+  "output_device_empty": "Keine aktiven Audioausgänge",
+  "output_device_error": "Die Audioausgabe konnte nicht gewechselt werden. Das Gerät ist möglicherweise nicht mehr verfügbar.",
   "tab_presets": "Voreinstellungen",
   "isolate_app": "Diese Anwendung isolieren",
   "preset_volume": "Lautstärke",

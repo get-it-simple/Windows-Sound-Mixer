@@ -46,7 +46,8 @@ def release_event(global_pos: QPointF) -> QMouseEvent:
 
 def test_resize_handle_drag_resizes_window(qapp, fake_backend, settings):
     overlay = make_overlay(qapp, fake_backend, settings)
-    overlay.resize(320, overlay.height())
+    overlay.resize(600, overlay.height())
+    initial_width = overlay.width()
 
     handle = overlay._resize_handle
     handle._drag_start_pos = 100
@@ -54,7 +55,7 @@ def test_resize_handle_drag_resizes_window(qapp, fake_backend, settings):
 
     handle.mouseMoveEvent(move_event(global_x=140))
 
-    assert overlay.width() == 360
+    assert overlay.width() == initial_width + 40
 
 
 def test_resize_handle_clamps_to_minimum_width(qapp, fake_backend, settings):
@@ -67,16 +68,17 @@ def test_resize_handle_clamps_to_minimum_width(qapp, fake_backend, settings):
 
     handle.mouseMoveEvent(move_event(global_x=100 - overlay.width()))
 
-    assert overlay.width() == MIN_OVERLAY_WIDTH
+    assert overlay.width() == overlay.minimumWidth()
+    assert overlay.width() >= MIN_OVERLAY_WIDTH
 
 
 def test_resize_persists_geometry(qapp, fake_backend, settings):
     overlay = make_overlay(qapp, fake_backend, settings)
 
-    overlay.resize(400, overlay.height())
+    overlay.resize(600, overlay.height())
     overlay._save_geometry()
 
-    assert settings.get_overlay_geometry()["width"] == 400
+    assert settings.get_overlay_geometry()["width"] == 600
 
 
 def test_overlay_restores_persisted_width(qapp, fake_backend, settings):

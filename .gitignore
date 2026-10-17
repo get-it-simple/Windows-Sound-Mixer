@@ -9,6 +9,5 @@ settings.json.bak
 *.egg-info/
 .venv/
 venv/
-PROJECT_INSTRUCTIONS.md
-WINGET_RELEASE_GUIDE.local.md
+/PROJECT_*.*
 .local-audit/

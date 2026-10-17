@@ -9,8 +9,11 @@ from pycaw.pycaw import AudioUtilities
 from PySide6.QtCore import QObject, Qt, Signal, Slot
 
 from sound_mixer.audio.events import VOLUME_EVENT_CONTEXT
+from sound_mixer.audio.output_devices import read_output_devices, select_output_device
 
 RETRY_INTERVAL_S = 5.0
+DEVICE_NAME_PROPERTY_SET = "{A45C254E-DF1C-4EFD-8020-67D146A850E0}"
+DEVICE_NAME_PROPERTY_IDS = {2, 14}
 _logger = logging.getLogger(__name__)
 
 
@@ -44,15 +47,21 @@ class _DeviceCallback(MMNotificationClient):
     def on_device_state_changed(self, device_id, new_state, new_state_id):
         self._messages.put(("device", device_id))
 
+    def on_property_value_changed(self, device_id, property_struct, fmtid, pid):
+        if str(fmtid).upper() == DEVICE_NAME_PROPERTY_SET and pid in DEVICE_NAME_PROPERTY_IDS:
+            self._messages.put(("outputs",))
+
 
 class MasterAudioListener(QObject):
     state_changed = Signal(float, bool)
     state_observed = Signal(float, bool, float)
     device_changed = Signal()
     availability_changed = Signal(bool)
+    output_devices_changed = Signal(object, str)
+    output_selection_failed = Signal()
     _message = Signal(object)
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None, monitor_outputs=False) -> None:
         super().__init__(parent)
         self._message.connect(self._deliver, Qt.ConnectionType.QueuedConnection)
         self._messages = queue.Queue()
@@ -63,6 +72,8 @@ class MasterAudioListener(QObject):
         self._endpoint_id = None
         self._volume_callback = None
         self._unavailable_reported = False
+        self._monitor_outputs = monitor_outputs
+        self._outputs = []
 
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
@@ -79,10 +90,21 @@ class MasterAudioListener(QObject):
             self._thread.join()
             self._thread = None
 
+    def select_output(self, device_id: str) -> None:
+        self._messages.put(("select_output", device_id))
+
     @Slot(object)
     def _deliver(self, message) -> None:
         kind, generation, *values = message
-        if self._stop_event.is_set() or generation != self._generation:
+        if self._stop_event.is_set():
+            return
+        if kind == "outputs":
+            self.output_devices_changed.emit(*values)
+            return
+        if kind == "selection_failed":
+            self.output_selection_failed.emit()
+            return
+        if generation != self._generation:
             return
         if kind == "state":
             self.state_changed.emit(*values[:2])
@@ -134,11 +156,31 @@ class MasterAudioListener(QObject):
             self._post("device")
             self._post("available", False)
 
+    def _refresh_outputs(self) -> None:
+        if not self._monitor_outputs:
+            return
+        try:
+            self._outputs, current_id = read_output_devices()
+        except Exception:
+            self._outputs, current_id = [], ""
+            _logger.debug("Cannot read audio outputs", exc_info=True)
+        self._post("outputs", self._outputs, current_id)
+
+    def _select_output(self, device_id: str) -> None:
+        try:
+            if not self._monitor_outputs or device_id not in {device.id for device in self._outputs}:
+                raise ValueError("Audio output is no longer available")
+            select_output_device(device_id)
+        except Exception:
+            _logger.debug("Cannot select audio output", exc_info=True)
+            self._post("selection_failed")
+
     def _listen(self) -> None:
         enumerator = AudioUtilities.GetDeviceEnumerator()
         callback = _DeviceCallback(self._messages)
         enumerator.RegisterEndpointNotificationCallback(callback)
         try:
+            self._refresh_outputs()
             retry_at = None
             needs_bind = True
             changed_device_id = None
@@ -163,6 +205,11 @@ class MasterAudioListener(QObject):
                 if message[0] == "device":
                     changed_device_id = message[1]
                     needs_bind = True
+                    self._refresh_outputs()
+                elif message[0] == "outputs":
+                    self._refresh_outputs()
+                elif message[0] == "select_output":
+                    self._select_output(message[1])
                 elif message[0] == "volume" and message[1] == self._generation:
                     self._post("state", *message[2:])
         finally:
