@@ -57,31 +57,61 @@ def test_second_controller_cannot_claim_active_server(qapp):
         first.close()
 
 
+@pytest.mark.parametrize("buffered_at", ["write", "write_wait", "read_wait"])
 @pytest.mark.parametrize(
     ("command", "expected", "shutdown_count"),
     [("shutdown", CommandResult.ACCEPTED, 1), ("unknown", CommandResult.FAILED, 0)],
 )
-def test_command_handles_response_buffered_before_read_wait(qapp, monkeypatch, command, expected, shutdown_count):
+def test_command_handles_buffered_response(qapp, monkeypatch, command, expected, shutdown_count, buffered_at):
     name = f"SoundMixer.Test.{uuid.uuid4()}"
     shutdowns = []
+    responses = []
+    buffered_stages = []
     controller = InstanceController(lambda: shutdowns.append(True), name=name)
     assert controller.start() is True
 
     class BufferedResponseSocket(QLocalSocket):
         def write(self, data):
+            if buffered_at == "read_wait":
+                qapp.processEvents()
             written = super().write(data)
+            if buffered_at == "write":
+                buffered_stages.append("write")
+                self.receive_response()
+            elif buffered_at == "read_wait":
+                self.flush()
+            return written
+
+        def waitForBytesWritten(self, timeout_ms):
+            if buffered_at == "write_wait":
+                buffered_stages.append("write_wait")
+                self.receive_response()
+            return super().waitForBytesWritten(timeout_ms)
+
+        def waitForReadyRead(self, timeout_ms):
+            buffered_stages.append("read_wait")
+            self.receive_response()
+            return super().waitForReadyRead(timeout_ms)
+
+        def readAll(self):
+            response = super().readAll()
+            responses.append(bytes(response))
+            return response
+
+        def receive_response(self):
             self.flush()
             deadline = time.monotonic() + 5
             while self.state() != QLocalSocket.LocalSocketState.UnconnectedState and time.monotonic() < deadline:
                 qapp.processEvents()
             assert self.state() == QLocalSocket.LocalSocketState.UnconnectedState
             assert self.canReadLine()
-            return written
 
     monkeypatch.setattr(instance_control, "QLocalSocket", BufferedResponseSocket)
     try:
         assert send_command(command, 1000, name) is expected
         assert shutdowns == [True] * shutdown_count
+        assert responses == [b"ok\n" if command == "shutdown" else b"error\n"]
+        assert buffered_stages == [buffered_at]
     finally:
         controller.close()
 
