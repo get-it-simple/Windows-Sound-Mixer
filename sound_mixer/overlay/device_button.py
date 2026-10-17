@@ -13,6 +13,7 @@ class DeviceButton(DelayedTooltipButton):
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self._compact = True
+        self._icon_only_size = None
         self._scale = 1.0
         self._devices = []
         self._current_id = ""
@@ -25,6 +26,7 @@ class DeviceButton(DelayedTooltipButton):
         self._busy_animation.setLoopCount(-1)
         self._label = MarqueeLabel(parent=self)
         self._label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._label.setStyleSheet("background: transparent;")
         palette = self._label.palette()
         palette.setColor(QPalette.ColorRole.WindowText, "#f2f2f5")
         self._label.setPalette(palette)
@@ -115,24 +117,29 @@ class DeviceButton(DelayedTooltipButton):
         preview = text if len(text) <= 16 else text[:15] + "…"
         return max(round(40 * self._scale), self._label.fontMetrics().horizontalAdvance(preview) + round(26 * self._scale))
 
-    def set_compact(self, compact: bool) -> None:
-        if self._compact != compact:
+    def set_compact(self, compact: bool, *, icon_only_size: QSize | None = None) -> None:
+        if self._compact != compact or self._icon_only_size != icon_only_size:
             self._compact = compact
+            self._icon_only_size = icon_only_size
             self._label.setVisible(not compact and self._pending_id is None)
             self._update_size()
 
     def _update_size(self) -> None:
-        self.setMinimumWidth(round(40 * self._scale))
+        self.setMinimumWidth(self.minimumSizeHint().width())
         self.setMaximumWidth(self.sizeHint().width())
         self._position_label()
         self.updateGeometry()
         self.update()
 
     def sizeHint(self) -> QSize:
+        if self._icon_only_size is not None:
+            return QSize(self._icon_only_size)
         width = round(40 * self._scale) if self._compact else self.expanded_width()
         return QSize(width, max(round(28 * self._scale), self.fontMetrics().height() + round(12 * self._scale)))
 
     def minimumSizeHint(self) -> QSize:
+        if self._icon_only_size is not None:
+            return QSize(self._icon_only_size)
         return QSize(round(40 * self._scale), self.sizeHint().height())
 
     def _position_label(self) -> None:
@@ -161,6 +168,9 @@ class DeviceButton(DelayedTooltipButton):
             painter.drawRoundedRect(QRectF(x, track.top(), segment, height), height / 2, height / 2)
             return
         icon = self.iconSize().width()
+        if self._icon_only_size is not None:
+            load_icon("device").paint(painter, (self.width() - icon) // 2, (self.height() - icon) // 2, icon, icon)
+            return
         if self._compact:
             load_icon("device").paint(painter, round(6 * self._scale), (self.height() - icon) // 2, icon, icon)
         arrow = round(8 * self._scale)

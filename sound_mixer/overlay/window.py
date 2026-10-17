@@ -534,7 +534,11 @@ class OverlayWindow(QWidget):
         layout = self._title_bar.layout()
         other_width = layout.sizeHint().width() - button.sizeHint().width()
         available = self.width() - 2 * BACKGROUND_BORDER_PX - other_width
-        button.set_compact(self._vertical or available < button.expanded_width())
+        self._settings_button.ensurePolished()
+        button.set_compact(
+            self._vertical or available < button.expanded_width(),
+            icon_only_size=self._settings_button.sizeHint() if self._vertical else None,
+        )
         if not self._vertical:
             self.setMinimumWidth(max(MIN_OVERLAY_WIDTH, layout.minimumSize().width() + 2 * BACKGROUND_BORDER_PX))
 

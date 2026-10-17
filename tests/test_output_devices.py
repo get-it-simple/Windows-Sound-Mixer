@@ -301,6 +301,26 @@ def test_device_button_adapts_to_layout_and_available_width(qapp, overlay, scale
     assert button._label.isVisible()
 
 
+@pytest.mark.parametrize("scale", [0.75, 1.0, 1.25, 1.5, 2.0, 3.0])
+def test_vertical_device_button_matches_title_actions(qapp, overlay, scale):
+    overlay.set_layout_mode("vertical")
+    overlay._settings.set_ui_scale(scale)
+    overlay.apply_scale()
+    qapp.processEvents()
+    button = overlay._device_button
+    for peer in (overlay._settings_button, overlay._guide_button, overlay._close_button):
+        assert button.size() == peer.size()
+        assert button.geometry().center().x() == peer.geometry().center().x()
+    assert button.geometry().bottom() < overlay._settings_button.geometry().top()
+    original_size = button.size()
+    button.menu.actions()[1].trigger()
+    qapp.processEvents()
+    assert button.size() == original_size
+    overlay.set_output_devices(button._devices, "headphones")
+    qapp.processEvents()
+    assert button.size() == original_size
+
+
 def test_device_name_scrolls_on_hover_and_resets_on_leave(qapp, overlay):
     overlay.resize(1000, overlay.height())
     qapp.processEvents()
@@ -310,6 +330,34 @@ def test_device_name_scrolls_on_hover_and_resets_on_leave(qapp, overlay):
     button.leaveEvent(QEvent(QEvent.Type.Leave))
     assert button._label._group.state() == QAbstractAnimation.State.Stopped
     assert button._label.xOffset == 0
+
+
+@pytest.mark.parametrize("scale", [0.75, 1.0, 1.5, 2.0])
+@pytest.mark.parametrize("state", ["normal", "hover", "pressed", "menu"])
+def test_device_name_has_transparent_background(qapp, overlay, scale, state):
+    overlay._settings.set_ui_scale(scale)
+    overlay.apply_scale()
+    overlay.resize(1500, overlay.height())
+    qapp.processEvents()
+    button = overlay._device_button
+    assert button._label.isVisible()
+    if state != "normal":
+        button.enterEvent(QEnterEvent(QPointF(1, 1), QPointF(1, 1), QPointF(1, 1)))
+    if state == "pressed":
+        button.setDown(True)
+    if state == "menu":
+        button.click()
+        assert button.menu.isVisible()
+    qapp.processEvents()
+    try:
+        image = button._label.grab().toImage()
+        assert all(image.pixelColor(x, y).alpha() == 0
+                   for x in range(image.width()) for y in (0, image.height() - 1))
+        assert any(image.pixelColor(x, y).alpha() > 0
+                   for x in range(image.width()) for y in range(1, image.height() - 1))
+    finally:
+        button.menu.hide()
+        button.setDown(False)
 
 
 def test_device_menu_uses_ids_and_waits_for_confirmed_system_selection(overlay):

@@ -1,13 +1,27 @@
 param(
-    [Parameter(Mandatory = $true)]
+    [ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+$')]
     [string]$Version,
     [string]$AppExe = "dist\SoundMixer.exe",
     [string]$OutputDirectory = "dist\installers",
-    [string]$MakeNsis = "makensis"
+    [string]$MakeNsis = "makensis",
+    [switch]$Build,
+    [string]$Python = "python"
 )
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
+if (-not $PSBoundParameters.ContainsKey("Version")) {
+    $versionPath = Join-Path $root "sound_mixer\__init__.py"
+    $versionMatch = [regex]::Match(
+        (Get-Content -LiteralPath $versionPath -Raw),
+        '(?m)^__version__\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"'
+    )
+    if (-not $versionMatch.Success) {
+        throw "Could not read application version from $versionPath. Use -Version X.Y.Z to override it."
+    }
+    $Version = $versionMatch.Groups[1].Value
+}
+
 $appPath = [System.IO.Path]::GetFullPath((Join-Path $root $AppExe))
 $outputPath = [System.IO.Path]::GetFullPath((Join-Path $root $OutputDirectory))
 $scriptPath = Join-Path $root "installer\SoundMixer.nsi"
@@ -22,10 +36,18 @@ if ($signingValues.Count -ne 0 -and $signingValues.Count -ne 3) {
     throw "Signing requires WINDOWS_SIGNING_CERTIFICATE_BASE64, WINDOWS_SIGNING_CERTIFICATE_PASSWORD, and WINDOWS_TIMESTAMP_URL together."
 }
 
+if ($Build) {
+    & $Python (Join-Path $root "build.py")
+    if ($LASTEXITCODE -ne 0) {
+        throw "Application build failed with exit code $LASTEXITCODE"
+    }
+}
+
 if (-not (Test-Path -LiteralPath $appPath -PathType Leaf)) {
     throw "Application executable not found: $appPath"
 }
 
+Write-Host "Building installers for version $Version"
 New-Item -ItemType Directory -Path $outputPath -Force | Out-Null
 
 foreach ($scope in @("user", "machine")) {

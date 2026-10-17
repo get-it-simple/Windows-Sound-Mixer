@@ -41,13 +41,28 @@ then runs PyInstaller and produces `dist/SoundMixer.exe`.
 
 ## Building the NSIS installers
 
-NSIS 3.12 is required. Build the application first, then compile both x64
-installer scopes with warnings treated as errors:
+NSIS 3.12 is required. Add `-Build` to build a fresh application executable
+before compiling both x64 installer scopes with warnings treated as errors:
 
 ```powershell
-python build.py
-./scripts/build-installers.ps1 -Version 0.9.3 -MakeNsis "C:\Program Files (x86)\NSIS\makensis.exe"
+./scripts/build-installers.ps1 -Build -MakeNsis "C:\Program Files (x86)\NSIS\makensis.exe"
 ```
+
+Without `-Build`, the script packages the existing `dist/SoundMixer.exe`.
+A failed application build stops packaging. Python is resolved as `python`
+from `PATH` by default; use `-Python .\.venv\Scripts\python.exe` to select
+a specific interpreter.
+
+The script reads the application version from `sound_mixer/__init__.py`
+automatically. To override the version used for installer filenames and
+metadata, pass the optional `-Version` parameter in `X.Y.Z` format:
+
+```powershell
+./scripts/build-installers.ps1 -Build -Version 0.15.42 -MakeNsis "C:\Program Files (x86)\NSIS\makensis.exe"
+```
+
+The executable keeps the version embedded by `build.py`. Rebuild it after
+changing the application version to keep it aligned with the installers.
 
 The user installer writes to `%LOCALAPPDATA%\Programs\SoundMixer` without UAC.
 The machine installer writes to `%ProgramFiles%\SoundMixer` through an
