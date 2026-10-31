@@ -8,7 +8,7 @@
       <env name="PYTHONUNBUFFERED" value="1" />
     </envs>
     <option name="SDK_HOME" value="$PROJECT_DIR$/.venv/Scripts/python.exe" />
-    <option name="SDK_NAME" value="D:\repos\sound-mixer\.venv" />
+    <option name="SDK_NAME" value="sound-mixer (.venv)" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
     <option name="IS_MODULE_SDK" value="false" />
     <option name="ADD_CONTENT_ROOTS" value="true" />

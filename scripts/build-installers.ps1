@@ -3,7 +3,7 @@ param(
     [string]$Version,
     [string]$AppExe = "dist\SoundMixer.exe",
     [string]$OutputDirectory = "dist\installers",
-    [string]$MakeNsis = "makensis",
+    [string]$MakeNsis,
     [switch]$Build,
     [string]$Python = "python"
 )
@@ -21,6 +21,26 @@ if (-not $PSBoundParameters.ContainsKey("Version")) {
     }
     $Version = $versionMatch.Groups[1].Value
 }
+
+if ($PSBoundParameters.ContainsKey("MakeNsis")) {
+    $compiler = Get-Command -Name $MakeNsis -CommandType Application, ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1
+} else {
+    $compiler = Get-Command -Name "makensis" -CommandType Application, ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($null -eq $compiler) {
+        foreach ($programDirectory in @(${env:ProgramFiles(x86)}, $env:ProgramFiles)) {
+            if ([string]::IsNullOrWhiteSpace($programDirectory)) { continue }
+            $candidate = Join-Path $programDirectory "NSIS\makensis.exe"
+            if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+                $compiler = Get-Command -Name $candidate -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($null -ne $compiler) { break }
+            }
+        }
+    }
+}
+if ($null -eq $compiler) {
+    throw "NSIS compiler not found. Install NSIS, add makensis to PATH, or pass -MakeNsis with its executable path."
+}
+$MakeNsis = $compiler.Source
 
 $appPath = [System.IO.Path]::GetFullPath((Join-Path $root $AppExe))
 $outputPath = [System.IO.Path]::GetFullPath((Join-Path $root $OutputDirectory))

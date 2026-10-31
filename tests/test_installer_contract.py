@@ -75,15 +75,29 @@ def installer_build(tmp_path, request):
     ):
         environment.pop(name, None)
 
-    def build(*parameters):
+    runner = scripts / "run-build.ps1"
+    runner.write_text(
+        '$ErrorActionPreference = "Stop"\n'
+        'if ($env:NSIS_TEST_PROGRAM_FILES) { $env:ProgramFiles = $env:NSIS_TEST_PROGRAM_FILES }\n'
+        '& (Join-Path $PSScriptRoot "build-installers.ps1") @args\n'
+        'exit $LASTEXITCODE\n',
+        encoding="utf-8",
+    )
+
+    def build(*parameters, discover=False, env=None):
+        compiler_arguments = [] if discover else ["-MakeNsis", str(compiler)]
+        overrides = env or {}
+        overridden_names = {name.casefold() for name in overrides}
+        process_environment = {name: value for name, value in environment.items() if name.casefold() not in overridden_names}
+        process_environment.update(overrides)
         result = subprocess.run(
             [
                 shell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-                "-File", str(scripts / BUILD_INSTALLERS_SOURCE.name),
-                "-MakeNsis", str(compiler), "-Python", str(python), *parameters,
+                "-File", str(runner),
+                *compiler_arguments, "-Python", str(python), *parameters,
             ],
             cwd=tmp_path,
-            env=environment,
+            env=process_environment,
             capture_output=True,
             text=True,
             timeout=30,
@@ -96,6 +110,79 @@ def installer_build(tmp_path, request):
         return result, invocations
 
     return root, build
+
+
+@pytest.fixture(scope="session")
+def nsis_recorder(tmp_path_factory):
+    directory = tmp_path_factory.mktemp("nsis-recorder")
+    source = directory / "Recorder.cs"
+    source.write_text(
+        'using System;\n'
+        'using System.IO;\n'
+        'using System.Web.Script.Serialization;\n'
+        'class Recorder {\n'
+        '    static void Main(string[] args) {\n'
+        '        File.AppendAllText(Environment.GetEnvironmentVariable("NSIS_TEST_LOG"),\n'
+        '            new JavaScriptSerializer().Serialize(args) + Environment.NewLine);\n'
+        '    }\n'
+        '}\n',
+        encoding="utf-8",
+    )
+    compiler = Path(os.environ["WINDIR"]) / "Microsoft.NET" / "Framework64" / "v4.0.30319" / "csc.exe"
+    executable = directory / "makensis.exe"
+    result = subprocess.run(
+        [str(compiler), "/nologo", "/reference:System.Web.Extensions.dll", f"/out:{executable}", str(source)],
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    return executable
+
+
+@pytest.mark.parametrize("location", ("explicit", "path", "x86", "native", "missing", "explicit_missing"))
+def test_installer_discovers_compiler_without_machine_specific_paths(installer_build, nsis_recorder, location):
+    root, build = installer_build
+    tools = root / "tools with spaces"
+    tools.mkdir()
+    x86 = root / "programs x86"
+    native = root / "programs native"
+    environment = {
+        "PATH": str(tools),
+        "ProgramFiles(x86)": str(x86),
+        "ProgramFiles": str(native),
+        "NSIS_TEST_PROGRAM_FILES": str(native),
+        "NSIS_TEST_LOG": str(root / "scripts" / "nsis-arguments.jsonl"),
+    }
+    parameters = []
+    if location in ("explicit", "path"):
+        target = tools / "makensis.exe"
+    elif location == "x86":
+        target = x86 / "NSIS" / "makensis.exe"
+    else:
+        target = native / "NSIS" / "makensis.exe"
+    if location != "missing":
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(nsis_recorder, target)
+    if location == "explicit":
+        parameters = ["-MakeNsis", str(target)]
+    elif location == "explicit_missing":
+        parameters = ["-MakeNsis", str(tools / "absent.exe")]
+
+    result, invocations = build("-Build", *parameters, discover=True, env=environment)
+
+    if location in ("missing", "explicit_missing"):
+        assert result.returncode != 0
+        assert "NSIS compiler not found" in result.stdout + result.stderr
+        assert invocations == []
+        assert not (root / "build-arguments.json").exists()
+        assert not (root / "dist" / "installers").exists()
+    else:
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert (root / "build-arguments.json").exists()
+        assert len(invocations) == 2
+        assert [next(arg for arg in args if arg.startswith("/DINSTALL_SCOPE=")) for args in invocations] == [
+            "/DINSTALL_SCOPE=user", "/DINSTALL_SCOPE=machine",
+        ]
+        assert all("/DAPP_VERSION=2.3.4" in args for args in invocations)
 
 
 @pytest.mark.parametrize("override", (None, "9.8.7"))
