@@ -69,6 +69,10 @@ python -m sound_mixer
   Use Previous, Play/Pause, and Next below each title. Pausing through Sound Mixer
   keeps its card available for resuming, including after reopening the overlay.
   Pausing externally hides the card. Cards are not shown in the mini widget.
+  Each separate session shared with Windows gets its own card, including multiple
+  sessions from one application. Browsers may expose only one active media session.
+  Media cards expand into the available screen space and scroll when necessary;
+  the main application list also scrolls after six entries or when space is limited.
 - Optional background scanning for audio applications started through selected
   launchers or sandboxes. Enable it when these applications do not appear normally.
 

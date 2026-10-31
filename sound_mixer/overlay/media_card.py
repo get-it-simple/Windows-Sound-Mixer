@@ -177,15 +177,19 @@ class MediaConnections(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(QPen(self._color, 1))
-        junction_y = min(self.mapFromGlobal(card.mapToGlobal(QPoint())).y() for _, card in self._links) - 2
+        footer_viewport = self._links[0][1].parentWidget().parentWidget()
+        junction_y = self.mapFromGlobal(footer_viewport.mapToGlobal(QPoint())).y() - 2
         for owner, card in self._links:
             if not owner.isVisible() or not card.isVisible():
                 continue
             visible = QRect(owner.mapTo(self._viewport, QPoint()), owner.size()).intersected(self._viewport.rect())
             if visible.isEmpty():
                 continue
+            visible_card = QRect(card.mapTo(footer_viewport, QPoint()), card.size()).intersected(footer_viewport.rect())
+            if visible_card.isEmpty():
+                continue
             start = self.mapFromGlobal(self._viewport.mapToGlobal(QPoint(visible.center().x(), visible.bottom())))
-            end = self.mapFromGlobal(card.mapToGlobal(QPoint()))
+            end = self.mapFromGlobal(footer_viewport.mapToGlobal(visible_card.topLeft()))
             path = QPainterPath(QPointF(start))
             path.lineTo(start.x(), junction_y)
             path.lineTo(end.x() - 4, junction_y)

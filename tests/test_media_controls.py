@@ -135,6 +135,34 @@ def test_commands_target_only_the_selected_session(action):
     asyncio.run(scenario())
 
 
+def test_same_source_sessions_update_pause_and_disappear_independently():
+    async def scenario():
+        first, second = ControllableSession("same.browser"), ControllableSession("same.browser")
+        async with running([first, second]) as (provider, snapshots, manager):
+            await wait_for(lambda: len(snapshots[-1]) == 2)
+            first_id, second_id = (item.session_id for item in snapshots[-1])
+            assert first_id != second_id
+            first.command_gate = asyncio.Event()
+            provider.request_action(first_id, "pause")
+            await wait_for(lambda: any(item.pending_action == "pause" for item in snapshots[-1]))
+            provider.request_action(second_id, "next")
+            await wait_for(lambda: any(item.session_id == second_id and item.title == "Track after next" for item in snapshots[-1]))
+            assert first.calls == ["pause"] and second.calls == ["next"]
+            first.command_gate.set()
+            await wait_for(lambda: any(item.session_id == first_id and item.playback_state == "paused"
+                                      and not item.pending_action for item in snapshots[-1]))
+            manager.sessions.remove(first)
+            manager.emit()
+            await wait_for(lambda: len(snapshots[-1]) == 1)
+            assert snapshots[-1][0].session_id == second_id
+            assert snapshots[-1][0].playback_state == "playing"
+            assert not first.media and not first.playback
+            second.status = 5
+            second.emit()
+            await wait_for(lambda: not snapshots[-1])
+    asyncio.run(scenario())
+
+
 def test_command_revalidates_capabilities_and_supports_toggle_only_players():
     async def scenario():
         session = ControllableSession()

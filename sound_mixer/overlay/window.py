@@ -3,7 +3,7 @@ import sys
 from ctypes import wintypes
 from typing import Optional
 
-from PySide6.QtCore import QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QRect, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QGuiApplication
 from PySide6.QtWidgets import (
     QBoxLayout,
@@ -315,6 +315,8 @@ class OverlayWindow(QWidget):
         self._media_items: tuple[MediaItem, ...] = ()
         self._media_state = None
         self._footer_cards = []
+        self._resizing_content = False
+        self._layout_screen = None
 
         self.setWindowTitle(t("sound_mixer_title"))
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -601,8 +603,7 @@ class OverlayWindow(QWidget):
             return
 
         rect = self.frameGeometry()
-        screen = QGuiApplication.screenAt(rect.center()) or QGuiApplication.primaryScreen()
-        available = screen.availableGeometry()
+        available = self._available_geometry()
 
         if self._vertical and rect.height() > available.height():
             self.resize(self.width(), max(self.minimumHeight(), available.height()))
@@ -629,6 +630,8 @@ class OverlayWindow(QWidget):
 
     def moveEvent(self, event) -> None:
         self._schedule_geometry_save()
+        if not self._resizing_content:
+            self._media_layout_timer.start(0)
         super().moveEvent(event)
 
     def resizeEvent(self, event) -> None:
@@ -652,6 +655,8 @@ class OverlayWindow(QWidget):
         self._resize_handle.raise_()
 
         self._schedule_geometry_save()
+        if not self._resizing_content:
+            self._media_layout_timer.start(0)
         super().resizeEvent(event)
 
     def _entry_extent(self, widget: EntryWidget) -> int:
@@ -662,10 +667,7 @@ class OverlayWindow(QWidget):
         hint = widget.sizeHint().expandedTo(widget.minimumSize()).boundedTo(widget.maximumSize())
         return hint.width() if self._vertical else hint.height()
 
-    def _apply_minimum_height(self) -> None:
-        if not self._vertical:
-            return
-
+    def _vertical_main_minimum(self) -> int:
         entry_widgets = self._entry_widgets + self._ignored_widgets
         entries_min = max((widget.minimumSizeHint().height() for widget in entry_widgets), default=0)
         margins = self._container_layout.contentsMargins()
@@ -674,25 +676,77 @@ class OverlayWindow(QWidget):
             scrollbar_height = self._scroll_area.horizontalScrollBar().sizeHint().height()
         content_min = margins.top() + margins.bottom() + entries_min + scrollbar_height
 
-        target_height = max(
+        return max(
             self._title_bar.sizeHint().height() + 2 * BACKGROUND_BORDER_PX,
             content_min + 2 * BACKGROUND_BORDER_PX,
-        ) + self._media_footer_height()
+        )
+
+    def _apply_minimum_height(self) -> None:
+        if not self._vertical:
+            return
+        target_height = self._vertical_main_minimum() + self._media_footer_height()
         if self.minimumHeight() != target_height:
             self.setMinimumHeight(target_height)
 
+    def _available_geometry(self) -> QRect:
+        screen = QGuiApplication.screenAt(self.frameGeometry().center()) or self.screen()
+        if screen != self._layout_screen:
+            if self._layout_screen is not None:
+                try:
+                    self._layout_screen.availableGeometryChanged.disconnect(self._schedule_layout)
+                    self._layout_screen.geometryChanged.disconnect(self._schedule_layout)
+                except RuntimeError:
+                    pass
+            self._layout_screen = screen
+            if screen is not None:
+                screen.availableGeometryChanged.connect(self._schedule_layout)
+                screen.geometryChanged.connect(self._schedule_layout)
+        return screen.availableGeometry() if screen is not None else self.geometry()
+
+    def _schedule_layout(self, *_args) -> None:
+        self._media_layout_timer.start(0)
+
+    def _footer_metrics(self) -> tuple[int, int, int]:
+        if not self._footer_cards:
+            return 0, 0, 0
+        margins = self._media_footer_layout.contentsMargins()
+        padding = margins.top() + margins.bottom()
+        heights = [card.sizeHint().height() for card in self._footer_cards]
+        step = max(heights) + self._media_footer_layout.spacing()
+        natural = sum(heights) + (len(heights) - 1) * self._media_footer_layout.spacing() + padding
+        return natural, max(heights) + padding, step
+
+    def _size_media_footer(self, budget: int) -> None:
+        natural, minimum, step = self._footer_metrics()
+        height = min(natural, max(0, budget))
+        if height < natural:
+            height = min(height, max(minimum, natural - step))
+        self._media_footer.widget().setMinimumHeight(natural)
+        self._media_footer.setFixedHeight(height)
+        self._media_footer.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOn if height < natural else Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+
     def _update_window_size(self) -> None:
+        if self._resizing_content:
+            return
+        self._resizing_content = True
+        try:
+            self._resize_to_content()
+        finally:
+            self._resizing_content = False
+
+    def _resize_to_content(self) -> None:
         for widget in reversed(self._background.findChildren(QWidget)):
             if widget.layout() is not None:
                 widget.layout().invalidate()
         self._background_layout.invalidate()
         self._update_device_button()
-        self._update_scrollbar_policy()
-        self._apply_minimum_height()
 
-        all_ref_widgets = self._entry_widgets or self._ignored_widgets
-        if not all_ref_widgets:
-            return
+        available = self._available_geometry()
+        border = 2 * BACKGROUND_BORDER_PX
+        old_footer = self._media_footer_height()
+        _, minimum_footer, _ = self._footer_metrics()
 
         spacing = self._container_layout.spacing()
         margins = self._container_layout.contentsMargins()
@@ -724,15 +778,43 @@ class OverlayWindow(QWidget):
                 self._title_bar.sizeHint().width() + container_width + 2 * BACKGROUND_BORDER_PX
             )
             if self._footer_cards:
-                target_width = max(target_width, round(200 * self.scale_limit.constrain(self._settings.get_ui_scale())))
+                footer_margins = self._media_footer_layout.contentsMargins()
+                card_width = max(card.minimumSizeHint().width() for card in self._footer_cards)
+                target_width = max(target_width, card_width + footer_margins.left() + footer_margins.right()
+                                   + self._media_footer.verticalScrollBar().sizeHint().width() + border)
+            target_width = min(target_width, available.width())
+            self._update_scrollbar_policy(
+                container_width + overflow_extent > target_width - self._title_bar.sizeHint().width() - border
+            )
+            main_minimum = self._vertical_main_minimum()
+            main_height = max(main_minimum, self.height() - old_footer)
+            required = min(available.height(), main_minimum + minimum_footer)
+            if available.bottom() + 1 - self.y() < required:
+                self.move(self.x(), max(available.top(), available.bottom() + 1 - required))
+            budget = max(1, available.bottom() + 1 - max(available.top(), self.y()))
+            main_height = min(main_height, max(main_minimum, budget - minimum_footer))
+            self._size_media_footer(budget - main_height)
+            self._apply_minimum_height()
             if self.width() != target_width or self.minimumWidth() != target_width:
                 self.setFixedWidth(target_width)
+            target_height = min(budget, main_height + self._media_footer_height())
+            if self.height() != target_height:
+                self.resize(self.width(), target_height)
             return
 
         container_height = margins.top() + margins.bottom() + entries_extent + extra_extent
         self._scroll_area.widget().setMinimumSize(0, container_height + overflow_extent)
         title_bar_height = self._title_bar.sizeHint().height()
-        target_height = title_bar_height + container_height + 2 * BACKGROUND_BORDER_PX + self._media_footer_height()
+        minimum_main = min(extents, default=1) + margins.top() + margins.bottom()
+        minimum_main = min(minimum_main, max(1, available.height() - title_bar_height - border - minimum_footer))
+        required = min(available.height(), title_bar_height + border + minimum_main + minimum_footer)
+        if available.bottom() + 1 - self.y() < required:
+            self.move(self.x(), max(available.top(), available.bottom() + 1 - required))
+        budget = max(1, available.bottom() + 1 - max(available.top(), self.y()) - title_bar_height - border)
+        main_height = min(container_height, max(1, budget - minimum_footer))
+        self._size_media_footer(budget - main_height)
+        self._update_scrollbar_policy(container_height + overflow_extent > main_height)
+        target_height = title_bar_height + main_height + border + self._media_footer_height()
         if self.height() != target_height or self.minimumHeight() != target_height:
             self.setFixedHeight(target_height)
 
@@ -881,7 +963,8 @@ class OverlayWindow(QWidget):
         self._ensure_on_screen()
 
     def _media_footer_height(self):
-        return self._media_footer.maximumHeight() if self._footer_cards else 0
+        height = self._media_footer.maximumHeight()
+        return height if height < MAX_WIDGET_SIZE else 0
 
     def _settle_media_layout(self):
         self._update_window_size()
@@ -937,11 +1020,6 @@ class OverlayWindow(QWidget):
                     links.append((owner_widget, card))
         for widget, cards in grouped.items():
             widget.set_media_cards(cards)
-        height = sum(card.sizeHint().height() for card in self._footer_cards)
-        height += max(0, len(self._footer_cards) - 1) * 4 + 8
-        screen = self.screen()
-        limit = round(screen.availableGeometry().height() / 3) if screen else 240
-        self._media_footer.setFixedHeight(min(height, max(round(80 * scale), limit)))
         self._media_footer.setVisible(bool(self._footer_cards))
         self._media_connections.set_links(links, QColor(self._accent_color))
         self._update_window_size()
@@ -957,11 +1035,11 @@ class OverlayWindow(QWidget):
                 button.setMinimumWidth(0)
                 button.setMaximumWidth(MAX_WIDGET_SIZE)
 
-    def _update_scrollbar_policy(self) -> None:
+    def _update_scrollbar_policy(self, overflow=False) -> None:
         visible_entries = len(self._entry_widgets)
         if self._ignored_expanded:
             visible_entries += len(self._ignored_widgets)
-        show_scrollbar = visible_entries > MAX_VISIBLE_ENTRIES
+        show_scrollbar = visible_entries > MAX_VISIBLE_ENTRIES or overflow
         policy = (
             Qt.ScrollBarPolicy.ScrollBarAlwaysOn
             if show_scrollbar

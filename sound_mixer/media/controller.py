@@ -6,7 +6,7 @@ import threading
 from PySide6.QtCore import QObject, Signal
 
 from sound_mixer.media.identity import application_identities
-from sound_mixer.media.model import MediaItem, MediaOwner, PausedSessions, attach_owners
+from sound_mixer.media.model import MediaItem, MediaOwner, PausedSessions, attach_owners, match_owner
 from sound_mixer.media.provider import WindowsMediaProvider
 
 logger = logging.getLogger(__name__)
@@ -57,7 +57,8 @@ class _MediaWorker(threading.Thread):
         if {item.source for item in items} != {item.source for item in self.items}:
             self.identities = None
         self.items = items
-        if self.identities is None:
+        if self.identities is None or any(match_owner(source, self.owners, self.identities) is None
+                                          for source in {item.source for item in items}):
             self.identities = application_identities(self.owners)
         self.deliver(self.generation, attach_owners(items, self.owners, self.identities))
 
