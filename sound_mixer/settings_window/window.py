@@ -312,6 +312,7 @@ class SettingsWindow(QDialog):
     ) -> None:
         super().__init__(parent)
         self._settings = settings
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         self._autostart = autostart
         self._hotkeys = hotkeys
         self._overlay = overlay
@@ -357,6 +358,11 @@ class SettingsWindow(QDialog):
         for limit in {self.scale_limit, self._overlay_scale_limit, self._mini_scale_limit}:
             limit.changed.connect(self._update_scale_limits)
 
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self.raise_()
+        self.activateWindow()
+
     def _update_scale_limits(self) -> None:
         for slider, label, limit, scale in (
             (self._ui_scale_slider, self._ui_scale_label, self._overlay_scale_limit, self._settings.get_ui_scale()),
@@ -396,6 +402,12 @@ class SettingsWindow(QDialog):
         self._transparency_checkbox.setStyleSheet(toggle_switch_style("transparencyToggle"))
         self._transparency_checkbox.setChecked(self._settings.get_transparency_enabled())
         groups["settings_overlay"].addWidget(self._field(t("transparent_overlay_background"), self._transparency_checkbox, tab))
+
+        self._playing_media_checkbox = QCheckBox(tab)
+        self._playing_media_checkbox.setObjectName("playingMediaToggle")
+        self._playing_media_checkbox.setStyleSheet(toggle_switch_style("playingMediaToggle"))
+        self._playing_media_checkbox.setChecked(self._settings.get_playing_media_enabled())
+        groups["settings_overlay"].addWidget(self._field(t("playing_media"), self._playing_media_checkbox, tab))
 
         self._mini_widget_checkbox = QCheckBox(tab)
         self._mini_widget_checkbox.setObjectName("miniWidgetToggle")
@@ -715,6 +727,7 @@ class SettingsWindow(QDialog):
         self._settings.set_autostart_enabled(autostart_enabled)
         self._settings.set_visible_on_start(self._start_opened_checkbox.isChecked())
         self._settings.set_transparency_enabled(self._transparency_checkbox.isChecked())
+        self._settings.set_playing_media_enabled(self._playing_media_checkbox.isChecked())
         self._settings.set_mini_widget_enabled(self._mini_widget_checkbox.isChecked())
         self._settings.set_mini_widget_show_master(self._mini_widget_master_checkbox.isChecked())
         self._settings.set_mini_widget_show_above_taskbar(self._mini_widget_taskbar_checkbox.isChecked())

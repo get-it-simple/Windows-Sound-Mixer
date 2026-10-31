@@ -1,4 +1,10 @@
 {
+  "media_previous": "Предишна песен",
+  "media_next": "Следваща песен",
+  "media_play": "Възпроизвеждане",
+  "media_pause": "Пауза",
+  "playing_media": "Възпроизвеждана медия",
+  "media_untitled": "Медия без заглавие",
   "output_device_switching": "Превключване на аудиоизхода…",
   "output_device_select": "Избор на аудиоизход",
   "output_device_empty": "Няма активни аудиоизходи",

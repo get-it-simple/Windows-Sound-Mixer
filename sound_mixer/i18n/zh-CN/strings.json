@@ -1,4 +1,10 @@
 {
+  "media_previous": "上一曲",
+  "media_next": "下一曲",
+  "media_play": "播放",
+  "media_pause": "暂停",
+  "playing_media": "正在播放的媒体",
+  "media_untitled": "无标题媒体",
   "output_device_switching": "正在切换音频输出…",
   "output_device_select": "选择音频输出",
   "output_device_empty": "没有活动的音频输出",

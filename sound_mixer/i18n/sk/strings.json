@@ -1,4 +1,10 @@
 {
+  "media_previous": "Predchádzajúca skladba",
+  "media_next": "Ďalšia skladba",
+  "media_play": "Prehrať",
+  "media_pause": "Pozastaviť",
+  "playing_media": "Prehrávané médiá",
+  "media_untitled": "Médiá bez názvu",
   "output_device_switching": "Prepínanie zvukového výstupu…",
   "output_device_select": "Vybrať zvukový výstup",
   "output_device_empty": "Žiadne aktívne zvukové výstupy",

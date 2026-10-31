@@ -4,7 +4,7 @@ from ctypes import wintypes
 from typing import Optional
 
 from PySide6.QtCore import QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QColor, QGuiApplication
 from PySide6.QtWidgets import (
     QBoxLayout,
     QCheckBox,
@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 from sound_mixer import __version__
 from sound_mixer.i18n import t
 from sound_mixer.mixer.model import MixerModel
+from sound_mixer.media.model import MediaItem
 from sound_mixer.mixer.subprocess_manager import SubprocessManager
 from sound_mixer.overlay.entry_widget import (
     BASE_VERTICAL_VALUE_FONT_PX,
@@ -36,6 +37,7 @@ from sound_mixer.overlay.icons import (
     toggle_switch_style,
 )
 from sound_mixer.overlay.scaling import ScaleLimit
+from sound_mixer.overlay.media_card import MediaCard, MediaConnections
 from sound_mixer.overlay.win_effects import WM_DWMCOLORIZATIONCOLORCHANGED, apply_acrylic_effect, get_accent_color
 from sound_mixer.settings.schema import LAYOUT_HORIZONTAL, LAYOUT_VERTICAL
 from sound_mixer.settings.store import SettingsStore
@@ -114,6 +116,24 @@ def background_style(scale: float, accent_color: str, transparent: bool = True, 
     background: rgba(255, 255, 255, 15);
     border: 1px solid transparent;
     border-radius: {entry_radius}px;
+}}
+#background #mediaCard {{
+    background: rgba(255, 255, 255, 15);
+    border: none;
+    border-radius: {entry_radius}px;
+    color: #f2f2f5;
+}}
+#background #mediaCard QWidget {{
+    color: #f2f2f5;
+}}
+#background #mediaCard QToolButton {{
+    background: rgba(0, 0, 0, 70);
+    border: none;
+    border-radius: {control_radius}px;
+    padding: 0;
+}}
+#background #mediaCard QToolButton:hover {{
+    background: rgba(255, 255, 255, 22);
 }}
 #background #entryWidget[focused="true"] {{
     background: {accent_bg};
@@ -267,6 +287,7 @@ class OverlayWindow(QWidget):
     settings_requested = Signal()
     model_changed = Signal()
     output_device_selected = Signal(str)
+    media_action_requested = Signal(str, int, str)
 
     def __init__(
         self,
@@ -291,6 +312,9 @@ class OverlayWindow(QWidget):
         self._vertical = self._layout_mode == LAYOUT_VERTICAL
         self._warming_up = False
         self._show_after_warm_up = False
+        self._media_items: tuple[MediaItem, ...] = ()
+        self._media_state = None
+        self._footer_cards = []
 
         self.setWindowTitle(t("sound_mixer_title"))
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -305,6 +329,9 @@ class OverlayWindow(QWidget):
         self._geometry_save_timer = QTimer(self)
         self._geometry_save_timer.setSingleShot(True)
         self._geometry_save_timer.timeout.connect(self._save_geometry)
+        self._media_layout_timer = QTimer(self)
+        self._media_layout_timer.setSingleShot(True)
+        self._media_layout_timer.timeout.connect(self._settle_media_layout)
 
         self._build_ui()
         self.scale_limit = ScaleLimit(self)
@@ -350,7 +377,12 @@ class OverlayWindow(QWidget):
         outer_layout.addWidget(background)
         self._background = background
 
-        layout = QBoxLayout(QBoxLayout.Direction.TopToBottom, background)
+        background_layout = QVBoxLayout(background)
+        background_layout.setContentsMargins(0, 0, 0, 0)
+        background_layout.setSpacing(0)
+        self._main_content = QWidget(background)
+        background_layout.addWidget(self._main_content, 1)
+        layout = QBoxLayout(QBoxLayout.Direction.TopToBottom, self._main_content)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         self._background_layout = layout
@@ -410,6 +442,23 @@ class OverlayWindow(QWidget):
         scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         layout.addWidget(scroll_area)
         self._scroll_area = scroll_area
+
+        self._media_footer = QScrollArea(background)
+        self._media_footer.setWidgetResizable(True)
+        self._media_footer.setFrameShape(QFrame.Shape.NoFrame)
+        self._media_footer.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._media_footer.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        footer_content = QWidget(self._media_footer)
+        footer_content.setObjectName("entryContainer")
+        self._media_footer_layout = QVBoxLayout(footer_content)
+        self._media_footer_layout.setContentsMargins(12, 4, 8, 4)
+        self._media_footer_layout.setSpacing(4)
+        self._media_footer.setWidget(footer_content)
+        background_layout.addWidget(self._media_footer)
+        self._media_footer.hide()
+        self._media_connections = MediaConnections(background, scroll_area.viewport())
+        scroll_area.horizontalScrollBar().valueChanged.connect(self._media_connections.update)
+        self._media_footer.verticalScrollBar().valueChanged.connect(self._media_connections.update)
 
         self._title_bar = title_bar
         self._resize_handle = _ResizeHandle(self)
@@ -628,7 +677,7 @@ class OverlayWindow(QWidget):
         target_height = max(
             self._title_bar.sizeHint().height() + 2 * BACKGROUND_BORDER_PX,
             content_min + 2 * BACKGROUND_BORDER_PX,
-        )
+        ) + self._media_footer_height()
         if self.minimumHeight() != target_height:
             self.setMinimumHeight(target_height)
 
@@ -645,15 +694,15 @@ class OverlayWindow(QWidget):
         if not all_ref_widgets:
             return
 
-        entry_extent = max(self._entry_extent(w) for w in all_ref_widgets)
         spacing = self._container_layout.spacing()
         margins = self._container_layout.contentsMargins()
         active_count = len(self._entry_widgets)
         ignored_visible = len(self._ignored_widgets) if self._ignored_expanded else 0
         total_entries = min(active_count + ignored_visible, MAX_VISIBLE_ENTRIES)
-        overflow_extent = max(0, active_count + ignored_visible - total_entries) * (entry_extent + spacing)
-
-        entries_extent = total_entries * entry_extent + max(0, total_entries - 1) * spacing
+        visible_widgets = self._entry_widgets + (self._ignored_widgets if self._ignored_expanded else [])
+        extents = [self._entry_extent(widget) for widget in visible_widgets]
+        overflow_extent = sum(extents[total_entries:]) + max(0, len(extents) - total_entries) * spacing
+        entries_extent = sum(extents[:total_entries]) + max(0, total_entries - 1) * spacing
 
         extra_extent = 0
         fallback = round(28 * self.scale_limit.constrain(self._settings.get_ui_scale()))
@@ -674,6 +723,8 @@ class OverlayWindow(QWidget):
             target_width = (
                 self._title_bar.sizeHint().width() + container_width + 2 * BACKGROUND_BORDER_PX
             )
+            if self._footer_cards:
+                target_width = max(target_width, round(200 * self.scale_limit.constrain(self._settings.get_ui_scale())))
             if self.width() != target_width or self.minimumWidth() != target_width:
                 self.setFixedWidth(target_width)
             return
@@ -681,7 +732,7 @@ class OverlayWindow(QWidget):
         container_height = margins.top() + margins.bottom() + entries_extent + extra_extent
         self._scroll_area.widget().setMinimumSize(0, container_height + overflow_extent)
         title_bar_height = self._title_bar.sizeHint().height()
-        target_height = title_bar_height + container_height + 2 * BACKGROUND_BORDER_PX
+        target_height = title_bar_height + container_height + 2 * BACKGROUND_BORDER_PX + self._media_footer_height()
         if self.height() != target_height or self.minimumHeight() != target_height:
             self.setFixedHeight(target_height)
 
@@ -829,6 +880,74 @@ class OverlayWindow(QWidget):
         self.apply_scale()
         self._ensure_on_screen()
 
+    def _media_footer_height(self):
+        return self._media_footer.maximumHeight() if self._footer_cards else 0
+
+    def _settle_media_layout(self):
+        self._update_window_size()
+        self._media_connections.raise_()
+        self._media_connections.update()
+
+    def set_media_items(self, items):
+        self._media_items = tuple(items)
+        self._sync_media_cards()
+
+    def _sync_media_cards(self):
+        if not hasattr(self, "scale_limit"):
+            return
+        entries = self._model.entries + self._model.ignored_entries
+        by_key = {entry.key: entry for entry in entries}
+        items = tuple(item for item in self._media_items
+                      if item.owner_key is None or (self._settings.is_app_whitelisted(item.owner_key)
+                      and (not self._settings.is_app_ignored(item.owner_key) or self._ignored_expanded)))
+        scale = self.scale_limit.constrain(self._settings.get_ui_scale())
+        state = (items, self._vertical, scale, t("media_untitled"), self._settings.get_tooltip_delay_ms(),
+                 tuple((entry.key, entry.display_name, entry.icon_path) for entry in entries),
+                 tuple(self._entry_widgets + self._ignored_widgets), self._accent_color)
+        if state == self._media_state:
+            return
+        self._media_state = state
+        self._media_connections.set_links([], QColor(self._accent_color))
+        for card in self._footer_cards:
+            self._media_footer_layout.removeWidget(card)
+            card.hide()
+            card.deleteLater()
+        self._footer_cards = []
+        widgets = dict(zip((entry.key for entry in self._model.entries), self._entry_widgets))
+        if self._ignored_expanded:
+            widgets.update(zip((entry.key for entry in self._model.ignored_entries), self._ignored_widgets))
+        grouped = {widget: [] for widget in self._entry_widgets + self._ignored_widgets}
+        multiple_apps = len({item.owner_key or item.source for item in items}) > 1
+        links = []
+        for item in items:
+            entry = by_key.get(item.owner_key)
+            owner_widget = widgets.get(item.owner_key)
+            inline = not self._vertical and owner_widget is not None
+            card = MediaCard(item, scale, entry.display_name if entry else item.source,
+                             entry.icon_path if entry else "", self._vertical and multiple_apps,
+                             parent=owner_widget if inline else self._media_footer.widget(), show_source=entry is None,
+                             tooltip_delay_ms=self._settings.get_tooltip_delay_ms())
+            card.action_requested.connect(self.media_action_requested)
+            if inline:
+                grouped[owner_widget].append(card)
+            else:
+                self._media_footer_layout.addWidget(card)
+                self._footer_cards.append(card)
+                if self._vertical and owner_widget is not None:
+                    links.append((owner_widget, card))
+        for widget, cards in grouped.items():
+            widget.set_media_cards(cards)
+        height = sum(card.sizeHint().height() for card in self._footer_cards)
+        height += max(0, len(self._footer_cards) - 1) * 4 + 8
+        screen = self.screen()
+        limit = round(screen.availableGeometry().height() / 3) if screen else 240
+        self._media_footer.setFixedHeight(min(height, max(round(80 * scale), limit)))
+        self._media_footer.setVisible(bool(self._footer_cards))
+        self._media_connections.set_links(links, QColor(self._accent_color))
+        self._update_window_size()
+        self._ensure_on_screen()
+        self._media_layout_timer.start(0)
+
     def _apply_ignored_button_thickness(self) -> None:
         for button in (self._expand_button, self._collapse_button):
             button.ensurePolished()
@@ -894,6 +1013,7 @@ class OverlayWindow(QWidget):
         for widget in self._entry_widgets + self._ignored_widgets:
             widget.apply_scale(scale, self._accent_color)
 
+        self._sync_media_cards()
         self._update_window_size()
         self._ensure_on_screen()
 
@@ -968,6 +1088,7 @@ class OverlayWindow(QWidget):
 
         if layout_changed:
             self._update_window_size()
+        self._sync_media_cards()
 
     def _update_entry(self, widget, entry, focused):
         state = (entry.key, entry.display_name, entry.volume, entry.muted, entry.icon_path, focused, entry.volume_locked)

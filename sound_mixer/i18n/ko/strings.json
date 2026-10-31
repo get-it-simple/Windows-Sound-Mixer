@@ -1,4 +1,10 @@
 {
+  "media_previous": "이전 트랙",
+  "media_next": "다음 트랙",
+  "media_play": "재생",
+  "media_pause": "일시 정지",
+  "playing_media": "재생 중인 미디어",
+  "media_untitled": "제목 없는 미디어",
   "output_device_switching": "오디오 출력 전환 중…",
   "output_device_select": "오디오 출력 선택",
   "output_device_empty": "활성 오디오 출력 없음",

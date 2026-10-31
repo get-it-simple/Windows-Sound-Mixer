@@ -64,6 +64,11 @@ python -m sound_mixer
 - Adjustable interface scale, volume steps, tooltip delay, and transparency,
   including acrylic blur on supported Windows versions.
 - Optional launch at Windows login and an option to show the overlay on startup.
+- Optional **Playing media** cards show artwork and titles from applications
+  that share media with Windows. Enable them in the main overlay settings.
+  Use Previous, Play/Pause, and Next below each title. Pausing through Sound Mixer
+  keeps its card available for resuming, including after reopening the overlay.
+  Pausing externally hides the card. Cards are not shown in the mini widget.
 - Optional background scanning for audio applications started through selected
   launchers or sandboxes. Enable it when these applications do not appear normally.
 
@@ -141,6 +146,7 @@ stored beside the executable.
 | `hotkeys`, `volume_step`, `default_app_volume` | Shortcuts, adjustment steps, and initial application volume. |
 | `overlay`, `ui_scale`, `transparency_enabled`, `tooltip_delay_ms` | Main overlay appearance, position, size, and behavior. |
 | `mini_widget` | Mini widget appearance, position, docking, and visibility. |
+| `playing_media_enabled` | Show currently playing media in the main overlay; disabled by default. |
 | `whitelist`, `ignored_apps`, `subprocess_management` | Application lists and optional launcher scanning. |
 | `language`, `autostart_enabled` | Interface language and launch at Windows login. |
 
@@ -227,6 +233,7 @@ button in Settings also opens a short guide.
 | ------------------------------------------------------ | --------------------------------- | --------------- |
 | [pycaw](https://github.com/AndreMiras/pycaw)           | MIT                               |                 |
 | [comtypes](https://github.com/enthought/comtypes)      | MIT                               |                 |
+| [PyWinRT](https://github.com/pywinrt/pywinrt)          | MIT                               | Windows media   |
 | [PySide6](https://pypi.org/project/PySide6/)           | LGPL-3.0                          |                 |
 | [psutil](https://github.com/giampaolo/psutil)          | BSD-3-Clause                      |                 |
 | [PyInstaller](https://pyinstaller.org/)                | GPL-2.0 with Bootloader Exception | build tool only |

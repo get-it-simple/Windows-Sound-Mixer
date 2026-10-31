@@ -1,4 +1,10 @@
 {
+  "media_previous": "Forrige spor",
+  "media_next": "Neste spor",
+  "media_play": "Spill av",
+  "media_pause": "Pause",
+  "playing_media": "Medier som spilles av",
+  "media_untitled": "Medier uten tittel",
   "output_device_switching": "Bytter lydutgang…",
   "output_device_select": "Velg lydutgang",
   "output_device_empty": "Ingen aktive lydutganger",

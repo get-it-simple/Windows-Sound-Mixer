@@ -1,4 +1,10 @@
 {
+  "media_previous": "Previous track",
+  "media_next": "Next track",
+  "media_play": "Play",
+  "media_pause": "Pause",
+  "playing_media": "Playing media",
+  "media_untitled": "Untitled media",
   "output_device_switching": "Switching audio output…",
   "output_device_select": "Select audio output",
   "output_device_empty": "No active audio outputs",

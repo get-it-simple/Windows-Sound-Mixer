@@ -1,4 +1,10 @@
 {
+  "media_previous": "Önceki parça",
+  "media_next": "Sonraki parça",
+  "media_play": "Oynat",
+  "media_pause": "Duraklat",
+  "playing_media": "Oynatılan medya",
+  "media_untitled": "Başlıksız medya",
   "output_device_switching": "Ses çıkışı değiştiriliyor…",
   "output_device_select": "Ses çıkışını seç",
   "output_device_empty": "Etkin ses çıkışı yok",

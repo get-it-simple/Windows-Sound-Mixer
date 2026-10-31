@@ -1,4 +1,10 @@
 {
+  "media_previous": "Piesa anterioară",
+  "media_next": "Piesa următoare",
+  "media_play": "Redare",
+  "media_pause": "Pauză",
+  "playing_media": "Conținut media în redare",
+  "media_untitled": "Conținut media fără titlu",
   "output_device_switching": "Se schimbă ieșirea audio…",
   "output_device_select": "Selectează ieșirea audio",
   "output_device_empty": "Nu există ieșiri audio active",

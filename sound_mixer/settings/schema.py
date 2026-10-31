@@ -1,4 +1,4 @@
-CURRENT_VERSION = 14
+CURRENT_VERSION = 15
 
 MIN_UI_SCALE = 0.5
 MAX_UI_SCALE = 3.0
@@ -48,6 +48,7 @@ DEFAULT_SETTINGS = {
     "ui_scale": 1.0,
     "default_app_volume": 1.0,
     "transparency_enabled": True,
+    "playing_media_enabled": False,
     "ignored_apps": [],
     "language": "system",
     "subprocess_management": {

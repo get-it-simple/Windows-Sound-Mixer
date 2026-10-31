@@ -1,4 +1,10 @@
 {
+  "media_previous": "Edellinen kappale",
+  "media_next": "Seuraava kappale",
+  "media_play": "Toista",
+  "media_pause": "Keskeytä",
+  "playing_media": "Toistettava media",
+  "media_untitled": "Nimetön media",
   "output_device_switching": "Vaihdetaan äänilähtöä…",
   "output_device_select": "Valitse äänilähtö",
   "output_device_empty": "Ei aktiivisia äänilähtöjä",

@@ -4,6 +4,7 @@ import pytest
 
 from sound_mixer.settings.migrations import migrate
 from sound_mixer.settings.store import SettingsStore
+from sound_mixer.settings.schema import CURRENT_VERSION
 
 
 def test_migration_preserves_normal_settings():
@@ -12,7 +13,7 @@ def test_migration_preserves_normal_settings():
     before = deepcopy(old)
     result = migrate(old)
     assert old == before
-    assert result["version"] == 14
+    assert result["version"] == CURRENT_VERSION
     assert result["app_volumes"] == old["app_volumes"]
     assert result["hotkeys"][0] == old["hotkeys"][0]
     assert result["presets"] == [] and result["active_preset_id"] is None

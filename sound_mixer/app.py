@@ -10,6 +10,7 @@ from sound_mixer.autostart.registry import AutostartManager, AutostartUnavailabl
 from sound_mixer.hotkeys.manager import HotkeyManager
 from sound_mixer.instance_control import InstanceController
 from sound_mixer.mixer.model import MixerModel
+from sound_mixer.media.controller import MediaController
 from sound_mixer.mixer.master_sync import MasterAudioSync
 from sound_mixer.mixer.session_sync import SessionAudioSync
 from sound_mixer.mixer.subprocess_manager import SubprocessManager
@@ -61,6 +62,13 @@ class SoundMixerApp:
         self.overlay.model_changed.connect(self.mini_widget.refresh_view)
         self.mini_widget.model_changed.connect(self.overlay.refresh_view)
         self.mini_widget.set_enabled(self.settings.get_mini_widget_enabled(), persist=False)
+
+        self.media_controller = MediaController(self.qt_app)
+        self.media_controller.changed.connect(self.overlay.set_media_items)
+        self.overlay.media_action_requested.connect(self.media_controller.request_action)
+        self.overlay.visibility_changed.connect(self._sync_media)
+        self.qt_app.aboutToQuit.connect(self.media_controller.shutdown)
+        self._sync_media()
 
         self.hotkeys = HotkeyManager(self.settings)
         self.hotkeys.preset_toggled.connect(self._on_preset_hotkey)
@@ -115,6 +123,14 @@ class SoundMixerApp:
     def _sync_audio_visibility(self, visible=None) -> None:
         self.session_sync.set_visible(self.overlay.isVisible() or self.mini_widget.isVisible())
 
+    def _sync_media(self, visible=None) -> None:
+        controller = getattr(self, "media_controller", None)
+        if controller is None:
+            return
+        controller.set_entries(self.backend.enumerate_sessions())
+        controller.set_enabled(self.settings.get_playing_media_enabled())
+        controller.set_visible(self.overlay.isVisible() and not self.overlay._warming_up)
+
     def _shutdown_for_update(self) -> None:
         self.settings.flush()
         QTimer.singleShot(0, self.qt_app.quit)
@@ -155,6 +171,7 @@ class SoundMixerApp:
                     mini_widget.sync_from_settings()
                 self.tray.retranslate()
                 self.tray.set_autostart_enabled(self.settings.get_autostart_enabled())
+                self._sync_media()
         finally:
             if not accepted:
                 self.hotkeys.start()
@@ -199,6 +216,7 @@ class SoundMixerApp:
         self.mini_widget.adjust_selected_volume(-1)
 
     def _refresh_views(self) -> None:
+        self._sync_media()
         self.overlay.refresh_view()
         self.mini_widget.refresh_view()
 

@@ -150,6 +150,13 @@ def _migrate_13_to_14(data: dict) -> dict:
     return data
 
 
+def _migrate_14_to_15(data: dict) -> dict:
+    data = dict(data)
+    data.setdefault("playing_media_enabled", False)
+    data["version"] = 15
+    return data
+
+
 MIGRATIONS = {
     0: _migrate_0_to_1,
     1: _migrate_1_to_2,
@@ -165,6 +172,7 @@ MIGRATIONS = {
     11: _migrate_11_to_12,
     12: _migrate_12_to_13,
     13: _migrate_13_to_14,
+    14: _migrate_14_to_15,
 }
 
 

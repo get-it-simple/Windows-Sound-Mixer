@@ -1,4 +1,10 @@
 {
+  "media_previous": "Vorig nummer",
+  "media_next": "Volgend nummer",
+  "media_play": "Afspelen",
+  "media_pause": "Pauzeren",
+  "playing_media": "Afspelende media",
+  "media_untitled": "Media zonder titel",
   "output_device_switching": "Audio-uitvoer wijzigen…",
   "output_device_select": "Audio-uitvoer selecteren",
   "output_device_empty": "Geen actieve audio-uitgangen",
