@@ -1,4 +1,10 @@
 {
+  "media_previous": "Попередній трек",
+  "media_next": "Наступний трек",
+  "media_play": "Відтворити",
+  "media_pause": "Призупинити",
+  "playing_media": "Медіа, що відтворюється",
+  "media_untitled": "Медіа без назви",
   "output_device_switching": "Перемикання пристрою…",
   "output_device_select": "Вибрати пристрій відтворення",
   "output_device_empty": "Немає активних пристроїв відтворення",

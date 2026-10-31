@@ -1,4 +1,10 @@
 {
+  "media_previous": "Pista anterior",
+  "media_next": "Pista siguiente",
+  "media_play": "Reproducir",
+  "media_pause": "Pausar",
+  "playing_media": "Contenido en reproducción",
+  "media_untitled": "Contenido sin título",
   "output_device_switching": "Cambiando salida de audio…",
   "output_device_select": "Seleccionar salida de audio",
   "output_device_empty": "No hay salidas de audio activas",

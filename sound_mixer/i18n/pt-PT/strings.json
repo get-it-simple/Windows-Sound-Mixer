@@ -1,4 +1,10 @@
 {
+  "media_previous": "Faixa anterior",
+  "media_next": "Faixa seguinte",
+  "media_play": "Reproduzir",
+  "media_pause": "Pausar",
+  "playing_media": "Multimédia em reprodução",
+  "media_untitled": "Multimédia sem título",
   "output_device_switching": "A mudar a saída de áudio…",
   "output_device_select": "Selecionar saída de áudio",
   "output_device_empty": "Sem saídas de áudio ativas",

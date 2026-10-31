@@ -1,4 +1,10 @@
 {
+  "media_previous": "前の曲",
+  "media_next": "次の曲",
+  "media_play": "再生",
+  "media_pause": "一時停止",
+  "playing_media": "再生中のメディア",
+  "media_untitled": "タイトルのないメディア",
   "output_device_switching": "音声出力を切り替え中…",
   "output_device_select": "音声出力を選択",
   "output_device_empty": "有効な音声出力がありません",

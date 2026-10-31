@@ -158,6 +158,7 @@ class _FullSizeScrollArea(QScrollArea):
 class GuideDialog(QDialog):
     def __init__(self, vertical: bool = False, parent=None, *, mini_widget_enabled: bool = False) -> None:
         super().__init__(parent)
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         self._vertical = vertical
         self._mini_widget_enabled = mini_widget_enabled
         self.setWindowTitle(t("controls_guide_title"))
@@ -168,6 +169,11 @@ class GuideDialog(QDialog):
         self._build_ui()
         self._equalize_key_widths()
         self._fit_to_screen()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self.raise_()
+        self.activateWindow()
 
     def _fit_to_screen(self) -> None:
         screen = QApplication.primaryScreen()

@@ -9,5 +9,5 @@ settings.json.bak
 *.egg-info/
 .venv/
 venv/
-/PROJECT_*.*
+PROJECT_*
 .local-audit/

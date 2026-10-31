@@ -1,4 +1,10 @@
 {
+  "media_previous": "Előző szám",
+  "media_next": "Következő szám",
+  "media_play": "Lejátszás",
+  "media_pause": "Szünet",
+  "playing_media": "Lejátszott média",
+  "media_untitled": "Névtelen média",
   "output_device_switching": "Hangkimenet váltása…",
   "output_device_select": "Hangkimenet kiválasztása",
   "output_device_empty": "Nincs aktív hangkimenet",

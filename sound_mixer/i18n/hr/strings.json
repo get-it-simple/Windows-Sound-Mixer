@@ -1,4 +1,10 @@
 {
+  "media_previous": "Prethodna pjesma",
+  "media_next": "Sljedeća pjesma",
+  "media_play": "Reproduciraj",
+  "media_pause": "Pauziraj",
+  "playing_media": "Mediji koji se reproduciraju",
+  "media_untitled": "Medij bez naslova",
   "output_device_switching": "Promjena audioizlaza…",
   "output_device_select": "Odaberi audioizlaz",
   "output_device_empty": "Nema aktivnih audioizlaza",

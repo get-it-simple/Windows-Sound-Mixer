@@ -1,5 +1,7 @@
 import pytest
 
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtTest import QSignalSpy
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
 from sound_mixer import i18n
@@ -13,6 +15,58 @@ def test_guide_dialog_opens(qapp):
 
     assert dialog.isVisible()
     dialog.close()
+
+
+@pytest.mark.parametrize("source", ["overlay", "settings"])
+@pytest.mark.parametrize("main_visible,mini_visible", [(False, False), (True, False), (False, True), (True, True)])
+def test_guide_priority_preserves_widgets(qapp, fake_backend, settings, monkeypatch, source, main_visible, mini_visible):
+    from sound_mixer.mixer.model import MixerModel
+    from sound_mixer.overlay.mini_widget import MiniWidget
+    from sound_mixer.overlay.window import OverlayWindow
+    from sound_mixer.settings_window.window import SettingsWindow
+
+    monkeypatch.setattr(OverlayWindow, "_warm_up_acrylic", lambda self: None)
+    model = MixerModel(fake_backend, settings)
+    overlay = OverlayWindow(model, settings)
+    mini = MiniWidget(model, settings)
+    overlay.setVisible(main_visible)
+    mini.set_enabled(mini_visible, persist=False)
+    window = overlay if source == "overlay" else SettingsWindow(settings, overlay=overlay, mini_widget=mini, parent=overlay)
+    if source == "settings":
+        window.show()
+    qapp.processEvents()
+    main_flags, mini_flags = overlay.windowFlags(), mini.windowFlags()
+    main_changes = QSignalSpy(overlay.visibility_changed)
+    mini_changes = QSignalSpy(mini.visibility_changed)
+    shown = []
+
+    def inspect_dialog():
+        dialog = QApplication.activeModalWidget()
+        try:
+            shown.append((
+                isinstance(dialog, GuideDialog),
+                bool(dialog.windowFlags() & Qt.WindowType.WindowStaysOnTopHint),
+                dialog.parentWidget() is window,
+                dialog.isVisible(),
+                overlay.isVisible(),
+                mini.isVisible(),
+            ))
+        finally:
+            dialog.reject()
+
+    try:
+        for _ in range(2):
+            QTimer.singleShot(0, inspect_dialog)
+            window._guide_button.click()
+            qapp.processEvents()
+            assert shown[-1] == (True, True, True, True, main_visible, mini_visible)
+            assert overlay.isVisible() == main_visible and mini.isVisible() == mini_visible
+            assert overlay.windowFlags() == main_flags and mini.windowFlags() == mini_flags
+            assert main_changes.count() == mini_changes.count() == 0
+    finally:
+        window.close()
+        mini.close()
+        overlay.close()
 
 
 def test_guide_dialog_has_window_icon(qapp):

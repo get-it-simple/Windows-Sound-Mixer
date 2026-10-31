@@ -1,4 +1,10 @@
 {
+  "media_previous": "Προηγούμενο κομμάτι",
+  "media_next": "Επόμενο κομμάτι",
+  "media_play": "Αναπαραγωγή",
+  "media_pause": "Παύση",
+  "playing_media": "Μέσα σε αναπαραγωγή",
+  "media_untitled": "Μέσα χωρίς τίτλο",
   "output_device_switching": "Αλλαγή εξόδου ήχου…",
   "output_device_select": "Επιλογή εξόδου ήχου",
   "output_device_empty": "Δεν υπάρχουν ενεργές έξοδοι ήχου",

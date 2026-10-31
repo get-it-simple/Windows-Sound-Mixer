@@ -101,6 +101,8 @@ class EntryWidget(QFrame):
         self._last_muted: bool | None = None
         self._last_icon_path: str | None = None
         self._last_display_name: str | None = None
+        self._media_controls = None
+        self._media_cards = []
 
         self._mute_button = DelayedTooltipButton(self)
         self._mute_button.setToolTip(t("mute_unmute_tooltip"))
@@ -162,7 +164,7 @@ class EntryWidget(QFrame):
             return
         self._vertical = vertical
 
-        layout = self.layout()
+        layout = self._media_controls.layout() if self._media_controls is not None else self.layout()
         layout.setDirection(QBoxLayout.Direction.TopToBottom if vertical else QBoxLayout.Direction.LeftToRight)
         alignment = Qt.AlignmentFlag.AlignHCenter if vertical else Qt.AlignmentFlag.AlignVCenter
         for widget in (self._icon_container, self._mute_button, self._volume_spinbox, self._slider_column):
@@ -175,6 +177,44 @@ class EntryWidget(QFrame):
 
     def is_vertical(self) -> bool:
         return self._vertical
+
+    def set_media_cards(self, cards) -> None:
+        for card in self._media_cards:
+            self.layout().removeWidget(card)
+            card.hide()
+            card.deleteLater()
+        self._media_cards = cards
+        controls = (self._icon_container, self._mute_button, self._volume_spinbox, self._slider_column)
+        if cards and self._media_controls is None:
+            self._media_controls = QWidget(self)
+            control_layout = QBoxLayout(QBoxLayout.Direction.LeftToRight, self._media_controls)
+            control_layout.setContentsMargins(0, 0, 0, 0)
+            control_layout.setSpacing(self.layout().spacing())
+            for widget in controls:
+                self.layout().removeWidget(widget)
+                control_layout.addWidget(widget, 1 if widget is self._slider_column else 0)
+                widget.show()
+            self.layout().setDirection(QBoxLayout.Direction.TopToBottom)
+            self.layout().addWidget(self._media_controls)
+            self._media_controls.show()
+        elif not cards and self._media_controls is not None:
+            container = self._media_controls
+            self.layout().removeWidget(container)
+            for widget in controls:
+                container.layout().removeWidget(widget)
+                self.layout().addWidget(widget, 1 if widget is self._slider_column else 0)
+                widget.show()
+            self._media_controls = None
+            container.hide()
+            container.deleteLater()
+            self.layout().setDirection(QBoxLayout.Direction.TopToBottom if self._vertical else QBoxLayout.Direction.LeftToRight)
+            alignment = Qt.AlignmentFlag.AlignHCenter if self._vertical else Qt.AlignmentFlag.AlignVCenter
+            for widget in controls:
+                self.layout().setAlignment(widget, alignment)
+        for card in cards:
+            self.layout().addWidget(card)
+            card.show()
+        self.updateGeometry()
 
     def apply_scale(self, scale: float, accent_color: str = "#3a96dd") -> None:
         self._scale = scale
@@ -212,6 +252,8 @@ class EntryWidget(QFrame):
         margin = round(BASE_MARGIN_PX * scale)
         layout.setContentsMargins(margin, margin, margin, margin)
         layout.setSpacing(round(BASE_SPACING_PX * scale))
+        if self._media_controls is not None:
+            self._media_controls.layout().setSpacing(round(BASE_SPACING_PX * scale))
 
     def _apply_value_size(self, font_px: int) -> None:
         font = self._volume_spinbox.font()

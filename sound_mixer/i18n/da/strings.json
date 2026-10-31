@@ -1,4 +1,10 @@
 {
+  "media_previous": "Forrige nummer",
+  "media_next": "Næste nummer",
+  "media_play": "Afspil",
+  "media_pause": "Pause",
+  "playing_media": "Medier under afspilning",
+  "media_untitled": "Medier uden titel",
   "output_device_switching": "Skifter lydudgang…",
   "output_device_select": "Vælg lydudgang",
   "output_device_empty": "Ingen aktive lydudgange",

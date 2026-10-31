@@ -229,6 +229,13 @@ class SettingsStore(PresetSettings):
     def get_transparency_enabled(self) -> bool:
         return self.data["transparency_enabled"]
 
+    def get_playing_media_enabled(self) -> bool:
+        return bool(self.data["playing_media_enabled"])
+
+    def set_playing_media_enabled(self, enabled: bool) -> None:
+        self.data["playing_media_enabled"] = bool(enabled)
+        self.save()
+
     def set_transparency_enabled(self, enabled: bool) -> None:
         self.data["transparency_enabled"] = bool(enabled)
         self.save()

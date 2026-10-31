@@ -1,4 +1,10 @@
 {
+  "media_previous": "Föregående spår",
+  "media_next": "Nästa spår",
+  "media_play": "Spela upp",
+  "media_pause": "Pausa",
+  "playing_media": "Media som spelas",
+  "media_untitled": "Namnlös media",
   "output_device_switching": "Byter ljudutgång…",
   "output_device_select": "Välj ljudutgång",
   "output_device_empty": "Inga aktiva ljudutgångar",

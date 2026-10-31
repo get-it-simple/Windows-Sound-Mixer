@@ -1,4 +1,10 @@
 {
+  "media_previous": "Vorheriger Titel",
+  "media_next": "Nächster Titel",
+  "media_play": "Wiedergabe",
+  "media_pause": "Pause",
+  "playing_media": "Aktuell wiedergegebene Medien",
+  "media_untitled": "Medien ohne Titel",
   "output_device_switching": "Audioausgabe wird gewechselt…",
   "output_device_select": "Audioausgabe auswählen",
   "output_device_empty": "Keine aktiven Audioausgänge",

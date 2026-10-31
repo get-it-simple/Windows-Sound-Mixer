@@ -1,5 +1,5 @@
 import pytest
-from PySide6.QtCore import QDeadlineTimer, QEventLoop, QPoint
+from PySide6.QtCore import QDeadlineTimer, QEventLoop, QPoint, QRect
 
 from sound_mixer.audio.fake_backend import FakeAudioSession
 from sound_mixer.mixer.model import MixerModel
@@ -16,7 +16,8 @@ from sound_mixer.overlay.window import MAX_VISIBLE_ENTRIES, OverlayWindow
     pytest.param(range(300, 174, -5), id="decrease-300-175"),
     pytest.param(range(175, 49, -5), id="decrease-175-50"),
 ])
-def test_repeated_scale_changes_preserve_scroll_threshold(qapp, fake_backend, settings, mode, count, ignored, scales):
+def test_repeated_scale_changes_preserve_scroll_threshold(qapp, fake_backend, settings, monkeypatch, mode, count, ignored, scales):
+    monkeypatch.setattr(OverlayWindow, "_available_geometry", lambda self: QRect(0, 0, 12000, 12000))
     settings.set_layout_mode(mode)
     for index in range(count - 3):
         fake_backend.add_session(FakeAudioSession(
